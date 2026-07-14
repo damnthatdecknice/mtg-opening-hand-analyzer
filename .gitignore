@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+build/
+dist/
+*.spec
+data/cache/
+data/samples/user_arena_screenshots/*
+!data/samples/user_arena_screenshots/.gitkeep

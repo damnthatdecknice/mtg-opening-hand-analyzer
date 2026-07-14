@@ -1,0 +1,17 @@
+Deck
+4 Monastery Swiftspear
+4 Lightning Strike
+4 Play with Fire
+4 Phoenix Chick
+4 Kumano Faces Kakkazan
+4 Charming Scoundrel
+4 Imodane's Recruiter
+4 Warden of the Inner Sky
+4 Inspiring Vantage
+4 Battlefield Forge
+12 Mountain
+8 Plains
+
+Sideboard
+3 Destroy Evil
+2 Rest in Peace

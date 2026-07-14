@@ -1,0 +1,547 @@
+from __future__ import annotations
+
+import random
+import sys
+import tempfile
+from collections import Counter
+from pathlib import Path
+
+import streamlit as st
+from PIL import Image
+
+ROOT = Path(__file__).resolve().parent
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from mtg_hand_analyzer.analysis import analyze_hand
+from mtg_hand_analyzer.card_cache import CardCache
+from mtg_hand_analyzer.card_data import FixtureCardDataProvider, ScryfallProvider
+from mtg_hand_analyzer.card_draw import draw_look_depth
+from mtg_hand_analyzer.card_recognition import recognize_crops
+from mtg_hand_analyzer.deck_parser import parse_decklist, structural_warnings, validate_hand_counts
+from mtg_hand_analyzer.land_inference import enrich_card_data
+from mtg_hand_analyzer.mana import parse_mana_cost
+from mtg_hand_analyzer.models import CardData, PlayDraw
+from mtg_hand_analyzer.screenshot_detection import detect_hand_region_boxes, load_image, save_crops
+from mtg_hand_analyzer.settings import CARD_DB_PATH, CARD_FIXTURE_PATH, SAMPLE_DECK_PATH, ensure_data_dirs
+
+st.set_page_config(page_title="MTG Opening Hand Analyzer", layout="wide")
+ensure_data_dirs()
+
+card_cache = CardCache(CARD_DB_PATH)
+fixture_provider = FixtureCardDataProvider(CARD_FIXTURE_PATH)
+
+
+def init_state() -> None:
+    default_deck = SAMPLE_DECK_PATH.read_text(encoding="utf-8") if SAMPLE_DECK_PATH.exists() else ""
+    defaults = {
+        "deck_text": default_deck,
+        "confirmed_hand": [],
+        "recognition_results": [],
+        "crop_paths": [],
+        "boxes": [],
+        "play_draw": PlayDraw.PLAY.value,
+        "trials": 5000,
+        "seed": 20260714,
+    }
+    for key, value in defaults.items():
+        st.session_state.setdefault(key, value)
+
+
+def resolve_cards(names: list[str]) -> dict[str, CardData]:
+    provider = ScryfallProvider()
+    cards: dict[str, CardData] = {}
+    for name in names:
+        card = card_cache.resolve(name, provider, force_refresh=True)
+        if not card:
+            card = fixture_provider.get_card(name)
+        cards[name] = enrich_card_data(name, card)
+    return cards
+
+
+def parsed_deck():
+    return parse_decklist(st.session_state.deck_text)
+
+
+def main_counts() -> dict[str, int]:
+    return parsed_deck().main_counts()
+
+
+def fmt_pct(value: float) -> str:
+    return f"{max(0.0, min(1.0, value)):.1%}"
+
+
+def score_label(score: int) -> str:
+    if score >= 80:
+        return "strong keep signal"
+    if score >= 65:
+        return "reasonable keep signal"
+    if score >= 45:
+        return "context-dependent"
+    return "high mulligan pressure"
+
+
+def hand_texture_score(report: dict, castability: dict) -> int:
+    lands = report["lands_in_hand"]
+    score = 50
+    if lands in {2, 3}:
+        score += 18
+    elif lands in {1, 4}:
+        score += 2
+    else:
+        score -= 18
+    score += min(18, report["early_plays"][1] * 6 + report["early_plays"][2] * 3)
+    if report["hand_draw_sources"]:
+        score += min(12, sum(source.cards_seen for source in report["hand_draw_sources"]) * 3)
+    if report["average_mana_value"] > 3.0 and lands < 3:
+        score -= 12
+    if castability and all(estimate.by_turn.get(2, 0.0) < 0.5 for estimate in castability.values()):
+        score -= 15
+    return max(0, min(100, score))
+
+
+def land_sentence(lands_in_hand: int, third_land: float, fourth_land: float) -> str:
+    if lands_in_hand >= 4:
+        return "You already have several lands; the main risk to watch is drawing too many more lands."
+    if lands_in_hand == 3:
+        return f"This is a three-land hand. The 4th land by turn 4 is {fmt_pct(fourth_land)}."
+    if lands_in_hand == 2:
+        return f"This is a two-land hand. The 3rd land by turn 3 is {fmt_pct(third_land)}."
+    return f"This is a low-land hand. The 3rd land by turn 3 is {fmt_pct(third_land)}."
+
+
+def card_draw_sentence(hand_sources, library_sources) -> str:
+    if hand_sources:
+        names = ", ".join(source.card_name for source in hand_sources)
+        return f"You have card draw/selection in hand: {names}."
+    if library_sources:
+        return f"You do not have card draw in hand, but {len(library_sources)} draw/look source(s) remain in the library."
+    return "No clear card-draw effects were found from the available card text."
+
+
+def required_colors(spells: list[str], cards: dict[str, CardData]) -> list[str]:
+    required: set[str] = set()
+    for name in spells:
+        card = cards.get(name)
+        if not card:
+            continue
+        parsed, _generic, _warnings = parse_mana_cost(card.mana_cost)
+        required.update(parsed)
+    return sorted(required)
+
+
+def is_interaction(card: CardData) -> bool:
+    text = card.oracle_text.casefold()
+    terms = [
+        "counter target",
+        "deals",
+        "damage to",
+        "destroy target",
+        "exile target",
+        "return target",
+        "tap target",
+        "can't attack",
+        "gets -",
+    ]
+    return any(term in text for term in terms)
+
+
+def is_threat(card: CardData) -> bool:
+    text = card.oracle_text.casefold()
+    return "Creature" in card.type_line or "Planeswalker" in card.type_line or "create" in text or "token" in text
+
+
+def has_current_colors(spell_name: str, lands: list[str], cards: dict[str, CardData]) -> bool:
+    card = cards.get(spell_name)
+    if not card:
+        return False
+    required, _generic, _warnings = parse_mana_cost(card.mana_cost)
+    available = {color for name in lands for color in cards[name].produced_mana}
+    return all(color in available for color in required)
+
+
+def texture_score_for_cards(hand: list[str], cards: dict[str, CardData]) -> int:
+    lands = [name for name in hand if cards.get(name) and cards[name].is_land]
+    spells = [name for name in hand if cards.get(name) and not cards[name].is_land]
+    land_count = len(lands)
+    score = 50
+    if land_count in {2, 3}:
+        score += 18
+    elif land_count in {1, 4}:
+        score += 2
+    else:
+        score -= 18
+    one_drops = sum(1 for name in spells if cards[name].mana_value <= 1 and has_current_colors(name, lands, cards))
+    two_drops = sum(1 for name in spells if cards[name].mana_value <= 2 and has_current_colors(name, lands, cards))
+    score += min(18, one_drops * 6 + two_drops * 3)
+    score += min(12, sum(draw_look_depth(cards[name]) for name in spells) * 3)
+    nonland_mv = [cards[name].mana_value for name in spells]
+    average_mv = sum(nonland_mv) / len(nonland_mv) if nonland_mv else 0.0
+    if average_mv > 3.0 and land_count < 3:
+        score -= 12
+    if spells and two_drops == 0:
+        score -= 15
+    return max(0, min(100, score))
+
+
+def best_mulligan_six(opening_seven: list[str], cards: dict[str, CardData]) -> tuple[list[str], str, int]:
+    best_hand = opening_seven[:6]
+    best_bottom = opening_seven[6]
+    best_score = -1
+    for index, card_name in enumerate(opening_seven):
+        kept = opening_seven[:index] + opening_seven[index + 1 :]
+        score = texture_score_for_cards(kept, cards)
+        if score > best_score:
+            best_hand = kept
+            best_bottom = card_name
+            best_score = score
+    return best_hand, best_bottom, best_score
+
+
+def mulligan_comparison_lines(counts: dict[str, int], cards: dict[str, CardData], current_score: int, samples: int = 1500) -> list[str]:
+    deck_cards = [name for name, qty in counts.items() for _ in range(qty)]
+    if len(deck_cards) < 7:
+        return ["Not enough main-deck cards to simulate a fresh 7."]
+    rng = random.Random(20260714)
+    scores: list[int] = []
+    bottomed: Counter[str] = Counter()
+    land_counts: Counter[int] = Counter()
+    for _ in range(samples):
+        shuffled = deck_cards[:]
+        rng.shuffle(shuffled)
+        kept_six, bottom_card, best_score = best_mulligan_six(shuffled[:7], cards)
+        scores.append(best_score)
+        bottomed[bottom_card] += 1
+        land_counts[sum(1 for name in kept_six if cards.get(name) and cards[name].is_land)] += 1
+    scores.sort()
+    average = sum(scores) / len(scores)
+    median = scores[len(scores) // 2]
+    better = sum(1 for score in scores if score > current_score) / len(scores)
+    same_or_better = sum(1 for score in scores if score >= current_score) / len(scores)
+    p25 = scores[len(scores) // 4]
+    p75 = scores[(len(scores) * 3) // 4]
+    common_bottoms = ", ".join(f"{name} ({count / samples:.0%})" for name, count in bottomed.most_common(3))
+    land_mix = ", ".join(f"{lands} land: {count / samples:.0%}" for lands, count in sorted(land_counts.items()))
+    return [
+        f"Current hand texture: {current_score}/100.",
+        f"Simulated mulligan-to-six average: {average:.1f}/100; median: {median}/100.",
+        f"Middle half of mulligan outcomes: {p25}/100 to {p75}/100.",
+        f"Fresh 7 then bottom 1 is better about {better:.1%} of the time.",
+        f"Fresh 7 then bottom 1 is at least as good about {same_or_better:.1%} of the time.",
+        f"Typical kept-six land counts: {land_mix}.",
+        f"Most commonly bottomed cards: {common_bottoms}.",
+        "This is a seeded simulation, not exact matchup EV.",
+    ]
+
+
+def sequencing_notes(lands: list[str], spells: list[str], cards: dict[str, CardData], castability: dict) -> list[str]:
+    notes: list[str] = []
+    shock_lands = [name for name in lands if "you may pay 2 life" in cards[name].oracle_text.casefold()]
+    fast_lands = [name for name in lands if "two or fewer other lands" in cards[name].oracle_text.casefold()]
+    tapped_lands = [
+        name
+        for name in lands
+        if "enters tapped" in cards[name].oracle_text.casefold() and name not in shock_lands and name not in fast_lands
+    ]
+    if shock_lands:
+        notes.append("Shock land option: " + ", ".join(shock_lands) + " can preserve tempo if paying 2 life matters.")
+    if fast_lands:
+        notes.append("Fast land timing: " + ", ".join(fast_lands) + " is best early before it risks entering tapped.")
+    if tapped_lands:
+        notes.append("Consider leading on tapped land(s) when you do not have a turn-1 spell: " + ", ".join(tapped_lands))
+    one_mana_spells = [
+        name
+        for name in spells
+        if cards.get(name) and cards[name].mana_value <= 1 and castability.get(name) and castability[name].by_turn.get(1, 0.0) >= 0.8
+    ]
+    if one_mana_spells:
+        notes.append("Turn-1 options that look live: " + ", ".join(one_mana_spells))
+    if not notes:
+        notes.append("No obvious sequencing trap detected from land text and early castability.")
+    return notes
+
+
+def run_analysis(hand: list[str], play_draw: PlayDraw, trials: int, seed: int) -> tuple[dict, dict[str, CardData]]:
+    counts = main_counts()
+    cards = resolve_cards(list(counts))
+    report = analyze_hand(counts, hand, cards, play_draw, trials=trials, seed=seed)
+    return report, cards
+
+
+init_state()
+st.title("MTG Opening Hand Analyzer")
+st.caption("Opening-hand math for Magic. Hosted web use means uploaded screenshots are processed on this app server.")
+
+deck_tab, hand_tab, shot_tab, results_tab = st.tabs(["Deck", "Hand", "Screenshot", "Results"])
+
+with deck_tab:
+    st.subheader("Deck")
+    st.session_state.deck_text = st.text_area("Paste MTG Arena decklist", st.session_state.deck_text, height=330)
+    deck = parsed_deck()
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Main deck", deck.main_total)
+    c2.metric("Sideboard", deck.sideboard_total)
+    c3.metric("Unique main cards", len(deck.main_counts()))
+    if deck.issues:
+        st.error("Some lines could not be parsed.")
+        for issue in deck.issues[:10]:
+            st.write(f"Line {issue.line_number}: {issue.message} `{issue.line}`")
+    for warning in structural_warnings(deck):
+        st.warning(warning)
+    with st.expander("Main deck list", expanded=False):
+        st.dataframe([line.model_dump() for line in deck.main], hide_index=True, width="stretch")
+
+with hand_tab:
+    st.subheader("Confirm Opening Hand")
+    counts = main_counts()
+    unique_options = sorted(counts)
+    if not unique_options:
+        st.warning("Paste a deck first.")
+    else:
+        defaults = st.session_state.confirmed_hand if len(st.session_state.confirmed_hand) == 7 else []
+        selected: list[str] = []
+        cols = st.columns(7)
+        for index in range(7):
+            default = defaults[index] if index < len(defaults) else unique_options[index % len(unique_options)]
+            with cols[index]:
+                selected.append(
+                    st.selectbox(
+                        f"Card {index + 1}",
+                        unique_options,
+                        index=unique_options.index(default) if default in unique_options else 0,
+                        key=f"manual_card_{index}",
+                    )
+                )
+        errors = validate_hand_counts(counts, selected)
+        for error in errors:
+            st.error(error)
+        if st.button("Use this hand", disabled=bool(errors)):
+            st.session_state.confirmed_hand = selected
+            st.success("Hand saved for analysis.")
+
+with shot_tab:
+    st.subheader("Screenshot Recognition")
+    st.write("Upload an MTGO/Arena screenshot. Recognition is only a first pass; confirm the seven cards before analysis.")
+    upload = st.file_uploader("Upload PNG, JPG, JPEG, or WEBP", type=["png", "jpg", "jpeg", "webp"])
+    if upload:
+        suffix = Path(upload.name).suffix or ".png"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
+            handle.write(upload.getbuffer())
+            image_path = Path(handle.name)
+        st.image(Image.open(image_path), caption="Uploaded screenshot", width="stretch")
+        image = load_image(image_path)
+        boxes = detect_hand_region_boxes(image)
+        crop_paths = save_crops(image, boxes, prefix="web")
+        st.session_state.boxes = [box.model_dump() for box in boxes]
+        st.session_state.crop_paths = [str(path) for path in crop_paths]
+        crop_cols = st.columns(7)
+        for idx, path in enumerate(crop_paths):
+            with crop_cols[idx]:
+                st.image(str(path), caption=f"Crop {idx + 1}")
+        if st.button("Run recognition"):
+            with st.spinner("Refreshing card data from Scryfall and matching crops..."):
+                cards = resolve_cards(list(main_counts()))
+                results = recognize_crops(crop_paths, boxes, cards)
+            st.session_state.recognition_results = [result.model_dump(mode="json") for result in results]
+            st.success("Recognition candidates generated.")
+
+    results = st.session_state.recognition_results
+    if results and unique_options:
+        st.divider()
+        st.subheader("Confirm Recognized Cards")
+        confirmed: list[str] = []
+        for result in results:
+            idx = result["crop_index"]
+            cols = st.columns([1, 2, 3])
+            if result.get("crop_path"):
+                cols[0].image(result["crop_path"], caption=f"Crop {idx + 1}")
+            labels = [candidate["card_name"] for candidate in result["candidates"]]
+            best = labels[0] if labels else unique_options[0]
+            choice = cols[1].selectbox(
+                f"Card {idx + 1}",
+                unique_options,
+                index=unique_options.index(best) if best in unique_options else 0,
+                key=f"recognized_card_{idx}",
+            )
+            cols[2].dataframe(
+                [
+                    {
+                        "candidate": candidate["card_name"],
+                        "score": round(candidate["score"], 3),
+                        "confidence": candidate["confidence_label"],
+                    }
+                    for candidate in result["candidates"]
+                ],
+                hide_index=True,
+                width="stretch",
+            )
+            confirmed.append(choice)
+        errors = validate_hand_counts(counts, confirmed)
+        for error in errors:
+            st.error(error)
+        if st.button("Use recognized hand", disabled=bool(errors)):
+            st.session_state.confirmed_hand = confirmed
+            st.success("Recognized hand saved for analysis.")
+
+with results_tab:
+    st.subheader("Results")
+    hand = st.session_state.confirmed_hand
+    if len(hand) != 7:
+        st.warning("Confirm a seven-card hand first.")
+    else:
+        c1, c2, c3 = st.columns(3)
+        play_draw = c1.radio("Play or draw", [PlayDraw.PLAY.value, PlayDraw.DRAW.value], horizontal=True)
+        trials = c2.number_input("Castability simulations", min_value=1000, max_value=50000, value=int(st.session_state.trials), step=1000)
+        seed = c3.number_input("Simulation seed", value=int(st.session_state.seed), step=1)
+        if st.button("Analyze hand", type="primary"):
+            st.session_state.play_draw = play_draw
+            st.session_state.trials = trials
+            st.session_state.seed = seed
+            with st.spinner("Refreshing Scryfall data and running the hand analysis..."):
+                try:
+                    report, cards = run_analysis(hand, PlayDraw(play_draw), int(trials), int(seed))
+                except ValueError as exc:
+                    st.error(str(exc))
+                    st.stop()
+            st.session_state.last_report = report
+            st.session_state.last_cards = {name: card.model_dump() for name, card in cards.items()}
+
+        report = st.session_state.get("last_report")
+        raw_cards = st.session_state.get("last_cards")
+        if report and raw_cards:
+            cards = {name: CardData.model_validate(payload) for name, payload in raw_cards.items()}
+            castability = {estimate.card_name: estimate for estimate in report["castability"]}
+            score = hand_texture_score(report, castability)
+            land_turn_3 = report["land_drop_probabilities"].get("Hit land 3 by turn 3", 0.0)
+            land_turn_4 = report["land_drop_probabilities"].get("Hit land 4 by turn 4", 0.0)
+            lands = [name for name in hand if cards.get(name) and cards[name].is_land]
+            spells = [name for name in hand if cards.get(name) and not cards[name].is_land]
+            draw_sources = report["hand_draw_sources"]
+            library_draw_sources = report["library_draw_sources"]
+
+            overview, deep, mulligan, other = st.tabs(["Overview", "Deep Data", "Mulligan", "OTHER"])
+            with overview:
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Lands", report["lands_in_hand"])
+                m2.metric("Nonlands", report["nonlands_in_hand"])
+                m3.metric("Avg mana value", f"{report['average_mana_value']:.2f}")
+                m4.metric("Texture", f"{score}/100")
+                st.write("**Keep or Mulligan Signals**")
+                st.write("- " + land_sentence(report["lands_in_hand"], land_turn_3, land_turn_4))
+                st.write("- " + card_draw_sentence(draw_sources, library_draw_sources))
+                st.write("**Key Chances**")
+                st.write(f"- Find the 3rd land by turn 3: {fmt_pct(land_turn_3)}")
+                st.write(f"- Find the 4th land by turn 4: {fmt_pct(land_turn_4)}")
+                for detail in ["Next land by turn 2", "Next land by turn 3"]:
+                    if detail in report["land_probabilities"]:
+                        st.write(f"- {detail}: {fmt_pct(report['land_probabilities'][detail].probability)}")
+                st.write("**Card Draw and Looks**")
+                if draw_sources:
+                    for source in draw_sources:
+                        st.write(f"- {source.card_name}: sees {source.cards_seen} card(s) deep and draws {source.cards_drawn}.")
+                    for turn, impact in report["card_draw_impact"].items():
+                        extra = impact["expected_extra_looks"]
+                        if extra > 0.01:
+                            st.write(
+                                f"- By turn {turn}: next-land chance changes from "
+                                f"{fmt_pct(impact['next_land_natural'])} to about {fmt_pct(impact['next_land_with_hand_draw'])}."
+                            )
+                else:
+                    st.write("- No clear draw/look spell in the confirmed hand.")
+                st.write("**Spell Castability**")
+                cast_rows = []
+                for estimate in report["castability"]:
+                    cast_rows.append(
+                        {
+                            "card": estimate.card_name,
+                            "T1": fmt_pct(estimate.by_turn.get(1, 0.0)),
+                            "T2": fmt_pct(estimate.by_turn.get(2, 0.0)),
+                            "T3": fmt_pct(estimate.by_turn.get(3, 0.0)),
+                        }
+                    )
+                st.dataframe(cast_rows, hide_index=True, width="stretch")
+
+            with deep:
+                st.write("**Land Details**")
+                land_rows = []
+                for detail in report["land_probabilities"].values():
+                    land_rows.append(
+                        {
+                            "stat": detail.label,
+                            "probability": fmt_pct(detail.probability),
+                            "library": detail.library_size,
+                            "qualifying": detail.qualifying_cards,
+                            "draws": detail.draws,
+                            "method": detail.method,
+                        }
+                    )
+                for label, probability in report["land_drop_probabilities"].items():
+                    land_rows.append(
+                        {
+                            "stat": label,
+                            "probability": fmt_pct(probability),
+                            "library": report["library_size"],
+                            "qualifying": report["lands_remaining"],
+                            "draws": "",
+                            "method": "exact",
+                        }
+                    )
+                st.dataframe(land_rows, hide_index=True, width="stretch")
+                st.write("**Draw Types by Turn**")
+                category_rows = []
+                for category, details in report["category_probabilities"].items():
+                    if category not in {"Land", "Creature", "Instant", "Sorcery", "Noncreature spell"}:
+                        continue
+                    row = {"category": category}
+                    for detail in details:
+                        row[f"T{detail.label[-1]}"] = fmt_pct(detail.probability)
+                    category_rows.append(row)
+                st.dataframe(category_rows, hide_index=True, width="stretch")
+                st.write("**Full Castability Estimates**")
+                cast_rows = []
+                for estimate in report["castability"]:
+                    row = {"card": estimate.card_name}
+                    for turn, value in estimate.by_turn.items():
+                        row[f"T{turn}"] = fmt_pct(value)
+                    row["trials"] = estimate.trials
+                    row["seed"] = estimate.seed
+                    cast_rows.append(row)
+                st.dataframe(cast_rows, hide_index=True, width="stretch")
+
+            with mulligan:
+                st.write("**Current Hand**")
+                st.write(f"- Hand texture score: {score}/100 ({score_label(score)})")
+                st.write("- " + land_sentence(report["lands_in_hand"], land_turn_3, land_turn_4))
+                st.write("**Fresh 7, Bottom 1**")
+                for line in mulligan_comparison_lines(main_counts(), cards, score):
+                    st.write("- " + line)
+                st.caption("This compares your current 7 to a seeded London mulligan to 6.")
+
+            with other:
+                available_colors = sorted({color for name in lands for color in cards[name].produced_mana})
+                needed_colors = required_colors(spells, cards)
+                missing_colors = [color for color in needed_colors if color not in available_colors]
+                interaction = [name for name in spells if is_interaction(cards[name])]
+                threats = [name for name in spells if is_threat(cards[name])]
+                duplicates = [f"{name} x{qty}" for name, qty in Counter(hand).items() if qty > 1]
+                st.write("**Competitive Snapshot**")
+                st.write(f"- Hand texture score: {score}/100 ({score_label(score)})")
+                st.write(f"- Opening resources: {len(lands)} land(s), {len(spells)} spell(s), {len(draw_sources)} draw/look card(s)")
+                st.write(f"- Main-deck land ratio after this hand: {report['lands_remaining']}/{report['library_size']} remaining")
+                st.write("**Color Check**")
+                st.write("- Available colors from lands in hand: " + (", ".join(available_colors) if available_colors else "none"))
+                st.write("- Spell colors needed now: " + (", ".join(needed_colors) if needed_colors else "none"))
+                if missing_colors:
+                    st.write("- Color bottleneck: missing " + ", ".join(missing_colors) + ".")
+                else:
+                    st.write("- No immediate color bottleneck from the confirmed hand.")
+                st.write("**Role Pieces**")
+                st.write("- Interaction in hand: " + (", ".join(interaction) if interaction else "none clearly detected"))
+                st.write("- Threats/pressure in hand: " + (", ".join(threats) if threats else "none clearly detected"))
+                st.write("**Sequencing Prompts**")
+                for note in sequencing_notes(lands, spells, cards, castability):
+                    st.write("- " + note)
+                st.write("**Hand Shape Flags**")
+                st.write("- Duplicate cards: " + (", ".join(duplicates) if duplicates else "none"))
+                st.caption("Limits: castability does not model treasures, mana creatures, cost reductions, alternate costs, or detailed sequencing.")

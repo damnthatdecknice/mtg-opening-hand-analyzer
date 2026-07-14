@@ -1,0 +1,30 @@
+[project]
+name = "mtg-opening-hand-analyzer"
+version = "0.1.0"
+description = "Local Streamlit app for analyzing Magic: The Gathering opening hands."
+requires-python = ">=3.12"
+dependencies = [
+  "streamlit>=1.36",
+  "opencv-python>=4.9",
+  "Pillow>=10.3",
+  "numpy>=1.26",
+  "ImageHash>=4.3",
+  "pydantic>=2.7",
+  "requests>=2.32",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2", "ruff>=0.5"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "scripts", "app.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E402", "E501", "I001"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
