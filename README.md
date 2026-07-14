@@ -2,12 +2,27 @@
 
 MTG Opening Hand Analyzer is a local Windows-friendly Streamlit app for analyzing a Magic: The Gathering seven-card opening hand. You can paste a decklist, manually select or screenshot-detect a hand, confirm/correct the seven cards, and review draw, land, category, and basic castability statistics.
 
+## Free Web App Deployment
+
+This project is ready for Streamlit Community Cloud.
+
+1. Create a public GitHub repository.
+2. Push this project to that repo.
+3. Go to https://share.streamlit.io/.
+4. Choose the repo.
+5. Set the main file path to `app.py`.
+6. Deploy.
+
+The hosted web app uses `requirements.txt` and does not need the Windows desktop packaging files. The app refreshes card data from Scryfall when analyzing new decks.
+
+Important privacy note: the local desktop app keeps screenshots and decklists on your computer. The hosted Streamlit version processes uploaded screenshots and pasted decklists on the Streamlit app server.
+
 ## Windows Setup
 
 1. Install Python 3.12 from https://www.python.org/downloads/windows/.
 2. Download or clone this project.
 3. Double-click `setup.bat`.
-4. Double-click `run_desktop.bat` for the normal desktop app, or `run.bat` for the older browser interface.
+4. Double-click `run_desktop.bat` for the normal desktop app, or `run.bat` for the browser interface.
 5. Paste a decklist.
 6. Upload a screenshot if desired.
 7. Confirm recognized cards.
@@ -26,7 +41,8 @@ Normal use does not require typing terminal commands. To build a standalone Wind
 - Exact hypergeometric draw probabilities from the remaining library.
 - Play-versus-draw turn handling.
 - Land, category, and basic seeded castability estimates.
-- Local SQLite saved decks and card cache.
+- Overview, Deep Data, Mulligan, and OTHER analysis tabs.
+- Local SQLite saved decks and card cache in the desktop app.
 
 ## Privacy
 
