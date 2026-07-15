@@ -665,18 +665,18 @@ def process_screenshot(image_path: Path, prefix: str) -> None:
     recognition_signature = f"{crop_signature}:{sorted(counts.items())}"
     if crop_paths and counts and st.session_state.get("recognition_signature") != recognition_signature:
         with st.spinner("Reading crops and matching cards..."):
-            cards = resolve_cards(list(counts))
+            cards = resolve_cards(list(counts), force_refresh=False)
             results = recognize_crops(crop_paths, boxes, cards)
         st.session_state.recognition_signature = recognition_signature
         st.session_state.recognition_results = [result.model_dump(mode="json") for result in results]
         st.success("Card candidates generated. Confirm or correct the seven cards below.")
 
 
-def resolve_cards(names: list[str], retry_delay_seconds: float = 0.75) -> dict[str, CardData]:
+def resolve_cards(names: list[str], retry_delay_seconds: float = 0.75, force_refresh: bool = True) -> dict[str, CardData]:
     provider = ScryfallProvider(retries=3)
     cards: dict[str, CardData] = {}
     for name in names:
-        card = card_cache.resolve(name, provider, force_refresh=True)
+        card = card_cache.resolve(name, provider, force_refresh=force_refresh)
         if not card:
             time.sleep(retry_delay_seconds)
             card = card_cache.resolve(name, provider, force_refresh=True)

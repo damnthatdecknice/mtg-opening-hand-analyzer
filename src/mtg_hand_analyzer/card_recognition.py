@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
 from typing import NamedTuple
@@ -74,9 +75,16 @@ def ensure_artwork(card: CardData) -> Path:
     return path
 
 
-def reference_images_for_card(card: CardData, max_prints: int = 24) -> list[Path]:
+def reference_images_for_card(card: CardData, max_prints: int = 24, download_missing_prints: bool = True) -> list[Path]:
     paths = [ensure_artwork(card)]
-    paths.extend(download_print_images(card, max_prints=max_prints))
+    if download_missing_prints:
+        paths.extend(download_print_images(card, max_prints=max_prints))
+    else:
+        safe = "".join(ch for ch in card.name if ch.isalnum() or ch in (" ", "_", "-")).strip().replace(" ", "_")
+        print_dir = ARTWORK_DIR / "prints" / safe
+        if print_dir.exists():
+            existing = sorted(print_dir.glob("*.jpg")) + sorted(print_dir.glob("*.png"))
+            paths.extend(existing[:max_prints])
     unique: list[Path] = []
     seen: set[Path] = set()
     for path in paths:
@@ -388,8 +396,23 @@ def recognize_crops(
     boxes: list[CropBox],
     deck_cards: dict[str, CardData],
     top_n: int = 3,
+    max_prints: int = 4,
+    download_missing_prints: bool = False,
 ) -> list[RecognitionResult]:
-    artwork = {name: reference_images_for_card(card) for name, card in deck_cards.items()}
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(deck_cards)))) as executor:
+        artwork = dict(
+            executor.map(
+                lambda item: (
+                    item[0],
+                    reference_images_for_card(
+                        item[1],
+                        max_prints=max_prints,
+                        download_missing_prints=download_missing_prints,
+                    ),
+                ),
+                deck_cards.items(),
+            )
+        )
     scored_by_crop: list[list[RecognitionCandidate]] = []
     for crop_path in crop_paths:
         candidates: list[RecognitionCandidate] = []
