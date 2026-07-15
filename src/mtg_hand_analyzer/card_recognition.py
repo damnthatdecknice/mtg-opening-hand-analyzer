@@ -293,7 +293,7 @@ def recognize_crops(
         scored_by_crop.append(candidates)
     assigned_candidates = apply_global_card_assignment(scored_by_crop, deck_cards)
     results: list[RecognitionResult] = []
-    for index, candidates in enumerate(assigned_candidates):
+    for index, (crop_path, candidates) in enumerate(zip(crop_paths, assigned_candidates, strict=True)):
         results.append(
             RecognitionResult(
                 crop_index=index,

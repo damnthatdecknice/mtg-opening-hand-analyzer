@@ -36,6 +36,25 @@ def test_low_confidence_still_returns_manual_candidates(tmp_path: Path) -> None:
     assert result.candidates[0].confidence_label in {"low", "medium", "high"}
 
 
+def test_recognition_results_keep_their_own_crop_paths(tmp_path: Path) -> None:
+    provider = FixtureCardDataProvider(CARD_FIXTURE_PATH)
+    card = provider.get_card("Lightning Strike")
+    assert card is not None
+    crop_paths = []
+    for index, color in enumerate([(10, 20, 30), (80, 90, 100), (140, 150, 160)], start=1):
+        path = tmp_path / f"crop_{index}.png"
+        Image.new("RGB", (240, 336), color).save(path)
+        crop_paths.append(path)
+
+    results = recognize_crops(
+        crop_paths,
+        [CropBox(x=0, y=0, width=100, height=140) for _ in crop_paths],
+        {"Lightning Strike": card},
+    )
+
+    assert [result.crop_path for result in results] == crop_paths
+
+
 def test_global_assignment_avoids_repeating_nonlands_when_alternative_is_close() -> None:
     cards = {
         "A": CardData(name="A", normalized_name="a", type_line="Instant"),
