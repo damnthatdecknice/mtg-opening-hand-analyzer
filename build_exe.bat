@@ -11,13 +11,13 @@ if exist ".venv\Scripts\python.exe" (
     set PYTHON=python
   )
 )
-%PYTHON% -m pip install -r requirements.txt PySide6 pyinstaller
+%PYTHON% -m pip install -r requirements.txt pyinstaller
 if errorlevel 1 (
   echo Could not install build dependencies.
   pause
   exit /b 1
 )
-%PYTHON% -m PyInstaller --noconfirm --clean --windowed --name "MTG Opening Hand Analyzer" --paths src --add-data "data\samples;data\samples" desktop_app.py
+%PYTHON% -m PyInstaller --noconfirm --clean --windowed --name "MTG Opening Hand Analyzer" --paths src --add-data "app.py;." --add-data "assets;assets" --add-data "components;components" --add-data "data\samples;data\samples" local_web_launcher.py
 if errorlevel 1 (
   echo Build failed.
   pause

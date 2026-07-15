@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QSplitter,
     QTabWidget,
     QTextEdit,
@@ -60,12 +61,17 @@ from mtg_hand_analyzer.settings import (
 from mtg_hand_analyzer.window_capture import capture_window_to_file, find_mtgo_window, is_supported_platform
 
 
+def bundled_path(*parts: str) -> Path:
+    base = Path(getattr(sys, "_MEIPASS", ROOT))
+    return base.joinpath(*parts)
+
+
 class DesktopAnalyzer(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("MTG Opening Hand Analyzer")
-        self.resize(1220, 820)
-        self.setMinimumSize(980, 680)
+        self.resize(1480, 900)
+        self.setMinimumSize(1180, 760)
 
         ensure_data_dirs()
         self.db = AppDatabase(APP_DB_PATH)
@@ -77,17 +83,31 @@ class DesktopAnalyzer(QMainWindow):
         self.crop_labels: list[QLabel] = []
 
         self._build_layout()
+        self.apply_theme()
         self.load_sample_deck()
 
     def _build_layout(self) -> None:
         root = QWidget()
+        root.setObjectName("appRoot")
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
+        layout.setContentsMargins(18, 16, 18, 18)
+        layout.setSpacing(12)
 
-        header = QHBoxLayout()
+        header_panel = QFrame()
+        header_panel.setObjectName("headerPanel")
+        header = QHBoxLayout(header_panel)
+        header.setContentsMargins(22, 14, 22, 16)
+        title_stack = QVBoxLayout()
         title = QLabel("MTG Opening Hand Analyzer")
-        title.setStyleSheet("font-size: 20px; font-weight: 700;")
-        header.addWidget(title)
+        title.setObjectName("appTitle")
+        subtitle = QLabel("Opening-hand math for Magic")
+        subtitle.setObjectName("appSubtitle")
+        title_stack.addWidget(QLabel("COMPETITIVE OPENER LAB"))
+        title_stack.itemAt(0).widget().setObjectName("appKicker")
+        title_stack.addWidget(title)
+        title_stack.addWidget(subtitle)
+        header.addLayout(title_stack, stretch=1)
         header.addStretch()
         parse_button = QPushButton("Parse Deck")
         parse_button.clicked.connect(lambda: self.parse_deck())
@@ -104,13 +124,15 @@ class DesktopAnalyzer(QMainWindow):
         header.addWidget(paste_image_button)
         header.addWidget(capture_mtgo_button)
         header.addWidget(analyze_button)
-        layout.addLayout(header)
+        layout.addWidget(header_panel)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(splitter, stretch=1)
 
         left = QWidget()
         left_layout = QVBoxLayout(left)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(12)
         splitter.addWidget(left)
 
         deck_buttons = QHBoxLayout()
@@ -125,6 +147,7 @@ class DesktopAnalyzer(QMainWindow):
         left_layout.addLayout(deck_buttons)
 
         self.deck_text = QTextEdit()
+        self.deck_text.setObjectName("deckInput")
         self.deck_text.setAcceptRichText(False)
         self.deck_text.setPlaceholderText("Paste an MTG Arena decklist here.")
         left_layout.addWidget(self.deck_text, stretch=3)
@@ -142,30 +165,47 @@ class DesktopAnalyzer(QMainWindow):
         left_layout.addLayout(options)
 
         self.status = QLabel("Ready.")
-        self.status.setStyleSheet("color: #375a7f;")
+        self.status.setObjectName("statusText")
         left_layout.addWidget(self.status)
 
         hand_group = QGroupBox("Confirmed Opening Hand")
-        self.hand_layout = QVBoxLayout(hand_group)
+        hand_group.setObjectName("glassPanel")
+        self.hand_layout = QGridLayout(hand_group)
+        self.hand_layout.setHorizontalSpacing(8)
+        self.hand_layout.setVerticalSpacing(8)
         left_layout.addWidget(hand_group, stretch=2)
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(12)
         splitter.addWidget(right)
-        splitter.setSizes([580, 620])
+        splitter.setSizes([690, 790])
 
         image_group = QGroupBox("Screenshot and Detected Crops")
+        image_group.setObjectName("glassPanel")
         image_layout = QVBoxLayout(image_group)
         self.image_label = QLabel("Load a PNG/JPG/JPEG/WEBP screenshot to attempt recognition.")
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setMinimumHeight(260)
+        self.image_label.setMinimumHeight(250)
         self.image_label.setFrameShape(QFrame.Shape.StyledPanel)
         image_layout.addWidget(self.image_label, stretch=1)
-        self.crop_grid = QGridLayout()
-        image_layout.addLayout(self.crop_grid)
+        self.crop_scroll = QScrollArea()
+        self.crop_scroll.setWidgetResizable(True)
+        self.crop_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.crop_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.crop_scroll.setMinimumHeight(270)
+        self.crop_strip = QWidget()
+        self.crop_row = QHBoxLayout(self.crop_strip)
+        self.crop_row.setContentsMargins(8, 8, 8, 8)
+        self.crop_row.setSpacing(16)
+        self.crop_row.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.crop_scroll.setWidget(self.crop_strip)
+        image_layout.addWidget(self.crop_scroll)
         right_layout.addWidget(image_group, stretch=1)
 
         analysis_group = QGroupBox("Analysis")
+        analysis_group.setObjectName("glassPanel")
         analysis_layout = QVBoxLayout(analysis_group)
         self.result_tabs = QTabWidget()
         self.output = QTextEdit()
@@ -186,6 +226,109 @@ class DesktopAnalyzer(QMainWindow):
         self.result_tabs.addTab(self.other_output, "OTHER")
         analysis_layout.addWidget(self.result_tabs)
         right_layout.addWidget(analysis_group, stretch=1)
+
+    def apply_theme(self) -> None:
+        background = bundled_path("assets", "jace_user_background.png").as_posix()
+        self.setStyleSheet(
+            f"""
+            QWidget#appRoot {{
+                background-image: url("{background}");
+                background-position: center right;
+                background-repeat: no-repeat;
+                background-color: #030711;
+                color: #f4f9ff;
+                font-family: "Segoe UI";
+                font-size: 13px;
+            }}
+            QFrame#headerPanel, QGroupBox#glassPanel {{
+                background: rgba(7, 15, 29, 218);
+                border: 1px solid rgba(128, 205, 255, 86);
+                border-radius: 10px;
+            }}
+            QFrame#headerPanel {{
+                border-bottom: 2px solid #65d8ff;
+            }}
+            QLabel#appKicker {{
+                color: #e2c174;
+                font-size: 12px;
+                font-weight: 800;
+                letter-spacing: 2px;
+            }}
+            QLabel#appTitle {{
+                color: #f4f9ff;
+                font-size: 34px;
+                font-weight: 900;
+            }}
+            QLabel#appSubtitle, QLabel#statusText {{
+                color: #adc3dd;
+                font-size: 14px;
+            }}
+            QGroupBox {{
+                color: #f4f9ff;
+                font-weight: 800;
+                margin-top: 12px;
+                padding-top: 18px;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 14px;
+                color: #e2c174;
+                letter-spacing: 1px;
+            }}
+            QTextEdit, QComboBox, QScrollArea {{
+                background: rgba(3, 8, 17, 238);
+                color: #f4f9ff;
+                border: 1px solid rgba(130, 157, 198, 70);
+                border-radius: 7px;
+                selection-background-color: #2073b2;
+            }}
+            QComboBox {{
+                min-height: 44px;
+                font-size: 15px;
+                padding: 4px 8px;
+            }}
+            QPushButton {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #2073b2, stop:1 #17224a);
+                color: #f4f9ff;
+                border: 1px solid rgba(101, 216, 255, 150);
+                border-radius: 7px;
+                padding: 9px 13px;
+                font-weight: 800;
+            }}
+            QPushButton:hover {{
+                border-color: #e2c174;
+                background: #2b8dd1;
+            }}
+            QTabWidget::pane {{
+                border: 1px solid rgba(128, 205, 255, 48);
+                border-radius: 8px;
+                background: rgba(5, 10, 19, 220);
+            }}
+            QTabBar::tab {{
+                color: #adc3dd;
+                background: transparent;
+                padding: 9px 14px;
+                font-weight: 800;
+            }}
+            QTabBar::tab:selected {{
+                color: #f4f9ff;
+                border-bottom: 2px solid #65d8ff;
+            }}
+            QRadioButton {{
+                color: #f4f9ff;
+                font-weight: 700;
+            }}
+            QScrollBar:horizontal {{
+                background: rgba(3, 8, 17, 190);
+                height: 10px;
+                border-radius: 5px;
+            }}
+            QScrollBar::handle:horizontal {{
+                background: #2073b2;
+                border-radius: 5px;
+            }}
+            """
+        )
 
     def load_sample_deck(self) -> None:
         try:
@@ -253,17 +396,18 @@ class DesktopAnalyzer(QMainWindow):
         while len(defaults) < 7:
             defaults.append(names[0])
         for index in range(7):
-            row = QWidget()
-            row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(0, 0, 0, 0)
-            row_layout.addWidget(QLabel(f"Card {index + 1}"))
+            slot = QWidget()
+            slot_layout = QVBoxLayout(slot)
+            slot_layout.setContentsMargins(0, 0, 0, 0)
+            slot_layout.setSpacing(4)
+            slot_layout.addWidget(QLabel(f"Card {index + 1}"))
             combo = QComboBox()
             combo.setEditable(True)
             combo.addItems(names)
             combo.setCurrentText(defaults[index] if defaults[index] in names else names[0])
-            row_layout.addWidget(combo, stretch=1)
+            slot_layout.addWidget(combo)
             self.hand_selectors.append(combo)
-            self.hand_layout.addWidget(row)
+            self.hand_layout.addWidget(slot, index // 4, index % 4)
 
     def load_image_file(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
@@ -334,19 +478,28 @@ class DesktopAnalyzer(QMainWindow):
         )
         self.image_label.setText("")
 
-        while self.crop_grid.count():
-            item = self.crop_grid.takeAt(0)
+        while self.crop_row.count():
+            item = self.crop_row.takeAt(0)
             if widget := item.widget():
                 widget.deleteLater()
         self.crop_labels = []
         for index, crop_path in enumerate(crop_paths):
-            label = QLabel(f"Crop {index + 1}")
+            crop_card = QWidget()
+            crop_layout = QVBoxLayout(crop_card)
+            crop_layout.setContentsMargins(0, 0, 0, 0)
+            crop_layout.setSpacing(8)
+            label = QLabel()
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             crop_pixmap = QPixmap(str(crop_path))
             label.setPixmap(
-                crop_pixmap.scaled(82, 118, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                crop_pixmap.scaled(170, 238, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             )
-            self.crop_grid.addWidget(label, 0, index)
+            caption = QLabel(f"Crop {index + 1}")
+            caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            caption.setStyleSheet("color: #adc3dd; font-weight: 800;")
+            crop_layout.addWidget(label)
+            crop_layout.addWidget(caption)
+            self.crop_row.addWidget(crop_card)
             self.crop_labels.append(label)
 
         self.build_hand_selectors(defaults)
