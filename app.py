@@ -1036,6 +1036,7 @@ def spell_curve_rows(counts: dict[str, int], cards: dict[str, CardData]) -> list
 def land_plan_chart_rows(report: dict) -> list[dict]:
     rows: list[dict] = []
     land_drop_probs = report.get("land_drop_probabilities", {})
+    draw_adjusted_drop_probs = report.get("draw_adjusted_land_drop_probabilities", {})
     effective_drop_probs = report.get("effective_land_drop_probabilities", {})
     turns = sorted(
         {
@@ -1046,13 +1047,22 @@ def land_plan_chart_rows(report: dict) -> list[dict]:
     )
     for turn in turns:
         land_key = f"Hit land {turn} by turn {turn}"
+        draw_key = f"Hit land {turn} by turn {turn} with draw/look spells"
         source_key = f"Hit source {turn} by turn {turn}"
         if land_key in land_drop_probs:
             rows.append(
                 {
                     "turn": turn,
                     "chance": round(land_drop_probs[land_key] * 100, 1),
-                    "series": "Land drop chance",
+                    "series": "Natural land drop",
+                }
+            )
+        if draw_key in draw_adjusted_drop_probs:
+            rows.append(
+                {
+                    "turn": turn,
+                    "chance": round(draw_adjusted_drop_probs[draw_key] * 100, 1),
+                    "series": "With draw/look spells",
                 }
             )
         if source_key in effective_drop_probs:

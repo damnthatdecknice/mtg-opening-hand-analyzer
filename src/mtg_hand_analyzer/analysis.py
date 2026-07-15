@@ -124,6 +124,16 @@ def analyze_hand(
                 1,
             ),
         }
+    draw_adjusted_drop_probs = {
+        f"Hit land {target} by turn {target} with draw/look spells": estimated_probability_with_extra_looks(
+            library_size,
+            lands_remaining,
+            draws_by_beginning_of_turn(target, play_draw),
+            card_draw_impact.get(target, {}).get("expected_extra_looks", 0.0),
+            max(0, target - lands_in_hand),
+        )
+        for target in TURN_PROBABILITY_RANGE
+    }
     colors_represented = sorted({color for name in hand for color in cards.get(name, CardData(name=name, normalized_name=name)).colors})
     nonlands = [cards[name] for name in hand if name in cards and not cards[name].is_land]
     avg_mv = sum(card.mana_value for card in nonlands) / len(nonlands) if nonlands else 0.0
@@ -145,6 +155,7 @@ def analyze_hand(
         "average_mana_value": avg_mv,
         "land_probabilities": land_probs,
         "land_drop_probabilities": drop_probs,
+        "draw_adjusted_land_drop_probabilities": draw_adjusted_drop_probs,
         "effective_land_probabilities": effective_land_probs,
         "effective_land_drop_probabilities": effective_drop_probs,
         "category_probabilities": category_probs,
