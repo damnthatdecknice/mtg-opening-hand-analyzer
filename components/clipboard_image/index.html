@@ -117,9 +117,10 @@
       const fileInput = document.getElementById("file-input");
       const pasteButton = document.getElementById("paste-button");
       const chooseButton = document.getElementById("choose-button");
+      const COMPONENT_HEIGHT = 170;
 
       function sendHeight() {
-        Streamlit.setFrameHeight(document.body.scrollHeight);
+        Streamlit.setFrameHeight(COMPONENT_HEIGHT);
       }
 
       function announceReady() {
