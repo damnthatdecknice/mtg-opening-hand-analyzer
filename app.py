@@ -978,6 +978,53 @@ def spell_curve_rows(counts: dict[str, int], cards: dict[str, CardData]) -> list
     return [row for row in deck_curve_rows(counts, cards) if row["slot"] != "Land"]
 
 
+def land_plan_chart_rows(report: dict) -> list[dict]:
+    rows: list[dict] = []
+    land_drop_probs = report.get("land_drop_probabilities", {})
+    effective_drop_probs = report.get("effective_land_drop_probabilities", {})
+    for turn in [2, 3, 4]:
+        land_key = f"Hit land {turn} by turn {turn}"
+        source_key = f"Hit source {turn} by turn {turn}"
+        if land_key in land_drop_probs:
+            rows.append(
+                {
+                    "turn": turn,
+                    "chance": round(land_drop_probs[land_key] * 100, 1),
+                    "series": "Land drop chance",
+                }
+            )
+        if source_key in effective_drop_probs:
+            rows.append(
+                {
+                    "turn": turn,
+                    "chance": round(effective_drop_probs[source_key] * 100, 1),
+                    "series": "Land or land-equivalent",
+                }
+            )
+        rows.append({"turn": turn, "chance": 75.0, "series": "75% keep benchmark"})
+    return rows
+
+
+def draw_impact_chart_rows(report: dict) -> list[dict]:
+    rows: list[dict] = []
+    for turn, impact in report.get("card_draw_impact", {}).items():
+        rows.append(
+            {
+                "turn": turn,
+                "chance": round(impact["next_land_natural"] * 100, 1),
+                "series": "Natural next-land chance",
+            }
+        )
+        rows.append(
+            {
+                "turn": turn,
+                "chance": round(impact["next_land_with_hand_draw"] * 100, 1),
+                "series": "With draw/look spells",
+            }
+        )
+    return rows
+
+
 def checked_card_mana_value(card: CardData) -> tuple[float | None, str]:
     if card.source == "unresolved":
         return None, "lookup failed"
@@ -1372,6 +1419,15 @@ with results_tab:
                 st.write("- " + land_sentence(report["lands_in_hand"], land_turn_3, land_turn_4))
                 st.write("- " + effective_source_sentence(report))
                 st.write("- " + card_draw_sentence(draw_sources, library_draw_sources))
+                st.write("**Land Drop Plan**")
+                st.line_chart(land_plan_chart_rows(report), x="turn", y="chance", color="series", height=260)
+                if land_turn_3 >= 0.75:
+                    st.success(f"Third-land check: {fmt_pct(land_turn_3)} by turn 3. This clears the 75% planning benchmark.")
+                else:
+                    st.warning(
+                        f"Third-land check: {fmt_pct(land_turn_3)} by turn 3. "
+                        "For many fair hands, 75%+ is a useful baseline before calling the mana stable."
+                    )
                 st.write("**Key Chances**")
                 st.write(f"- Find the 3rd land by turn 3: {fmt_pct(land_turn_3)}")
                 st.write(f"- Find the 4th land by turn 4: {fmt_pct(land_turn_4)}")
@@ -1386,6 +1442,7 @@ with results_tab:
                         st.write(f"- {detail}: {fmt_pct(report['land_probabilities'][detail].probability)}")
                 st.write("**Card Draw and Looks**")
                 if draw_sources:
+                    st.line_chart(draw_impact_chart_rows(report), x="turn", y="chance", color="series", height=230)
                     for source in draw_sources:
                         st.write(f"- {source.card_name}: sees {source.cards_seen} card(s) deep and draws {source.cards_drawn}.")
                     for turn, impact in report["card_draw_impact"].items():
