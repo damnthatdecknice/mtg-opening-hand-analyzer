@@ -58,23 +58,24 @@ def inject_theme() -> None:
         """
         <style>
           :root {
-            --bg: #080b10;
-            --panel: rgba(16, 22, 32, 0.88);
-            --panel-strong: rgba(22, 31, 45, 0.96);
-            --line: rgba(141, 166, 196, 0.24);
+            --bg: #050812;
+            --panel: rgba(11, 18, 32, 0.58);
+            --panel-strong: rgba(13, 22, 39, 0.72);
+            --line: rgba(135, 199, 255, 0.28);
             --text: #eff5ff;
-            --muted: #94a6bb;
-            --blue: #3fa7ff;
-            --gold: #d9ad58;
+            --muted: #9ab6d6;
+            --blue: #54c3ff;
+            --gold: #e6c174;
             --red: #ff654e;
             --green: #61d394;
             --black: #18151f;
           }
           .stApp {
             background:
-              radial-gradient(circle at 12% 6%, rgba(63, 167, 255, 0.14), transparent 28rem),
-              radial-gradient(circle at 87% 12%, rgba(217, 173, 88, 0.12), transparent 25rem),
-              linear-gradient(180deg, #0b0f16 0%, #080b10 48%, #0c1017 100%);
+              radial-gradient(circle at 12% 14%, rgba(84, 195, 255, 0.26), transparent 25rem),
+              radial-gradient(circle at 80% 4%, rgba(91, 111, 255, 0.22), transparent 28rem),
+              radial-gradient(circle at 70% 82%, rgba(26, 255, 191, 0.08), transparent 24rem),
+              linear-gradient(135deg, #050812 0%, #071120 46%, #05070d 100%);
             color: var(--text);
           }
           .stApp::before {
@@ -82,11 +83,27 @@ def inject_theme() -> None:
             position: fixed;
             inset: 0;
             pointer-events: none;
-            background-image:
-              linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
-            background-size: 34px 34px;
-            mask-image: linear-gradient(to bottom, rgba(0,0,0,0.82), transparent 72%);
+            background:
+              radial-gradient(ellipse at 53% 35%, rgba(94, 205, 255, 0.22), transparent 18rem),
+              radial-gradient(ellipse at 51% 36%, transparent 0 9rem, rgba(26, 53, 91, 0.42) 9.2rem, transparent 14rem),
+              conic-gradient(from 210deg at 50% 36%, transparent 0 18deg, rgba(92, 189, 255, 0.14) 18deg 22deg, transparent 22deg 56deg, rgba(122, 96, 255, 0.12) 56deg 61deg, transparent 61deg 360deg),
+              linear-gradient(118deg, transparent 0 31%, rgba(71, 185, 255, 0.11) 31.2% 31.6%, transparent 31.8% 100%),
+              linear-gradient(62deg, transparent 0 58%, rgba(126, 107, 255, 0.12) 58.2% 58.7%, transparent 58.9% 100%),
+              repeating-linear-gradient(90deg, rgba(255,255,255,0.028) 0 1px, transparent 1px 38px),
+              repeating-linear-gradient(0deg, rgba(255,255,255,0.024) 0 1px, transparent 1px 38px);
+            opacity: 0.86;
+            mask-image: radial-gradient(ellipse at 50% 32%, rgba(0,0,0,0.95), rgba(0,0,0,0.72) 34%, transparent 82%);
+          }
+          .stApp::after {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background:
+              linear-gradient(90deg, transparent 0 7%, rgba(84, 195, 255, 0.15) 7.1% 7.25%, transparent 7.35% 100%),
+              linear-gradient(90deg, transparent 0 91%, rgba(84, 195, 255, 0.12) 91.1% 91.25%, transparent 91.35% 100%),
+              radial-gradient(circle at 50% 34%, transparent 0 7rem, rgba(84, 195, 255, 0.08) 7.1rem 7.35rem, transparent 7.5rem);
+            opacity: 0.7;
           }
           .block-container {
             max-width: 1480px;
@@ -96,13 +113,26 @@ def inject_theme() -> None:
             border: 1px solid var(--line);
             border-radius: 8px;
             background:
-              linear-gradient(135deg, rgba(20, 29, 43, 0.96), rgba(10, 13, 20, 0.92)),
-              repeating-linear-gradient(90deg, transparent 0 18px, rgba(255,255,255,0.025) 18px 19px);
-            box-shadow: 0 18px 60px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.08);
-            padding: 22px 24px;
+              linear-gradient(135deg, rgba(10, 24, 45, 0.72), rgba(4, 8, 18, 0.62)),
+              repeating-linear-gradient(90deg, transparent 0 22px, rgba(102, 206, 255, 0.035) 22px 23px);
+            backdrop-filter: blur(16px) saturate(145%);
+            box-shadow: 0 24px 80px rgba(0,0,0,0.40), 0 0 52px rgba(71, 185, 255, 0.12), inset 0 1px 0 rgba(255,255,255,0.12);
+            padding: 26px 28px;
             margin-bottom: 16px;
             position: relative;
             overflow: hidden;
+          }
+          .mtg-header::before {
+            content: "";
+            position: absolute;
+            inset: -45% -8% auto auto;
+            width: min(52vw, 640px);
+            aspect-ratio: 1;
+            background:
+              radial-gradient(circle, rgba(97, 215, 255, 0.2), transparent 48%),
+              conic-gradient(from 140deg, transparent 0 17%, rgba(83, 190, 255, 0.24) 17% 18%, transparent 18% 36%, rgba(150, 121, 255, 0.18) 36% 37%, transparent 37%);
+            filter: blur(0.4px);
+            opacity: 0.9;
           }
           .mtg-header::after {
             content: "";
@@ -127,6 +157,8 @@ def inject_theme() -> None:
             letter-spacing: 0;
             line-height: 1.02;
             margin: 6px 0 8px;
+            position: relative;
+            text-shadow: 0 0 24px rgba(84, 195, 255, 0.34);
           }
           .mtg-subtitle {
             color: var(--muted);
@@ -165,11 +197,12 @@ def inject_theme() -> None:
             border-bottom-color: var(--blue);
           }
           div[data-testid="stMetric"] {
-            background: linear-gradient(180deg, rgba(24, 34, 50, 0.95), rgba(12, 17, 25, 0.95));
+            background: linear-gradient(180deg, rgba(18, 34, 58, 0.72), rgba(8, 13, 23, 0.62));
             border: 1px solid var(--line);
             border-radius: 8px;
             padding: 14px 16px;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+            backdrop-filter: blur(14px) saturate(135%);
+            box-shadow: 0 16px 36px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.08);
           }
           div[data-testid="stMetric"] label {
             color: var(--muted);
@@ -190,17 +223,18 @@ def inject_theme() -> None:
           div[data-testid="stTextArea"] textarea,
           div[data-testid="stTextInput"] input,
           div[data-testid="stNumberInput"] input {
-            background: rgba(8, 12, 18, 0.86);
+            background: rgba(4, 9, 17, 0.64);
             color: var(--text);
             border-radius: 6px;
+            backdrop-filter: blur(10px);
           }
           .stButton > button {
-            background: linear-gradient(180deg, rgba(48, 71, 102, 0.95), rgba(25, 35, 51, 0.95));
-            border: 1px solid rgba(93, 173, 245, 0.46);
+            background: linear-gradient(135deg, rgba(55, 166, 255, 0.28), rgba(25, 35, 65, 0.86));
+            border: 1px solid rgba(93, 201, 255, 0.52);
             border-radius: 6px;
             color: #f7fbff;
             font-weight: 850;
-            box-shadow: 0 8px 22px rgba(0,0,0,0.25);
+            box-shadow: 0 10px 26px rgba(0,0,0,0.28), 0 0 18px rgba(84, 195, 255, 0.12);
           }
           .stButton > button:hover {
             border-color: var(--gold);
@@ -220,6 +254,8 @@ def inject_theme() -> None:
             border-radius: 8px;
             padding: 14px 16px;
             margin: 10px 0 14px;
+            backdrop-filter: blur(16px) saturate(145%);
+            box-shadow: 0 18px 48px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.08);
           }
           .hand-strip {
             display: grid;
@@ -228,14 +264,15 @@ def inject_theme() -> None:
             margin: 12px 0 18px;
           }
           .hand-card {
-            background: linear-gradient(180deg, #1b2432, #0b0f16);
-            border: 1px solid rgba(217, 173, 88, 0.34);
+            background: linear-gradient(180deg, rgba(26, 48, 75, 0.78), rgba(5, 9, 17, 0.68));
+            border: 1px solid rgba(84, 195, 255, 0.32);
             border-radius: 8px;
             min-height: 112px;
             overflow: hidden;
             padding: 8px;
             position: relative;
-            box-shadow: 0 10px 24px rgba(0,0,0,0.32);
+            backdrop-filter: blur(14px) saturate(140%);
+            box-shadow: 0 14px 34px rgba(0,0,0,0.34), 0 0 22px rgba(84, 195, 255, 0.08);
           }
           .hand-card::before {
             content: "";
