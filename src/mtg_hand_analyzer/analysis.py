@@ -7,7 +7,7 @@ from mtg_hand_analyzer.card_draw import (
     estimated_probability_with_extra_looks,
     expected_extra_looks_by_turn,
 )
-from mtg_hand_analyzer.card_ramp import ramp_sources
+from mtg_hand_analyzer.card_ramp import land_equivalent_sources, ramp_sources
 from mtg_hand_analyzer.categories import DEFAULT_CATEGORIES, names_in_category, objective_categories
 from mtg_hand_analyzer.deck_parser import validate_hand_counts
 from mtg_hand_analyzer.land_inference import enrich_card_data
@@ -38,7 +38,15 @@ def analyze_hand(
     hand_counts = Counter(hand)
     lands_in_hand = sum(qty for name, qty in hand_counts.items() if cards.get(name) and cards[name].is_land)
     land_names = {name for name, card in cards.items() if card.is_land}
+    land_equivalent_names = {
+        name
+        for name, card in cards.items()
+        if not card.is_land and land_equivalent_sources(cards, {name})
+    }
+    effective_land_names = land_names | land_equivalent_names
+    effective_lands_in_hand = sum(qty for name, qty in hand_counts.items() if name in effective_land_names)
     lands_remaining = sum(qty for name, qty in library.items() if name in land_names)
+    effective_lands_remaining = sum(qty for name, qty in library.items() if name in effective_land_names)
     library_size = sum(library.values())
 
     land_probs: dict[str, ProbabilityDetail] = {}
@@ -52,6 +60,22 @@ def analyze_hand(
             lands_in_hand,
             library_size,
             lands_remaining,
+            draws_by_beginning_of_turn(target, play_draw),
+            target,
+        )
+        for target in [2, 3, 4]
+    }
+    effective_land_probs: dict[str, ProbabilityDetail] = {}
+    for turn in range(2, 6):
+        draws = draws_by_beginning_of_turn(turn, play_draw)
+        effective_land_probs[f"Next land/equivalent by turn {turn}"] = probability_detail(
+            f"Next land/equivalent by turn {turn}", library, effective_land_names, draws, 1
+        )
+    effective_drop_probs = {
+        f"Hit source {target} by turn {target}": land_drop_probability(
+            effective_lands_in_hand,
+            library_size,
+            effective_lands_remaining,
             draws_by_beginning_of_turn(target, play_draw),
             target,
         )
@@ -77,6 +101,8 @@ def analyze_hand(
     library_draw_sources = draw_sources(cards, set(library))
     hand_ramp_sources = ramp_sources(cards, set(hand))
     library_ramp_sources = ramp_sources(cards, set(library))
+    hand_land_equivalent_sources = land_equivalent_sources(cards, set(hand))
+    library_land_equivalent_sources = land_equivalent_sources(cards, set(library))
     card_draw_impact = {}
     for turn in range(2, 6):
         natural_draws = draws_by_beginning_of_turn(turn, play_draw)
@@ -110,17 +136,23 @@ def analyze_hand(
         "removed_cards": dict(hand_counts),
         "lands_in_hand": lands_in_hand,
         "nonlands_in_hand": 7 - lands_in_hand,
+        "effective_lands_in_hand": effective_lands_in_hand,
         "lands_remaining": lands_remaining,
+        "effective_lands_remaining": effective_lands_remaining,
         "colors_represented": colors_represented,
         "average_mana_value": avg_mv,
         "land_probabilities": land_probs,
         "land_drop_probabilities": drop_probs,
+        "effective_land_probabilities": effective_land_probs,
+        "effective_land_drop_probabilities": effective_drop_probs,
         "category_probabilities": category_probs,
         "castability": castability,
         "hand_draw_sources": hand_draw_sources,
         "library_draw_sources": library_draw_sources,
         "hand_ramp_sources": hand_ramp_sources,
         "library_ramp_sources": library_ramp_sources,
+        "hand_land_equivalent_sources": hand_land_equivalent_sources,
+        "library_land_equivalent_sources": library_land_equivalent_sources,
         "card_draw_impact": card_draw_impact,
         "early_plays": early_plays,
         "card_categories": {name: sorted(objective_categories(card)) for name, card in cards.items()},

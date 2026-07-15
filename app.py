@@ -157,7 +157,7 @@ def score_label(score: int) -> str:
 
 
 def hand_texture_score(report: dict, castability: dict) -> int:
-    lands = report["lands_in_hand"]
+    lands = report.get("effective_lands_in_hand", report["lands_in_hand"])
     score = 50
     if lands in {2, 3}:
         score += 18
@@ -183,6 +183,16 @@ def land_sentence(lands_in_hand: int, third_land: float, fourth_land: float) -> 
     if lands_in_hand == 2:
         return f"This is a two-land hand. The 3rd land by turn 3 is {fmt_pct(third_land)}."
     return f"This is a low-land hand. The 3rd land by turn 3 is {fmt_pct(third_land)}."
+
+
+def effective_source_sentence(report: dict) -> str:
+    actual = report["lands_in_hand"]
+    effective = report.get("effective_lands_in_hand", actual)
+    equivalents = report.get("hand_land_equivalent_sources", [])
+    if effective == actual:
+        return "No land-equivalent ramp sources were found in the confirmed hand."
+    names = ", ".join(source.card_name for source in equivalents)
+    return f"This hand has {actual} actual land(s), but plays closer to {effective} mana source(s) because of {names}."
 
 
 def card_draw_sentence(hand_sources, library_sources) -> str:
@@ -668,15 +678,22 @@ with results_tab:
             with overview:
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Lands", report["lands_in_hand"])
-                m2.metric("Nonlands", report["nonlands_in_hand"])
+                m2.metric("Effective sources", report.get("effective_lands_in_hand", report["lands_in_hand"]))
                 m3.metric("Avg mana value", f"{report['average_mana_value']:.2f}")
                 m4.metric("Texture", f"{score}/100")
                 st.write("**Keep or Mulligan Signals**")
                 st.write("- " + land_sentence(report["lands_in_hand"], land_turn_3, land_turn_4))
+                st.write("- " + effective_source_sentence(report))
                 st.write("- " + card_draw_sentence(draw_sources, library_draw_sources))
                 st.write("**Key Chances**")
                 st.write(f"- Find the 3rd land by turn 3: {fmt_pct(land_turn_3)}")
                 st.write(f"- Find the 4th land by turn 4: {fmt_pct(land_turn_4)}")
+                effective_turn_3 = report.get("effective_land_drop_probabilities", {}).get("Hit source 3 by turn 3")
+                effective_turn_4 = report.get("effective_land_drop_probabilities", {}).get("Hit source 4 by turn 4")
+                if effective_turn_3 is not None:
+                    st.write(f"- Find the 3rd land or land-equivalent by turn 3: {fmt_pct(effective_turn_3)}")
+                if effective_turn_4 is not None:
+                    st.write(f"- Find the 4th land or land-equivalent by turn 4: {fmt_pct(effective_turn_4)}")
                 for detail in ["Next land by turn 2", "Next land by turn 3"]:
                     if detail in report["land_probabilities"]:
                         st.write(f"- {detail}: {fmt_pct(report['land_probabilities'][detail].probability)}")
@@ -698,10 +715,13 @@ with results_tab:
                     st.write("- " + line)
                 st.caption("Full mulligan details remain in the Mulligan tab.")
                 st.write("**Ramp Check**")
+                if report.get("hand_land_equivalent_sources"):
+                    for source in report["hand_land_equivalent_sources"]:
+                        st.write(f"- {source.card_name}: counts as {source.equivalent_type}; {source.timing}.")
                 if report["hand_ramp_sources"]:
                     for source in report["hand_ramp_sources"]:
                         st.write(f"- {source.card_name}: {source.ramp_type}, {source.timing}.")
-                else:
+                if not report.get("hand_land_equivalent_sources") and not report["hand_ramp_sources"]:
                     st.write("- No ramp source detected in the confirmed hand.")
                 st.write("**Spell Castability**")
                 cast_rows = []
@@ -739,6 +759,28 @@ with results_tab:
                             "qualifying": report["lands_remaining"],
                             "draws": "",
                             "method": "exact",
+                        }
+                    )
+                for detail in report.get("effective_land_probabilities", {}).values():
+                    land_rows.append(
+                        {
+                            "stat": detail.label,
+                            "probability": fmt_pct(detail.probability),
+                            "library": detail.library_size,
+                            "qualifying": detail.qualifying_cards,
+                            "draws": detail.draws,
+                            "method": "exact draw chance; land-equivalent heuristic",
+                        }
+                    )
+                for label, probability in report.get("effective_land_drop_probabilities", {}).items():
+                    land_rows.append(
+                        {
+                            "stat": label,
+                            "probability": fmt_pct(probability),
+                            "library": report["library_size"],
+                            "qualifying": report.get("effective_lands_remaining", report["lands_remaining"]),
+                            "draws": "",
+                            "method": "heuristic",
                         }
                     )
                 st.dataframe(land_rows, hide_index=True, width="stretch")
@@ -808,11 +850,17 @@ with results_tab:
                 st.write(f"- Opening resources: {len(lands)} land(s), {len(spells)} spell(s), {len(draw_sources)} draw/look card(s)")
                 st.write(f"- Main-deck land ratio after this hand: {report['lands_remaining']}/{report['library_size']} remaining")
                 st.write("**Ramp Sources**")
+                if report.get("hand_land_equivalent_sources"):
+                    for source in report["hand_land_equivalent_sources"]:
+                        st.write(f"- {source.card_name}: {source.equivalent_type}, {source.timing}.")
                 if report["hand_ramp_sources"]:
                     for source in report["hand_ramp_sources"]:
                         st.write(f"- {source.card_name}: {source.ramp_type}, {source.timing}.")
-                else:
+                if not report.get("hand_land_equivalent_sources") and not report["hand_ramp_sources"]:
                     st.write("- No ramp source detected in the confirmed hand.")
+                if report.get("library_land_equivalent_sources"):
+                    names = ", ".join(source.card_name for source in report["library_land_equivalent_sources"][:10])
+                    st.write(f"- Land equivalents still in library: {names}.")
                 if report["library_ramp_sources"]:
                     names = ", ".join(source.card_name for source in report["library_ramp_sources"][:10])
                     st.write(f"- Ramp still in library: {names}.")
@@ -831,4 +879,4 @@ with results_tab:
                     st.write("- " + note)
                 st.write("**Hand Shape Flags**")
                 st.write("- Duplicate cards: " + (", ".join(duplicates) if duplicates else "none"))
-                st.caption("Limits: castability does not model treasures, mana creatures, cost reductions, alternate costs, or detailed sequencing.")
+                st.caption("Limits: effective-source math counts MDFC land faces and cheap land-equivalent ramp, but castability still does not fully model treasures, cost reductions, alternate costs, or detailed sequencing.")
