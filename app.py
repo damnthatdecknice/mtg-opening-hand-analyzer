@@ -611,7 +611,7 @@ def process_screenshot(image_path: Path, prefix: str) -> None:
     crop_paths = save_crops(image, boxes, prefix=prefix)
     st.session_state.boxes = [box.model_dump() for box in boxes]
     st.session_state.crop_paths = [str(path) for path in crop_paths]
-    crop_cols = st.columns(7)
+    crop_cols = st.columns(7, gap="small")
     for idx, path in enumerate(crop_paths):
         with crop_cols[idx]:
             st.image(str(path), caption=f"Crop {idx + 1}")
@@ -1210,7 +1210,7 @@ with hand_tab:
 
 with shot_tab:
     st.subheader("Screenshot Recognition")
-    shot_col, shot_spacer_col = content_rail()
+    shot_col, shot_spacer_col = content_rail(0.92)
     with shot_col:
         section_panel("vision stack", "Paste, drag/drop, or browse for an MTGO/Arena screenshot. Recognition is a first pass; the final seven cards stay under your control.")
         pasted_payload = paste_image_component(key="pasted_screenshot", default=None, height=150)
