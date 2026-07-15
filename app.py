@@ -334,50 +334,11 @@ def inject_theme() -> None:
           .section-card .mtg-subtitle {
             line-height: 1.55;
           }
-          .hand-strip {
-            display: grid;
-            gap: 10px;
-            grid-template-columns: repeat(7, minmax(96px, 1fr));
-            margin: 12px 0 18px;
-          }
-          .hand-card {
-            background: linear-gradient(180deg, rgba(15, 33, 57, 0.82), rgba(5, 10, 19, 0.82));
-            border: 1px solid rgba(101, 216, 255, 0.3);
-            border-radius: 8px;
-            min-height: 112px;
-            overflow: hidden;
-            padding: 8px;
-            position: relative;
-            backdrop-filter: blur(8px) saturate(118%);
-            box-shadow: 0 14px 32px rgba(0,0,0,0.32);
-          }
-          .hand-card::before {
-            content: "";
-            display: block;
-            height: 4px;
-            margin: -8px -8px 8px;
-            background: linear-gradient(90deg, var(--jace-cyan), var(--jace-violet));
-          }
-          .hand-card-index {
-            color: var(--jace-gold);
-            font-size: 0.68rem;
-            font-weight: 900;
-            letter-spacing: 0.08em;
-          }
-          .hand-card-name {
-            color: var(--jace-text);
-            font-size: 0.88rem;
-            font-weight: 850;
-            line-height: 1.18;
-            margin-top: 8px;
-            overflow-wrap: anywhere;
-          }
           @media (max-width: 900px) {
             .jace-bg-layer {
               background-position: 68% top;
               background-size: auto 100%;
             }
-            .hand-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .mtg-header,
             .section-card {
               max-width: 100%;
@@ -416,20 +377,6 @@ def render_header() -> None:
         """,
         unsafe_allow_html=True,
     )
-
-
-def render_hand_strip(hand: list[str]) -> None:
-    cards = []
-    for index, name in enumerate(hand, start=1):
-        cards.append(
-            f"""
-            <div class="hand-card">
-              <div class="hand-card-index">CARD {index}</div>
-              <div class="hand-card-name">{html.escape(name)}</div>
-            </div>
-            """
-        )
-    st.markdown(f'<div class="hand-strip">{"".join(cards)}</div>', unsafe_allow_html=True)
 
 
 def section_panel(title: str, body: str) -> None:
@@ -1374,7 +1321,6 @@ with results_tab:
         st.warning("Confirm a seven-card hand first.")
     else:
         section_panel("opening hand telemetry", "Analyze land drops, effective sources, draw depth, castability, ramp, and mulligan pressure for the confirmed seven.")
-        render_hand_strip(hand)
         c1, c2, c3 = st.columns(3)
         play_draw = c1.radio("Play or draw", [PlayDraw.PLAY.value, PlayDraw.DRAW.value], horizontal=True)
         trials = c2.number_input("Castability simulations", min_value=1000, max_value=50000, value=int(st.session_state.trials), step=1000)
