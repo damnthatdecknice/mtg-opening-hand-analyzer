@@ -132,3 +132,29 @@ def test_detector_slices_adjacent_bottom_hand_into_seven_cards() -> None:
     assert 335 <= boxes[0].x <= 385
     assert 140 <= boxes[0].width <= 170
     assert boxes[-1].x + boxes[-1].width <= start_x + card_w * 7 + 35
+
+
+def test_detector_keeps_consistent_width_for_low_contrast_bottom_card() -> None:
+    image = np.zeros((665, 1584, 3), dtype=np.uint8)
+    image[:] = (14, 16, 20)
+    y = 155
+    start_x = 184
+    step = 122
+    card_w, card_h = 108, 155
+    for index in range(7):
+        x = start_x + index * step
+        cv2.rectangle(image, (x - 4, y - 4), (x + card_w + 4, y + card_h + 4), (5, 5, 5), -1)
+        if index == 3:
+            cv2.rectangle(image, (x, y), (x + card_w, y + card_h), (48, 50, 54), -1)
+            cv2.rectangle(image, (x + 22, y + 18), (x + card_w - 22, y + 132), (82, 92, 100), -1)
+        else:
+            cv2.rectangle(image, (x, y), (x + card_w, y + card_h), (225, 225, 232), 3)
+            cv2.rectangle(image, (x + 8, y + 22), (x + card_w - 9, y + 88), (70, 130, 190), -1)
+            cv2.rectangle(image, (x + 8, y + 108), (x + card_w - 9, y + 146), (205, 220, 230), -1)
+
+    boxes = detect_hand_region_boxes(image)
+
+    assert len(boxes) == 7
+    widths = [box.width for box in boxes]
+    assert max(widths) - min(widths) <= 8
+    assert boxes[3].width >= boxes[0].width - 8

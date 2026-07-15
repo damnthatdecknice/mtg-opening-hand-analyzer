@@ -46,7 +46,7 @@ def detect_bottom_hand_by_row_slicing(image: np.ndarray, expected_cards: int = 7
     if height < 250 or width < 500:
         return []
 
-    y_start = int(height * 0.56)
+    y_start = int(height * 0.40)
     y_end = max(y_start + 1, height - max(4, int(height * 0.01)))
     band = image[y_start:y_end, :]
     hsv = cv2.cvtColor(band, cv2.COLOR_BGR2HSV)
@@ -69,10 +69,10 @@ def detect_bottom_hand_by_row_slicing(image: np.ndarray, expected_cards: int = 7
     row_candidates: list[tuple[float, list[CropBox]]] = []
     for row_y0, row_y1 in row_segments:
         row_height = row_y1 - row_y0
-        if not (height * 0.10 <= row_height <= height * 0.38):
+        if not (height * 0.10 <= row_height <= height * 0.62):
             continue
         row_center = (row_y0 + row_y1) / 2 + y_start
-        if row_center < height * 0.66:
+        if row_center < height * 0.46:
             continue
         row_mask = mask[row_y0:row_y1, :]
         column_density = row_mask.mean(axis=0)
@@ -120,22 +120,27 @@ def bottom_row_boxes_from_columns(
     if len(column_segments) >= expected_cards:
         chosen = choose_bottom_row_segments(column_segments, image_width, expected_cards)
         segment_widths = [end - start for start, end in chosen]
-        card_height = inferred_card_height(int(np.median(segment_widths)), row_height, image_height)
+        card_width = int(np.median(segment_widths))
+        card_height = inferred_card_height(card_width, row_height, image_height)
         y = inferred_card_y(row_y, row_height, card_height, image_height)
-        return [
-            normalize_card_box_dimensions(
-                CropBox(
-                    x=start,
-                    y=y,
-                    width=max(24, end - start),
-                    height=card_height,
-                    confidence=0.80,
-                ),
-                image_width,
-                image_height,
+        boxes = []
+        for start, end in chosen:
+            center = (start + end) / 2
+            x = int(round(center - card_width / 2))
+            boxes.append(
+                normalize_card_box_dimensions(
+                    CropBox(
+                        x=max(0, min(x, image_width - card_width)),
+                        y=y,
+                        width=max(24, card_width),
+                        height=card_height,
+                        confidence=0.80,
+                    ),
+                    image_width,
+                    image_height,
+                )
             )
-            for start, end in chosen
-        ]
+        return sorted(boxes, key=lambda box: box.x)
 
     slot_width = row_width / expected_cards
     card_width = int(slot_width)
@@ -159,13 +164,20 @@ def bottom_row_boxes_from_columns(
 
 
 def inferred_card_height(card_width: int, row_height: int, image_height: int) -> int:
-    height_from_width = int(round(card_width * 1.40))
-    return max(34, min(max(row_height, height_from_width), int(image_height * 0.34)))
+    height_from_width = int(round(card_width * 1.48))
+    if row_height <= height_from_width:
+        target_height = height_from_width
+    else:
+        target_height = min(row_height, int(round(height_from_width * 1.08)))
+    return max(34, min(target_height, int(image_height * 0.62)))
 
 
 def inferred_card_y(row_y: int, row_height: int, card_height: int, image_height: int) -> int:
-    missing_height = max(0, card_height - row_height)
-    y = row_y - int(missing_height * 0.22)
+    if row_height > card_height:
+        y = row_y + int((row_height - card_height) * 0.65)
+    else:
+        missing_height = max(0, card_height - row_height)
+        y = row_y - int(missing_height * 0.22)
     return max(0, min(y, image_height - card_height))
 
 
