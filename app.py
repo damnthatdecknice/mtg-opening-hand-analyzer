@@ -3,6 +3,8 @@ from __future__ import annotations
 import random
 import sys
 import tempfile
+import base64
+import zlib
 from collections import Counter
 from pathlib import Path
 
@@ -35,8 +37,9 @@ fixture_provider = FixtureCardDataProvider(CARD_FIXTURE_PATH)
 
 def init_state() -> None:
     default_deck = SAMPLE_DECK_PATH.read_text(encoding="utf-8") if SAMPLE_DECK_PATH.exists() else ""
+    saved_deck = decode_deck_param(st.query_params.get("deck", ""))
     defaults = {
-        "deck_text": default_deck,
+        "deck_text": saved_deck or default_deck,
         "confirmed_hand": [],
         "recognition_results": [],
         "crop_paths": [],
@@ -47,6 +50,31 @@ def init_state() -> None:
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
+
+
+def encode_deck_param(deck_text: str) -> str:
+    if not deck_text.strip():
+        return ""
+    compressed = zlib.compress(deck_text.encode("utf-8"))
+    return base64.urlsafe_b64encode(compressed).decode("ascii").rstrip("=")
+
+
+def decode_deck_param(raw: str) -> str:
+    if not raw:
+        return ""
+    try:
+        padded = raw + "=" * (-len(raw) % 4)
+        return zlib.decompress(base64.urlsafe_b64decode(padded)).decode("utf-8")
+    except Exception:
+        return ""
+
+
+def remember_deck_in_url(deck_text: str) -> None:
+    encoded = encode_deck_param(deck_text)
+    if encoded:
+        st.query_params["deck"] = encoded
+    elif "deck" in st.query_params:
+        del st.query_params["deck"]
 
 
 def resolve_cards(names: list[str]) -> dict[str, CardData]:
@@ -118,6 +146,24 @@ def card_draw_sentence(hand_sources, library_sources) -> str:
     if library_sources:
         return f"You do not have card draw in hand, but {len(library_sources)} draw/look source(s) remain in the library."
     return "No clear card-draw effects were found from the available card text."
+
+
+def parse_pasted_hand(text: str, counts: dict[str, int]) -> list[str]:
+    normalized_to_name = {name.casefold(): name for name in counts}
+    selected: list[str] = []
+    for raw_line in text.splitlines():
+        line = " ".join(raw_line.strip().split())
+        if not line:
+            continue
+        if " " in line and line.split(" ", 1)[0].isdigit():
+            qty_text, name = line.split(" ", 1)
+            qty = int(qty_text)
+        else:
+            qty, name = 1, line
+        matched = normalized_to_name.get(name.casefold())
+        if matched:
+            selected.extend([matched] * qty)
+    return selected[:7]
 
 
 def required_colors(spells: list[str], cards: dict[str, CardData]) -> list[str]:
@@ -262,6 +308,21 @@ def sequencing_notes(lands: list[str], spells: list[str], cards: dict[str, CardD
     return notes
 
 
+def deck_curve_rows(counts: dict[str, int], cards: dict[str, CardData]) -> list[dict]:
+    buckets: dict[str, int] = {"Land": 0, "0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6+": 0}
+    for name, qty in counts.items():
+        card = cards.get(name)
+        if not card:
+            continue
+        if card.is_land:
+            buckets["Land"] += qty
+            continue
+        value = int(card.mana_value)
+        key = "6+" if value >= 6 else str(value)
+        buckets[key] += qty
+    return [{"slot": key, "cards": value} for key, value in buckets.items()]
+
+
 def run_analysis(hand: list[str], play_draw: PlayDraw, trials: int, seed: int) -> tuple[dict, dict[str, CardData]]:
     counts = main_counts()
     cards = resolve_cards(list(counts))
@@ -278,6 +339,16 @@ deck_tab, hand_tab, shot_tab, results_tab = st.tabs(["Deck", "Hand", "Screenshot
 with deck_tab:
     st.subheader("Deck")
     st.session_state.deck_text = st.text_area("Paste MTG Arena decklist", st.session_state.deck_text, height=330)
+    c_save, c_clear = st.columns([1, 1])
+    if c_save.button("Remember this deck in this browser"):
+        remember_deck_in_url(st.session_state.deck_text)
+        st.success("Deck saved into this page URL. Refreshing or reopening this URL will restore it.")
+    if c_clear.button("Clear remembered deck"):
+        if "deck" in st.query_params:
+            del st.query_params["deck"]
+        st.success("Remembered deck cleared from the URL.")
+    if st.query_params.get("deck"):
+        st.caption("This deck is stored in the page URL. Do not share the URL if the decklist is private.")
     deck = parsed_deck()
     c1, c2, c3 = st.columns(3)
     c1.metric("Main deck", deck.main_total)
@@ -299,6 +370,19 @@ with hand_tab:
     if not unique_options:
         st.warning("Paste a deck first.")
     else:
+        pasted_hand = st.text_area(
+            "Paste a hand list",
+            placeholder="One card per line, or lines like `2 Island`.",
+            height=120,
+        )
+        if st.button("Use pasted hand"):
+            pasted = parse_pasted_hand(pasted_hand, counts)
+            errors = ["Could not find seven valid cards from the pasted hand."] if len(pasted) != 7 else validate_hand_counts(counts, pasted)
+            for error in errors:
+                st.error(error)
+            if not errors:
+                st.session_state.confirmed_hand = pasted
+                st.success("Pasted hand saved for analysis.")
         defaults = st.session_state.confirmed_hand if len(st.session_state.confirmed_hand) == 7 else []
         selected: list[str] = []
         cols = st.columns(7)
@@ -322,8 +406,8 @@ with hand_tab:
 
 with shot_tab:
     st.subheader("Screenshot Recognition")
-    st.write("Upload an MTGO/Arena screenshot. Recognition is only a first pass; confirm the seven cards before analysis.")
-    upload = st.file_uploader("Upload PNG, JPG, JPEG, or WEBP", type=["png", "jpg", "jpeg", "webp"])
+    st.write("Drag/drop or browse for an MTGO/Arena screenshot. Recognition is only a first pass; confirm the seven cards before analysis.")
+    upload = st.file_uploader("Drag/drop or browse for PNG, JPG, JPEG, or WEBP", type=["png", "jpg", "jpeg", "webp"])
     if upload:
         suffix = Path(upload.name).suffix or ".png"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
@@ -420,7 +504,7 @@ with results_tab:
             draw_sources = report["hand_draw_sources"]
             library_draw_sources = report["library_draw_sources"]
 
-            overview, deep, mulligan, other = st.tabs(["Overview", "Deep Data", "Mulligan", "OTHER"])
+            overview, deep, curve, mulligan, other = st.tabs(["Overview", "Deep Data", "Mana Curve", "Mulligan", "OTHER"])
             with overview:
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Lands", report["lands_in_hand"])
@@ -449,6 +533,16 @@ with results_tab:
                             )
                 else:
                     st.write("- No clear draw/look spell in the confirmed hand.")
+                st.write("**Mulligan Comparison**")
+                for line in mulligan_comparison_lines(main_counts(), cards, score)[:5]:
+                    st.write("- " + line)
+                st.caption("Full mulligan details remain in the Mulligan tab.")
+                st.write("**Ramp Check**")
+                if report["hand_ramp_sources"]:
+                    for source in report["hand_ramp_sources"]:
+                        st.write(f"- {source.card_name}: {source.ramp_type}, {source.timing}.")
+                else:
+                    st.write("- No ramp source detected in the confirmed hand.")
                 st.write("**Spell Castability**")
                 cast_rows = []
                 for estimate in report["castability"]:
@@ -509,6 +603,30 @@ with results_tab:
                     cast_rows.append(row)
                 st.dataframe(cast_rows, hide_index=True, width="stretch")
 
+            with curve:
+                st.write("**Deck Mana Curve**")
+                rows = deck_curve_rows(main_counts(), cards)
+                st.bar_chart(rows, x="slot", y="cards")
+                st.dataframe(rows, hide_index=True, width="stretch")
+                st.write("**Mana Value Audit**")
+                audit_rows = []
+                for name, qty in main_counts().items():
+                    card = cards.get(name)
+                    if not card:
+                        continue
+                    audit_rows.append(
+                        {
+                            "card": name,
+                            "qty": qty,
+                            "mana value": card.mana_value,
+                            "mana cost used": card.mana_cost or "(none)",
+                            "type": card.type_line,
+                            "multiface": card.is_multiface,
+                        }
+                    )
+                st.dataframe(audit_rows, hide_index=True, width="stretch")
+                st.caption("Mana value here is the app's practical castability value after checking Scryfall data against mana symbols and card faces.")
+
             with mulligan:
                 st.write("**Current Hand**")
                 st.write(f"- Hand texture score: {score}/100 ({score_label(score)})")
@@ -529,6 +647,15 @@ with results_tab:
                 st.write(f"- Hand texture score: {score}/100 ({score_label(score)})")
                 st.write(f"- Opening resources: {len(lands)} land(s), {len(spells)} spell(s), {len(draw_sources)} draw/look card(s)")
                 st.write(f"- Main-deck land ratio after this hand: {report['lands_remaining']}/{report['library_size']} remaining")
+                st.write("**Ramp Sources**")
+                if report["hand_ramp_sources"]:
+                    for source in report["hand_ramp_sources"]:
+                        st.write(f"- {source.card_name}: {source.ramp_type}, {source.timing}.")
+                else:
+                    st.write("- No ramp source detected in the confirmed hand.")
+                if report["library_ramp_sources"]:
+                    names = ", ".join(source.card_name for source in report["library_ramp_sources"][:10])
+                    st.write(f"- Ramp still in library: {names}.")
                 st.write("**Color Check**")
                 st.write("- Available colors from lands in hand: " + (", ".join(available_colors) if available_colors else "none"))
                 st.write("- Spell colors needed now: " + (", ".join(needed_colors) if needed_colors else "none"))

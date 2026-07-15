@@ -7,6 +7,7 @@ from mtg_hand_analyzer.card_draw import (
     estimated_probability_with_extra_looks,
     expected_extra_looks_by_turn,
 )
+from mtg_hand_analyzer.card_ramp import ramp_sources
 from mtg_hand_analyzer.categories import DEFAULT_CATEGORIES, names_in_category, objective_categories
 from mtg_hand_analyzer.deck_parser import validate_hand_counts
 from mtg_hand_analyzer.land_inference import enrich_card_data
@@ -74,6 +75,8 @@ def analyze_hand(
     castability = castability_monte_carlo(hand, library, cards, play_draw, trials=trials, seed=seed)
     hand_draw_sources = draw_sources(cards, set(hand))
     library_draw_sources = draw_sources(cards, set(library))
+    hand_ramp_sources = ramp_sources(cards, set(hand))
+    library_ramp_sources = ramp_sources(cards, set(library))
     card_draw_impact = {}
     for turn in range(2, 6):
         natural_draws = draws_by_beginning_of_turn(turn, play_draw)
@@ -116,6 +119,8 @@ def analyze_hand(
         "castability": castability,
         "hand_draw_sources": hand_draw_sources,
         "library_draw_sources": library_draw_sources,
+        "hand_ramp_sources": hand_ramp_sources,
+        "library_ramp_sources": library_ramp_sources,
         "card_draw_impact": card_draw_impact,
         "early_plays": early_plays,
         "card_categories": {name: sorted(objective_categories(card)) for name, card in cards.items()},

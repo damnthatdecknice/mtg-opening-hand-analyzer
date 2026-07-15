@@ -12,6 +12,18 @@ SYMBOL_RE = re.compile(r"\{([^}]+)\}")
 UNSUPPORTED_SYMBOLS = {"P", "S", "C"}
 
 
+def mana_value_from_cost(cost: str) -> float:
+    total = 0.0
+    for symbol in SYMBOL_RE.findall(cost):
+        if symbol.isdigit():
+            total += int(symbol)
+        elif symbol == "X":
+            continue
+        elif "/" in symbol or symbol in COLORS or symbol in UNSUPPORTED_SYMBOLS:
+            total += 1
+    return total
+
+
 def parse_mana_cost(cost: str) -> tuple[Counter[str], int, list[str]]:
     required: Counter[str] = Counter()
     generic = 0

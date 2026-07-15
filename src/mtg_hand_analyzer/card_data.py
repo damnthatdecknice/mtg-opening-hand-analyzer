@@ -7,6 +7,7 @@ from typing import Protocol
 import requests
 
 from mtg_hand_analyzer.deck_parser import normalize_card_name
+from mtg_hand_analyzer.mana import mana_value_from_cost
 from mtg_hand_analyzer.models import CardData, CardFace
 
 
@@ -28,11 +29,13 @@ def card_from_scryfall(payload: dict) -> CardData:
     if not image_uris and faces and payload.get("card_faces"):
         image_uris = payload["card_faces"][0].get("image_uris", {})
     type_line = payload.get("type_line") or (faces[0].type_line if faces else "")
+    mana_cost = payload.get("mana_cost") or (faces[0].mana_cost if faces else "")
+    mana_value = checked_mana_value(payload, mana_cost, faces, type_line)
     return CardData(
         name=payload.get("name", ""),
         normalized_name=normalize_card_name(payload.get("name", "")),
-        mana_cost=payload.get("mana_cost") or (faces[0].mana_cost if faces else ""),
-        mana_value=float(payload.get("cmc", 0) or 0),
+        mana_cost=mana_cost,
+        mana_value=mana_value,
         type_line=type_line,
         oracle_text=payload.get("oracle_text", ""),
         colors=list(payload.get("colors", [])),
@@ -46,6 +49,21 @@ def card_from_scryfall(payload: dict) -> CardData:
         is_multiface=bool(faces),
         source="Scryfall",
     )
+
+
+def checked_mana_value(payload: dict, mana_cost: str, faces: list[CardFace], type_line: str) -> float:
+    scryfall_value = float(payload.get("cmc", 0) or 0)
+    local_value = mana_value_from_cost(mana_cost)
+    if local_value:
+        return local_value
+    for face in faces:
+        if "Land" not in face.type_line and face.mana_cost:
+            face_value = mana_value_from_cost(face.mana_cost)
+            if face_value:
+                return face_value
+    if "Land" in type_line:
+        return 0.0
+    return scryfall_value
 
 
 class FixtureCardDataProvider:
