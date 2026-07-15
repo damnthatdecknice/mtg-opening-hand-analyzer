@@ -144,6 +144,7 @@ def inject_theme() -> None:
             box-shadow: var(--jace-shadow), inset 0 1px 0 rgba(255,255,255,0.1);
             padding: 16px 24px 18px;
             margin-bottom: 14px;
+            max-width: min(980px, 68vw);
             position: relative;
             overflow: hidden;
           }
@@ -301,6 +302,7 @@ def inject_theme() -> None:
             border-radius: 10px;
             padding: 14px 18px 16px;
             margin: 10px 0 16px;
+            max-width: min(920px, 68vw);
             backdrop-filter: blur(10px) saturate(118%);
             box-shadow: var(--jace-shadow), inset 0 1px 0 rgba(255,255,255,0.08);
             position: relative;
@@ -376,6 +378,10 @@ def inject_theme() -> None:
               background-size: auto 100%;
             }
             .hand-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .mtg-header,
+            .section-card {
+              max-width: 100%;
+            }
             .mtg-header { padding: 14px 16px 16px; }
           }
           @media (prefers-reduced-motion: reduce) {
