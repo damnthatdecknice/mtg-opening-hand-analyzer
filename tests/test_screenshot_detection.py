@@ -85,5 +85,6 @@ def test_detector_handles_shifted_hand_row_without_fixed_bottom_assumption() -> 
 
     assert len(boxes) == 7
     assert boxes[0].confidence > 0.35
-    assert 560 <= boxes[0].y <= 610
+    assert 540 <= boxes[0].y <= 610
+    assert boxes[0].height >= 220
     assert boxes == sorted(boxes, key=lambda box: box.x)

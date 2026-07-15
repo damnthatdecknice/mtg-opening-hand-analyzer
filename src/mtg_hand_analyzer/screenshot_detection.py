@@ -33,7 +33,7 @@ def detect_hand_region_boxes(image: np.ndarray, expected_cards: int = 7) -> list
     scaled_boxes = [scale_box(box, scale, width, height) for box in boxes]
     chosen = select_best_seven(scaled_boxes, width, height, expected_cards)
     if len(chosen) == expected_cards:
-        return chosen
+        return [normalize_card_box_dimensions(box, width, height) for box in chosen]
     return normalized_fallback_boxes(width, height, expected_cards)
 
 
@@ -80,6 +80,7 @@ def scan_card_rows_by_projection(image: np.ndarray, expected_cards: int = 7) -> 
         return []
     chosen = max(candidate_groups, key=lambda item: item[0])[1]
     scaled = [scale_box(box, scale, width, height) for box in chosen]
+    scaled = [normalize_card_box_dimensions(box, width, height) for box in scaled]
     return sorted(scaled, key=lambda box: box.x)
 
 
@@ -346,6 +347,32 @@ def scale_box(box: CropBox, scale: float, image_width: int, image_height: int) -
     return CropBox(x=x, y=y, width=width, height=height, confidence=box.confidence)
 
 
+def normalize_card_box_dimensions(box: CropBox, image_width: int, image_height: int) -> CropBox:
+    target_width = box.width
+    target_height = box.height
+    aspect = box.width / max(box.height, 1)
+    if aspect > 0.76:
+        target_height = max(target_height, int(round(box.width * 1.40)))
+    elif aspect < 0.52:
+        target_width = max(target_width, int(round(box.height * 0.62)))
+
+    target_width = min(target_width, image_width)
+    target_height = min(target_height, image_height)
+    extra_w = max(0, target_width - box.width)
+    extra_h = max(0, target_height - box.height)
+    x = box.x - extra_w // 2
+    y = box.y - int(extra_h * 0.70)
+    x = max(0, min(x, image_width - target_width))
+    y = max(0, min(y, image_height - target_height))
+    return CropBox(
+        x=x,
+        y=y,
+        width=target_width,
+        height=target_height,
+        confidence=box.confidence,
+    )
+
+
 def select_best_seven(
     boxes: list[CropBox],
     image_width: int,
@@ -431,22 +458,15 @@ def normalized_fallback_boxes(width: int, height: int, expected_cards: int = 7) 
     ]
 
 
-def extract_artwork_region(image: np.ndarray, box: CropBox) -> np.ndarray:
-    crop = image[box.y : box.y + box.height, box.x : box.x + box.width]
-    if crop.size == 0:
-        return crop
-    aspect = box.width / max(box.height, 1)
-    if box.confidence >= 0.80 and 0.42 <= aspect <= 0.90:
-        return crop
-    h, w = crop.shape[:2]
-    return crop[int(h * 0.10) : int(h * 0.62), int(w * 0.08) : int(w * 0.92)]
+def extract_card_region(image: np.ndarray, box: CropBox) -> np.ndarray:
+    return image[box.y : box.y + box.height, box.x : box.x + box.width]
 
 
 def save_crops(image: np.ndarray, boxes: list[CropBox], prefix: str = "crop") -> list[Path]:
     CROP_DIR.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
     for index, box in enumerate(boxes, start=1):
-        crop = extract_artwork_region(image, box)
+        crop = extract_card_region(image, box)
         path = CROP_DIR / f"{prefix}_{index}.png"
         cv2.imwrite(str(path), crop)
         paths.append(path)
