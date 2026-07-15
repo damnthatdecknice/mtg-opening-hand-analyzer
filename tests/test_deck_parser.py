@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from mtg_hand_analyzer.deck_parser import parse_decklist, validate_hand_counts
+from mtg_hand_analyzer.deck_parser import (
+    analysis_counts_for_hand,
+    parse_decklist,
+    recognition_counts,
+    validate_hand_counts,
+)
 
 
 def test_arena_deck_with_sideboard_and_punctuation() -> None:
@@ -38,3 +43,26 @@ def test_invalid_and_missing_quantities_report_issues() -> None:
 def test_hand_copy_validation() -> None:
     errors = validate_hand_counts({"Mountain": 2, "Lightning Strike": 4}, ["Mountain"] * 3 + ["Lightning Strike"] * 4)
     assert errors == ["Mountain: hand has 3, deck contains 2."]
+
+
+def test_sideboard_cards_are_available_for_recognition_only_by_default() -> None:
+    main = {"Mountain": 4, "Lightning Strike": 4}
+    sideboard = {"Destroy Evil": 2}
+
+    assert recognition_counts(main, sideboard)["Destroy Evil"] == 2
+    effective, seen = analysis_counts_for_hand(main, sideboard, ["Mountain", "Lightning Strike"])
+
+    assert "Destroy Evil" not in effective
+    assert seen == []
+
+
+def test_observed_sideboard_card_is_added_to_analysis_counts() -> None:
+    main = {"Mountain": 4, "Lightning Strike": 4}
+    sideboard = {"Destroy Evil": 2}
+    hand = ["Mountain"] * 3 + ["Lightning Strike"] * 3 + ["Destroy Evil"]
+
+    effective, seen = analysis_counts_for_hand(main, sideboard, hand)
+
+    assert effective["Destroy Evil"] == 1
+    assert seen == ["Destroy Evil"]
+    assert validate_hand_counts(effective, hand) == []

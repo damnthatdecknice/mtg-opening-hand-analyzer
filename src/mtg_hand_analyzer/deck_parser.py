@@ -65,6 +65,33 @@ def validate_hand_counts(main_counts: dict[str, int], hand: list[str]) -> list[s
     return errors
 
 
+def recognition_counts(main_counts: dict[str, int], sideboard_counts: dict[str, int]) -> dict[str, int]:
+    counts = Counter(main_counts)
+    counts.update(sideboard_counts)
+    return dict(counts)
+
+
+def analysis_counts_for_hand(
+    main_counts: dict[str, int],
+    sideboard_counts: dict[str, int],
+    hand: list[str],
+) -> tuple[dict[str, int], list[str]]:
+    counts = Counter(main_counts)
+    hand_counts = Counter(hand)
+    sideboard_cards_seen: list[str] = []
+    for card_name, qty in hand_counts.items():
+        main_qty = counts.get(card_name, 0)
+        if qty <= main_qty:
+            continue
+        sideboard_qty = sideboard_counts.get(card_name, 0)
+        if sideboard_qty <= 0:
+            continue
+        added = min(qty - main_qty, sideboard_qty)
+        counts[card_name] += added
+        sideboard_cards_seen.append(card_name)
+    return dict(counts), sorted(sideboard_cards_seen)
+
+
 def structural_warnings(deck: ParsedDeck) -> list[str]:
     warnings: list[str] = []
     for name, qty in display_counts(deck.main).items():

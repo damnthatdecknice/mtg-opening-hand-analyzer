@@ -39,7 +39,12 @@ from mtg_hand_analyzer.card_cache import CardCache
 from mtg_hand_analyzer.card_data import FixtureCardDataProvider, ScryfallProvider
 from mtg_hand_analyzer.card_recognition import recognize_crops
 from mtg_hand_analyzer.database import AppDatabase
-from mtg_hand_analyzer.deck_parser import parse_decklist, validate_hand_counts
+from mtg_hand_analyzer.deck_parser import (
+    analysis_counts_for_hand,
+    parse_decklist,
+    recognition_counts,
+    validate_hand_counts,
+)
 from mtg_hand_analyzer.land_inference import enrich_card_data
 from mtg_hand_analyzer.mana import parse_mana_cost
 from mtg_hand_analyzer.models import CardData, PlayDraw
@@ -195,7 +200,7 @@ class DesktopAnalyzer(QMainWindow):
 
     def parse_deck(self, rebuild_hand: bool = True) -> None:
         self.deck = parse_decklist(self.deck_text.toPlainText())
-        self.cards = self.resolve_cards(list(self.deck.main_counts()))
+        self.cards = self.resolve_cards(list(self.selectable_counts()))
         if rebuild_hand:
             self.build_hand_selectors()
         message = f"Parsed {self.deck.main_total} main-deck cards and {self.deck.sideboard_total} sideboard cards."
@@ -228,7 +233,7 @@ class DesktopAnalyzer(QMainWindow):
             if widget := item.widget():
                 widget.deleteLater()
         self.hand_selectors = []
-        names = sorted(self.deck.main_counts())
+        names = sorted(self.selectable_counts())
         if not names:
             self.hand_layout.addWidget(QLabel("Paste and parse a deck first."))
             return
@@ -285,7 +290,7 @@ class DesktopAnalyzer(QMainWindow):
             return
 
         defaults = [
-            result.candidates[0].card_name if result.candidates else sorted(self.deck.main_counts())[0]
+            result.candidates[0].card_name if result.candidates else sorted(self.selectable_counts())[0]
             for result in results
         ]
         self.show_recognition(image_path, crop_paths, results, defaults)
@@ -329,23 +334,31 @@ class DesktopAnalyzer(QMainWindow):
     def current_hand(self) -> list[str]:
         return [combo.currentText().strip() for combo in self.hand_selectors]
 
+    def selectable_counts(self) -> dict[str, int]:
+        return recognition_counts(self.deck.main_counts(), self.deck.sideboard_counts())
+
+    def effective_counts_for_hand(self, hand: list[str]) -> tuple[dict[str, int], list[str]]:
+        return analysis_counts_for_hand(self.deck.main_counts(), self.deck.sideboard_counts(), hand)
+
     def analyze(self) -> None:
         hand = self.current_hand()
         self.parse_deck(rebuild_hand=False)
-        errors = validate_hand_counts(self.deck.main_counts(), hand)
+        effective_counts, sideboard_seen = self.effective_counts_for_hand(hand)
+        errors = validate_hand_counts(effective_counts, hand)
         if errors:
             QMessageBox.critical(self, "Hand needs correction", "\n".join(errors))
             return
         play_draw = PlayDraw.DRAW if self.on_draw.isChecked() else PlayDraw.PLAY
         try:
             report = analyze_hand(
-                self.deck.main_counts(),
+                effective_counts,
                 hand,
                 self.cards,
                 play_draw,
                 trials=5000,
                 seed=20260714,
             )
+            report["observed_sideboard_cards"] = sideboard_seen
         except Exception as exc:
             QMessageBox.critical(self, "Analysis failed", str(exc))
             return
@@ -377,6 +390,14 @@ class DesktopAnalyzer(QMainWindow):
             f"- Find the 3rd land by turn 3: {land_turn_3:.1%}",
             f"- Find the 4th land by turn 4: {land_turn_4:.1%}",
         ]
+        observed_sideboard = report.get("observed_sideboard_cards", [])
+        if observed_sideboard:
+            lines.insert(
+                4,
+                "- Observed sideboard card(s): "
+                + ", ".join(observed_sideboard)
+                + ". Included observed copy/copies, without guessing which main-deck card was sideboarded out.",
+            )
 
         if next_land_t2 and next_land_t3:
             lines.append(f"- Draw at least one land by turn 2: {next_land_t2.probability:.1%}")

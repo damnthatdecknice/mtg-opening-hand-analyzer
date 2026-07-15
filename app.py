@@ -22,7 +22,13 @@ from mtg_hand_analyzer.card_cache import CardCache
 from mtg_hand_analyzer.card_data import FixtureCardDataProvider, ScryfallProvider
 from mtg_hand_analyzer.card_draw import draw_look_depth
 from mtg_hand_analyzer.card_recognition import recognize_crops
-from mtg_hand_analyzer.deck_parser import parse_decklist, structural_warnings, validate_hand_counts
+from mtg_hand_analyzer.deck_parser import (
+    analysis_counts_for_hand,
+    parse_decklist,
+    recognition_counts as deck_recognition_counts,
+    structural_warnings,
+    validate_hand_counts,
+)
 from mtg_hand_analyzer.land_inference import enrich_card_data
 from mtg_hand_analyzer.mana import mana_value_from_cost, parse_mana_cost
 from mtg_hand_analyzer.models import CardData, PlayDraw
@@ -119,7 +125,7 @@ def process_screenshot(image_path: Path, prefix: str) -> None:
             st.image(str(path), caption=f"Crop {idx + 1}")
     if st.button("Run recognition", key=f"run_recognition_{prefix}"):
         with st.spinner("Refreshing card data from Scryfall and matching crops..."):
-            cards = resolve_cards(list(main_counts()))
+            cards = resolve_cards(list(recognition_counts()))
             results = recognize_crops(crop_paths, boxes, cards)
         st.session_state.recognition_results = [result.model_dump(mode="json") for result in results]
         st.success("Recognition candidates generated.")
@@ -142,6 +148,18 @@ def parsed_deck():
 
 def main_counts() -> dict[str, int]:
     return parsed_deck().main_counts()
+
+
+def sideboard_counts() -> dict[str, int]:
+    return parsed_deck().sideboard_counts()
+
+
+def recognition_counts() -> dict[str, int]:
+    return deck_recognition_counts(main_counts(), sideboard_counts())
+
+
+def effective_counts_for_hand(hand: list[str]) -> tuple[dict[str, int], list[str]]:
+    return analysis_counts_for_hand(main_counts(), sideboard_counts(), hand)
 
 
 def fmt_pct(value: float) -> str:
@@ -450,9 +468,10 @@ def mana_value_audit_rows(counts: dict[str, int], cards: dict[str, CardData]) ->
 
 
 def run_analysis(hand: list[str], play_draw: PlayDraw, trials: int, seed: int) -> tuple[dict, dict[str, CardData]]:
-    counts = main_counts()
+    counts, sideboard_seen = effective_counts_for_hand(hand)
     cards = resolve_cards(list(counts))
     report = analyze_hand(counts, hand, cards, play_draw, trials=trials, seed=seed)
+    report["observed_sideboard_cards"] = sideboard_seen
     return report, cards
 
 
@@ -488,11 +507,15 @@ with deck_tab:
         st.warning(warning)
     with st.expander("Main deck list", expanded=False):
         st.dataframe([line.model_dump() for line in deck.main], hide_index=True, width="stretch")
+    if deck.sideboard:
+        with st.expander("Sideboard cards used for recognition", expanded=False):
+            st.dataframe([line.model_dump() for line in deck.sideboard], hide_index=True, width="stretch")
 
 with hand_tab:
     st.subheader("Confirm Opening Hand")
     counts = main_counts()
-    unique_options = sorted(counts)
+    selectable_counts = recognition_counts()
+    unique_options = sorted(selectable_counts)
     if not unique_options:
         st.warning("Paste a deck first.")
     else:
@@ -502,8 +525,9 @@ with hand_tab:
             height=120,
         )
         if st.button("Use pasted hand"):
-            pasted = parse_pasted_hand(pasted_hand, counts)
-            errors = ["Could not find seven valid cards from the pasted hand."] if len(pasted) != 7 else validate_hand_counts(counts, pasted)
+            pasted = parse_pasted_hand(pasted_hand, selectable_counts)
+            effective_counts, _sideboard_seen = effective_counts_for_hand(pasted)
+            errors = ["Could not find seven valid cards from the pasted hand."] if len(pasted) != 7 else validate_hand_counts(effective_counts, pasted)
             for error in errors:
                 st.error(error)
             if not errors:
@@ -523,7 +547,10 @@ with hand_tab:
                         key=f"manual_card_{index}",
                     )
                 )
-        errors = validate_hand_counts(counts, selected)
+        effective_counts, sideboard_seen = effective_counts_for_hand(selected)
+        errors = validate_hand_counts(effective_counts, selected)
+        if sideboard_seen:
+            st.info("Sideboard card observed in hand: " + ", ".join(sideboard_seen) + ". Analysis will include the observed copy/copies so the hand can be evaluated.")
         for error in errors:
             st.error(error)
         if st.button("Use this hand", disabled=bool(errors)):
@@ -560,6 +587,8 @@ with shot_tab:
         st.divider()
         st.subheader("Confirm Recognized Cards")
         confirmed: list[str] = []
+        selectable_counts = recognition_counts()
+        unique_options = sorted(selectable_counts)
         for result in results:
             idx = result["crop_index"]
             cols = st.columns([1, 2, 3])
@@ -586,7 +615,10 @@ with shot_tab:
                 width="stretch",
             )
             confirmed.append(choice)
-        errors = validate_hand_counts(counts, confirmed)
+        effective_counts, sideboard_seen = effective_counts_for_hand(confirmed)
+        errors = validate_hand_counts(effective_counts, confirmed)
+        if sideboard_seen:
+            st.info("Sideboard card observed in recognized hand: " + ", ".join(sideboard_seen) + ". Analysis will include the observed copy/copies so the hand can be evaluated.")
         for error in errors:
             st.error(error)
         if st.button("Use recognized hand", disabled=bool(errors)):
@@ -682,6 +714,13 @@ with results_tab:
             spells = [name for name in hand if cards.get(name) and not cards[name].is_land]
             draw_sources = report["hand_draw_sources"]
             library_draw_sources = report["library_draw_sources"]
+            observed_sideboard = report.get("observed_sideboard_cards", [])
+            if observed_sideboard:
+                st.info(
+                    "Observed sideboard card(s): "
+                    + ", ".join(observed_sideboard)
+                    + ". The analysis includes the observed copy/copies but does not guess which main-deck card was sideboarded out."
+                )
 
             overview, deep, curve, mulligan, other = st.tabs(["Overview", "Deep Data", "Mana Curve", "Mulligan", "OTHER"])
             with overview:
