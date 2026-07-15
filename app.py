@@ -132,6 +132,12 @@ def inject_theme() -> None:
             position: relative;
             z-index: 1;
           }
+          div[data-testid="stTabs"] {
+            max-width: var(--content-rail-width);
+          }
+          div[data-testid="stTabs"] > div:first-child {
+            border-bottom-color: rgba(128, 205, 255, 0.18);
+          }
           .stMarkdown, .stText, .stCaption, p, li, label, span {
             color: inherit;
           }
@@ -199,6 +205,7 @@ def inject_theme() -> None:
             font-weight: 800;
             padding-top: 0.65rem;
             padding-bottom: 0.65rem;
+            min-height: 2.35rem;
           }
           div[data-testid="stTabs"] button[aria-selected="true"] {
             color: var(--jace-text);
@@ -296,6 +303,15 @@ def inject_theme() -> None:
           h2, h3 {
             letter-spacing: 0;
             color: var(--jace-text);
+            max-width: var(--content-rail-width);
+          }
+          h2 {
+            margin-top: 0.85rem;
+            margin-bottom: 0.65rem;
+          }
+          hr {
+            max-width: var(--content-rail-width);
+            border-color: rgba(128, 205, 255, 0.18);
           }
           code {
             background: rgba(101, 216, 255, 0.12);
