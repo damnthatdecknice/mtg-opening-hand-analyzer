@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import random
 import tempfile
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -214,7 +215,7 @@ class DesktopAnalyzer(QMainWindow):
         self.status.setText(message)
 
     def resolve_cards(self, names: list[str]) -> dict[str, CardData]:
-        provider = ScryfallProvider()
+        provider = ScryfallProvider(retries=3)
         cards: dict[str, CardData] = {}
         for name in names:
             card = self.card_cache.resolve(
@@ -222,6 +223,13 @@ class DesktopAnalyzer(QMainWindow):
                 provider,
                 force_refresh=True,
             )
+            if not card:
+                time.sleep(0.75)
+                card = self.card_cache.resolve(
+                    name,
+                    provider,
+                    force_refresh=True,
+                )
             if not card:
                 card = self.fixture_provider.get_card(name)
             cards[name] = enrich_card_data(name, card)

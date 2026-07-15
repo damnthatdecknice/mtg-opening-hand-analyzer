@@ -132,11 +132,14 @@ def process_screenshot(image_path: Path, prefix: str) -> None:
         st.success("Recognition candidates generated.")
 
 
-def resolve_cards(names: list[str]) -> dict[str, CardData]:
-    provider = ScryfallProvider()
+def resolve_cards(names: list[str], retry_delay_seconds: float = 0.75) -> dict[str, CardData]:
+    provider = ScryfallProvider(retries=3)
     cards: dict[str, CardData] = {}
     for name in names:
         card = card_cache.resolve(name, provider, force_refresh=True)
+        if not card:
+            time.sleep(retry_delay_seconds)
+            card = card_cache.resolve(name, provider, force_refresh=True)
         if not card:
             card = fixture_provider.get_card(name)
         cards[name] = enrich_card_data(name, card)
@@ -144,15 +147,11 @@ def resolve_cards(names: list[str]) -> dict[str, CardData]:
 
 
 def retry_card_lookups(names: list[str], delay_seconds: float = 0.75) -> dict[str, CardData]:
-    provider = ScryfallProvider(retries=3)
     cards: dict[str, CardData] = {}
     for index, name in enumerate(names):
         if index:
             time.sleep(delay_seconds)
-        card = card_cache.resolve(name, provider, force_refresh=True)
-        if not card:
-            card = fixture_provider.get_card(name)
-        cards[name] = enrich_card_data(name, card)
+        cards.update(resolve_cards([name], retry_delay_seconds=delay_seconds))
     return cards
 
 
