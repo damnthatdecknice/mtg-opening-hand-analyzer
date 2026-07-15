@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 build/
 dist/
+dist-desktop/
 *.spec
 data/cache/
 data/samples/user_arena_screenshots/*
