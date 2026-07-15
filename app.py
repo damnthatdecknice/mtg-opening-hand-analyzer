@@ -65,9 +65,9 @@ def inject_theme() -> None:
         <style>
           :root {
             --jace-bg: #030711;
-            --jace-overlay: rgba(2, 7, 17, 0.58);
-            --jace-panel: rgba(9, 18, 33, 0.86);
-            --jace-panel-strong: rgba(11, 23, 42, 0.92);
+            --jace-overlay: rgba(2, 7, 17, 0.34);
+            --jace-panel: rgba(9, 18, 33, 0.78);
+            --jace-panel-strong: rgba(11, 23, 42, 0.86);
             --jace-border: rgba(128, 205, 255, 0.34);
             --jace-border-soft: rgba(130, 157, 198, 0.22);
             --jace-text: #f4f9ff;
@@ -81,11 +81,28 @@ def inject_theme() -> None:
             --jace-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
           }
           .stApp {
-            background:
-              linear-gradient(var(--jace-overlay), var(--jace-overlay)),
-              url("__JACE_BG__") center right / cover fixed no-repeat,
-              var(--jace-bg);
+            background: var(--jace-bg);
             color: var(--jace-text);
+          }
+          .jace-bg-layer,
+          .jace-bg-shade {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+          }
+          .jace-bg-layer {
+            background-image: url("__JACE_BG__");
+            background-position: center right;
+            background-repeat: no-repeat;
+            background-size: cover;
+            opacity: 1;
+            z-index: 0;
+          }
+          .jace-bg-shade {
+            background:
+              linear-gradient(90deg, rgba(2,7,17,0.68) 0%, rgba(2,7,17,0.44) 37%, rgba(2,7,17,0.24) 68%, rgba(2,7,17,0.12) 100%),
+              linear-gradient(180deg, rgba(2,7,17,0.28), rgba(2,7,17,0.42));
+            z-index: 0;
           }
           .stApp::before {
             content: "";
@@ -93,8 +110,8 @@ def inject_theme() -> None:
             inset: 0;
             pointer-events: none;
             background:
-              radial-gradient(ellipse at center, rgba(4, 9, 18, 0.5) 0%, rgba(4, 9, 18, 0.34) 36%, rgba(4, 9, 18, 0.06) 72%),
-              linear-gradient(90deg, rgba(1, 5, 13, 0.58), transparent 22%, transparent 78%, rgba(1, 5, 13, 0.14));
+              radial-gradient(ellipse at 46% 48%, rgba(4, 9, 18, 0.38) 0%, rgba(4, 9, 18, 0.18) 42%, rgba(4, 9, 18, 0.02) 72%),
+              linear-gradient(90deg, rgba(1, 5, 13, 0.3), transparent 32%, transparent 83%, rgba(1, 5, 13, 0.02));
             z-index: 0;
           }
           .stApp::after {
@@ -105,7 +122,7 @@ def inject_theme() -> None:
             background:
               linear-gradient(180deg, rgba(255,255,255,0.035), transparent 18rem),
               radial-gradient(circle at 78% 32%, rgba(101, 216, 255, 0.08), transparent 18rem);
-            opacity: 0.42;
+            opacity: 0.28;
             z-index: 0;
           }
           .block-container {
@@ -121,10 +138,10 @@ def inject_theme() -> None:
             border: 1px solid var(--jace-border);
             border-radius: 10px;
             background:
-              linear-gradient(135deg, rgba(13, 31, 56, 0.88), rgba(5, 11, 22, 0.84)),
-              radial-gradient(circle at 92% 0%, rgba(101, 216, 255, 0.16), transparent 22rem);
+              linear-gradient(135deg, rgba(13, 31, 56, 0.62), rgba(5, 11, 22, 0.58)),
+              radial-gradient(circle at 92% 0%, rgba(101, 216, 255, 0.1), transparent 22rem);
             backdrop-filter: blur(12px) saturate(130%);
-            box-shadow: var(--jace-shadow), inset 0 1px 0 rgba(255,255,255,0.12);
+            box-shadow: var(--jace-shadow), inset 0 1px 0 rgba(255,255,255,0.1);
             padding: 26px 28px;
             margin-bottom: 16px;
             position: relative;
@@ -208,7 +225,7 @@ def inject_theme() -> None:
             background: linear-gradient(180deg, rgba(101, 216, 255, 0.1), rgba(101, 216, 255, 0));
           }
           div[data-testid="stMetric"] {
-            background: linear-gradient(180deg, rgba(14, 29, 50, 0.92), rgba(7, 13, 24, 0.88));
+            background: linear-gradient(180deg, rgba(14, 29, 50, 0.84), rgba(7, 13, 24, 0.82));
             border: 1px solid var(--jace-border-soft);
             border-radius: 10px;
             padding: 14px 16px;
@@ -234,19 +251,19 @@ def inject_theme() -> None:
           div[data-testid="stTextArea"] textarea,
           div[data-testid="stTextInput"] input,
           div[data-testid="stNumberInput"] input {
-            background: rgba(4, 10, 20, 0.92);
+            background: rgba(4, 10, 20, 0.9);
             color: var(--jace-text);
             border-radius: 6px;
             caret-color: var(--jace-cyan);
           }
           div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
           div[data-testid="stFileUploader"] section {
-            background: rgba(6, 13, 25, 0.9);
+            background: rgba(6, 13, 25, 0.88);
             color: var(--jace-text);
             border-radius: 8px;
           }
           div[data-testid="stDataFrame"] {
-            background: rgba(5, 10, 19, 0.92);
+            background: rgba(5, 10, 19, 0.9);
             border-radius: 8px;
           }
           img {
@@ -312,7 +329,7 @@ def inject_theme() -> None:
             margin: 12px 0 18px;
           }
           .hand-card {
-            background: linear-gradient(180deg, rgba(15, 33, 57, 0.88), rgba(5, 10, 19, 0.88));
+            background: linear-gradient(180deg, rgba(15, 33, 57, 0.82), rgba(5, 10, 19, 0.82));
             border: 1px solid rgba(101, 216, 255, 0.3);
             border-radius: 8px;
             min-height: 112px;
@@ -344,7 +361,7 @@ def inject_theme() -> None:
             overflow-wrap: anywhere;
           }
           @media (max-width: 900px) {
-            .stApp {
+            .jace-bg-layer {
               background-position: 68% top;
               background-size: auto 100%;
             }
@@ -371,6 +388,8 @@ def inject_theme() -> None:
 def render_header() -> None:
     st.markdown(
         """
+        <div class="jace-bg-layer" aria-hidden="true"></div>
+        <div class="jace-bg-shade" aria-hidden="true"></div>
         <div class="mtg-header">
           <div class="mtg-kicker">Competitive opener lab</div>
           <div class="mtg-title">MTG Opening Hand Analyzer</div>
