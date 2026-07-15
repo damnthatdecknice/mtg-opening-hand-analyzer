@@ -53,30 +53,39 @@ title_ocr_component = components.declare_component(
 )
 
 
+def jace_background_data_uri() -> str:
+    background_path = ROOT / "assets" / "jace_mindscape.svg"
+    encoded = base64.b64encode(background_path.read_bytes()).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
+
+
 def inject_theme() -> None:
-    st.markdown(
+    css = (
         """
         <style>
           :root {
-            --bg: #050812;
-            --panel: rgba(11, 18, 32, 0.58);
-            --panel-strong: rgba(13, 22, 39, 0.72);
-            --line: rgba(135, 199, 255, 0.28);
-            --text: #eff5ff;
-            --muted: #9ab6d6;
-            --blue: #54c3ff;
-            --gold: #e6c174;
-            --red: #ff654e;
-            --green: #61d394;
-            --black: #18151f;
+            --jace-bg: #030711;
+            --jace-overlay: rgba(2, 7, 17, 0.74);
+            --jace-panel: rgba(9, 18, 33, 0.88);
+            --jace-panel-strong: rgba(11, 23, 42, 0.93);
+            --jace-border: rgba(128, 205, 255, 0.34);
+            --jace-border-soft: rgba(130, 157, 198, 0.22);
+            --jace-text: #f4f9ff;
+            --jace-muted: #adc3dd;
+            --jace-faint: #7f94ae;
+            --jace-cyan: #65d8ff;
+            --jace-violet: #9c8cff;
+            --jace-gold: #e2c174;
+            --jace-danger: #ff7464;
+            --jace-success: #7de0b1;
+            --jace-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
           }
           .stApp {
             background:
-              radial-gradient(circle at 12% 14%, rgba(84, 195, 255, 0.26), transparent 25rem),
-              radial-gradient(circle at 80% 4%, rgba(91, 111, 255, 0.22), transparent 28rem),
-              radial-gradient(circle at 70% 82%, rgba(26, 255, 191, 0.08), transparent 24rem),
-              linear-gradient(135deg, #050812 0%, #071120 46%, #05070d 100%);
-            color: var(--text);
+              linear-gradient(var(--jace-overlay), var(--jace-overlay)),
+              url("__JACE_BG__") center center / cover fixed no-repeat,
+              var(--jace-bg);
+            color: var(--jace-text);
           }
           .stApp::before {
             content: "";
@@ -84,15 +93,9 @@ def inject_theme() -> None:
             inset: 0;
             pointer-events: none;
             background:
-              radial-gradient(ellipse at 53% 35%, rgba(94, 205, 255, 0.22), transparent 18rem),
-              radial-gradient(ellipse at 51% 36%, transparent 0 9rem, rgba(26, 53, 91, 0.42) 9.2rem, transparent 14rem),
-              conic-gradient(from 210deg at 50% 36%, transparent 0 18deg, rgba(92, 189, 255, 0.14) 18deg 22deg, transparent 22deg 56deg, rgba(122, 96, 255, 0.12) 56deg 61deg, transparent 61deg 360deg),
-              linear-gradient(118deg, transparent 0 31%, rgba(71, 185, 255, 0.11) 31.2% 31.6%, transparent 31.8% 100%),
-              linear-gradient(62deg, transparent 0 58%, rgba(126, 107, 255, 0.12) 58.2% 58.7%, transparent 58.9% 100%),
-              repeating-linear-gradient(90deg, rgba(255,255,255,0.028) 0 1px, transparent 1px 38px),
-              repeating-linear-gradient(0deg, rgba(255,255,255,0.024) 0 1px, transparent 1px 38px);
-            opacity: 0.86;
-            mask-image: radial-gradient(ellipse at 50% 32%, rgba(0,0,0,0.95), rgba(0,0,0,0.72) 34%, transparent 82%);
+              radial-gradient(ellipse at center, rgba(4, 9, 18, 0.52) 0%, rgba(4, 9, 18, 0.38) 36%, rgba(4, 9, 18, 0.1) 72%),
+              linear-gradient(90deg, rgba(1, 5, 13, 0.58), transparent 18%, transparent 82%, rgba(1, 5, 13, 0.58));
+            z-index: 0;
           }
           .stApp::after {
             content: "";
@@ -100,23 +103,28 @@ def inject_theme() -> None:
             inset: 0;
             pointer-events: none;
             background:
-              linear-gradient(90deg, transparent 0 7%, rgba(84, 195, 255, 0.15) 7.1% 7.25%, transparent 7.35% 100%),
-              linear-gradient(90deg, transparent 0 91%, rgba(84, 195, 255, 0.12) 91.1% 91.25%, transparent 91.35% 100%),
-              radial-gradient(circle at 50% 34%, transparent 0 7rem, rgba(84, 195, 255, 0.08) 7.1rem 7.35rem, transparent 7.5rem);
-            opacity: 0.7;
+              linear-gradient(180deg, rgba(255,255,255,0.035), transparent 18rem),
+              radial-gradient(circle at 50% 22%, rgba(101, 216, 255, 0.12), transparent 16rem);
+            opacity: 0.55;
+            z-index: 0;
           }
           .block-container {
             max-width: 1480px;
             padding-top: 1.35rem;
+            position: relative;
+            z-index: 1;
+          }
+          .stMarkdown, .stText, .stCaption, p, li, label, span {
+            color: inherit;
           }
           .mtg-header {
-            border: 1px solid var(--line);
-            border-radius: 8px;
+            border: 1px solid var(--jace-border);
+            border-radius: 10px;
             background:
-              linear-gradient(135deg, rgba(10, 24, 45, 0.72), rgba(4, 8, 18, 0.62)),
-              repeating-linear-gradient(90deg, transparent 0 22px, rgba(102, 206, 255, 0.035) 22px 23px);
-            backdrop-filter: blur(16px) saturate(145%);
-            box-shadow: 0 24px 80px rgba(0,0,0,0.40), 0 0 52px rgba(71, 185, 255, 0.12), inset 0 1px 0 rgba(255,255,255,0.12);
+              linear-gradient(135deg, rgba(13, 31, 56, 0.92), rgba(5, 11, 22, 0.88)),
+              radial-gradient(circle at 92% 0%, rgba(101, 216, 255, 0.16), transparent 22rem);
+            backdrop-filter: blur(12px) saturate(130%);
+            box-shadow: var(--jace-shadow), inset 0 1px 0 rgba(255,255,255,0.12);
             padding: 26px 28px;
             margin-bottom: 16px;
             position: relative;
@@ -125,14 +133,12 @@ def inject_theme() -> None:
           .mtg-header::before {
             content: "";
             position: absolute;
-            inset: -45% -8% auto auto;
-            width: min(52vw, 640px);
-            aspect-ratio: 1;
+            inset: 0;
             background:
-              radial-gradient(circle, rgba(97, 215, 255, 0.2), transparent 48%),
-              conic-gradient(from 140deg, transparent 0 17%, rgba(83, 190, 255, 0.24) 17% 18%, transparent 18% 36%, rgba(150, 121, 255, 0.18) 36% 37%, transparent 37%);
-            filter: blur(0.4px);
-            opacity: 0.9;
+              linear-gradient(118deg, transparent 0 54%, rgba(101, 216, 255, 0.14) 54.2% 54.5%, transparent 54.8% 100%),
+              linear-gradient(62deg, transparent 0 69%, rgba(156, 140, 255, 0.12) 69.2% 69.6%, transparent 69.8% 100%);
+            opacity: 0.8;
+            pointer-events: none;
           }
           .mtg-header::after {
             content: "";
@@ -141,30 +147,32 @@ def inject_theme() -> None:
             right: 0;
             bottom: 0;
             height: 3px;
-            background: linear-gradient(90deg, #f5ead1, #3fa7ff, #18151f, #ff654e, #61d394);
+            background: linear-gradient(90deg, transparent, var(--jace-cyan), var(--jace-violet), transparent);
           }
           .mtg-kicker {
-            color: var(--gold);
+            color: var(--jace-gold);
             font-size: 0.78rem;
             font-weight: 800;
             letter-spacing: 0.12em;
             text-transform: uppercase;
+            position: relative;
           }
           .mtg-title {
-            color: var(--text);
+            color: var(--jace-text);
             font-size: clamp(2rem, 4vw, 3.9rem);
             font-weight: 900;
             letter-spacing: 0;
             line-height: 1.02;
             margin: 6px 0 8px;
             position: relative;
-            text-shadow: 0 0 24px rgba(84, 195, 255, 0.34);
+            text-shadow: 0 0 18px rgba(101, 216, 255, 0.22);
           }
           .mtg-subtitle {
-            color: var(--muted);
+            color: var(--jace-muted);
             font-size: 1rem;
             margin: 0;
             max-width: 820px;
+            position: relative;
           }
           .mana-row {
             display: flex;
@@ -188,28 +196,31 @@ def inject_theme() -> None:
           .pip-r { background: #d95d44; color: #1b0805; }
           .pip-g { background: #4fa86d; color: #06150b; }
           div[data-testid="stTabs"] button {
-            border-radius: 0;
-            color: #b7c8dd;
+            border-radius: 8px 8px 0 0;
+            color: var(--jace-muted);
             font-weight: 800;
+            padding-top: 0.65rem;
+            padding-bottom: 0.65rem;
           }
           div[data-testid="stTabs"] button[aria-selected="true"] {
-            color: #ffffff;
-            border-bottom-color: var(--blue);
+            color: var(--jace-text);
+            border-bottom-color: var(--jace-cyan);
+            background: linear-gradient(180deg, rgba(101, 216, 255, 0.1), rgba(101, 216, 255, 0));
           }
           div[data-testid="stMetric"] {
-            background: linear-gradient(180deg, rgba(18, 34, 58, 0.72), rgba(8, 13, 23, 0.62));
-            border: 1px solid var(--line);
-            border-radius: 8px;
+            background: linear-gradient(180deg, rgba(14, 29, 50, 0.92), rgba(7, 13, 24, 0.88));
+            border: 1px solid var(--jace-border-soft);
+            border-radius: 10px;
             padding: 14px 16px;
-            backdrop-filter: blur(14px) saturate(135%);
-            box-shadow: 0 16px 36px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.08);
+            backdrop-filter: blur(10px) saturate(120%);
+            box-shadow: 0 12px 28px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.08);
           }
           div[data-testid="stMetric"] label {
-            color: var(--muted);
+            color: var(--jace-muted);
             font-weight: 800;
           }
           div[data-testid="stMetricValue"] {
-            color: var(--text);
+            color: var(--jace-text);
             font-weight: 900;
           }
           div[data-testid="stExpander"],
@@ -218,44 +229,81 @@ def inject_theme() -> None:
           div[data-testid="stTextArea"] textarea,
           div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
           div[data-testid="stNumberInput"] input {
-            border-color: var(--line);
+            border-color: var(--jace-border-soft);
           }
           div[data-testid="stTextArea"] textarea,
           div[data-testid="stTextInput"] input,
           div[data-testid="stNumberInput"] input {
-            background: rgba(4, 9, 17, 0.64);
-            color: var(--text);
+            background: rgba(4, 10, 20, 0.92);
+            color: var(--jace-text);
             border-radius: 6px;
-            backdrop-filter: blur(10px);
+            caret-color: var(--jace-cyan);
+          }
+          div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+          div[data-testid="stFileUploader"] section {
+            background: rgba(6, 13, 25, 0.9);
+            color: var(--jace-text);
+            border-radius: 8px;
+          }
+          div[data-testid="stDataFrame"] {
+            background: rgba(5, 10, 19, 0.92);
+            border-radius: 8px;
+          }
+          img {
+            opacity: 1;
+            mix-blend-mode: normal;
           }
           .stButton > button {
-            background: linear-gradient(135deg, rgba(55, 166, 255, 0.28), rgba(25, 35, 65, 0.86));
-            border: 1px solid rgba(93, 201, 255, 0.52);
+            background: linear-gradient(135deg, rgba(32, 115, 178, 0.92), rgba(23, 34, 74, 0.92));
+            border: 1px solid rgba(101, 216, 255, 0.58);
             border-radius: 6px;
-            color: #f7fbff;
+            color: var(--jace-text);
             font-weight: 850;
-            box-shadow: 0 10px 26px rgba(0,0,0,0.28), 0 0 18px rgba(84, 195, 255, 0.12);
+            box-shadow: 0 10px 24px rgba(0,0,0,0.28), 0 0 0 1px rgba(255,255,255,0.04) inset;
           }
           .stButton > button:hover {
-            border-color: var(--gold);
+            border-color: var(--jace-gold);
             color: #ffffff;
-            transform: translateY(-1px);
+            background: linear-gradient(135deg, rgba(43, 141, 209, 0.96), rgba(33, 45, 92, 0.96));
+          }
+          .stButton > button:focus,
+          .stButton > button:focus-visible,
+          textarea:focus,
+          input:focus {
+            outline: 2px solid rgba(101, 216, 255, 0.72);
+            outline-offset: 2px;
+          }
+          .stButton > button:disabled,
+          .stButton > button[disabled] {
+            background: rgba(24, 35, 52, 0.82);
+            border-color: rgba(126, 148, 174, 0.26);
+            color: rgba(230, 239, 250, 0.55);
+            box-shadow: none;
           }
           .stAlert {
             border-radius: 8px;
-            border: 1px solid var(--line);
+            border: 1px solid var(--jace-border-soft);
+            background: rgba(8, 16, 29, 0.92);
           }
           h2, h3 {
             letter-spacing: 0;
+            color: var(--jace-text);
+          }
+          code {
+            background: rgba(101, 216, 255, 0.12);
+            color: #d9f6ff;
+            border: 1px solid rgba(101, 216, 255, 0.2);
+            border-radius: 5px;
+            padding: 0.1rem 0.32rem;
           }
           .section-card {
-            background: var(--panel);
-            border: 1px solid var(--line);
-            border-radius: 8px;
+            background: var(--jace-panel);
+            border: 1px solid var(--jace-border-soft);
+            border-radius: 10px;
             padding: 14px 16px;
             margin: 10px 0 14px;
-            backdrop-filter: blur(16px) saturate(145%);
-            box-shadow: 0 18px 48px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.08);
+            backdrop-filter: blur(10px) saturate(118%);
+            box-shadow: var(--jace-shadow), inset 0 1px 0 rgba(255,255,255,0.08);
           }
           .hand-strip {
             display: grid;
@@ -264,31 +312,31 @@ def inject_theme() -> None:
             margin: 12px 0 18px;
           }
           .hand-card {
-            background: linear-gradient(180deg, rgba(26, 48, 75, 0.78), rgba(5, 9, 17, 0.68));
-            border: 1px solid rgba(84, 195, 255, 0.32);
+            background: linear-gradient(180deg, rgba(15, 33, 57, 0.92), rgba(5, 10, 19, 0.9));
+            border: 1px solid rgba(101, 216, 255, 0.3);
             border-radius: 8px;
             min-height: 112px;
             overflow: hidden;
             padding: 8px;
             position: relative;
-            backdrop-filter: blur(14px) saturate(140%);
-            box-shadow: 0 14px 34px rgba(0,0,0,0.34), 0 0 22px rgba(84, 195, 255, 0.08);
+            backdrop-filter: blur(8px) saturate(118%);
+            box-shadow: 0 14px 32px rgba(0,0,0,0.32);
           }
           .hand-card::before {
             content: "";
             display: block;
             height: 4px;
             margin: -8px -8px 8px;
-            background: linear-gradient(90deg, #f2e7c7, #2c9de8, #1d1924, #d95d44, #4fa86d);
+            background: linear-gradient(90deg, var(--jace-cyan), var(--jace-violet));
           }
           .hand-card-index {
-            color: var(--gold);
+            color: var(--jace-gold);
             font-size: 0.68rem;
             font-weight: 900;
             letter-spacing: 0.08em;
           }
           .hand-card-name {
-            color: var(--text);
+            color: var(--jace-text);
             font-size: 0.88rem;
             font-weight: 850;
             line-height: 1.18;
@@ -296,11 +344,26 @@ def inject_theme() -> None:
             overflow-wrap: anywhere;
           }
           @media (max-width: 900px) {
+            .stApp {
+              background-position: center top;
+              background-size: auto 100%;
+            }
             .hand-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .mtg-header { padding: 18px; }
           }
+          @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+              scroll-behavior: auto !important;
+              transition-duration: 0.001ms !important;
+              animation-duration: 0.001ms !important;
+              animation-iteration-count: 1 !important;
+            }
+          }
         </style>
-        """,
+        """
+    ).replace("__JACE_BG__", jace_background_data_uri())
+    st.markdown(
+        css,
         unsafe_allow_html=True,
     )
 
