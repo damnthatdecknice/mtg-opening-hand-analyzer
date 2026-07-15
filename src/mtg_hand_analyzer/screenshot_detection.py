@@ -17,6 +17,10 @@ def load_image(path: Path) -> np.ndarray:
 
 def detect_hand_region_boxes(image: np.ndarray, expected_cards: int = 7) -> list[CropBox]:
     height, width = image.shape[:2]
+    sliced_boxes = detect_bottom_hand_by_row_slicing(image, expected_cards)
+    if len(sliced_boxes) == expected_cards:
+        return sliced_boxes
+
     mtgo_boxes = detect_mtgo_hand_row_boxes(image, expected_cards)
     if len(mtgo_boxes) == expected_cards:
         return mtgo_boxes
@@ -35,6 +39,155 @@ def detect_hand_region_boxes(image: np.ndarray, expected_cards: int = 7) -> list
     if len(chosen) == expected_cards:
         return [normalize_card_box_dimensions(box, width, height) for box in chosen]
     return normalized_bottom_hand_boxes(width, height, expected_cards)
+
+
+def detect_bottom_hand_by_row_slicing(image: np.ndarray, expected_cards: int = 7) -> list[CropBox]:
+    height, width = image.shape[:2]
+    if height < 250 or width < 500:
+        return []
+
+    y_start = int(height * 0.56)
+    y_end = max(y_start + 1, height - max(4, int(height * 0.01)))
+    band = image[y_start:y_end, :]
+    hsv = cv2.cvtColor(band, cv2.COLOR_BGR2HSV)
+    mask = (((hsv[:, :, 2] > 58) & (hsv[:, :, 1] > 22)) | (hsv[:, :, 2] > 145)).astype("uint8")
+    mask[:, : int(width * 0.045)] = 0
+    mask[:, int(width * 0.94) :] = 0
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 7))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    row_density = mask.mean(axis=1)
+    row_segments = density_segments(
+        row_density,
+        active_threshold=0.045,
+        min_width=max(35, int(height * 0.045)),
+        max_gap=max(6, int(height * 0.01)),
+    )
+    if not row_segments:
+        return []
+
+    row_candidates: list[tuple[float, list[CropBox]]] = []
+    for row_y0, row_y1 in row_segments:
+        row_height = row_y1 - row_y0
+        if not (height * 0.10 <= row_height <= height * 0.38):
+            continue
+        row_center = (row_y0 + row_y1) / 2 + y_start
+        if row_center < height * 0.66:
+            continue
+        row_mask = mask[row_y0:row_y1, :]
+        column_density = row_mask.mean(axis=0)
+        column_segments = density_segments(
+            column_density,
+            active_threshold=0.035,
+            min_width=max(45, int(width * 0.025)),
+            max_gap=max(6, int(width * 0.006)),
+        )
+        boxes = bottom_row_boxes_from_columns(
+            column_segments,
+            row_y0 + y_start,
+            row_height,
+            width,
+            height,
+            expected_cards,
+        )
+        if len(boxes) == expected_cards:
+            bottom_bias = row_center / max(height, 1)
+            span = (boxes[-1].x + boxes[-1].width - boxes[0].x) / max(width, 1)
+            score = bottom_bias + span * 0.4 + sum(box.confidence for box in boxes)
+            row_candidates.append((score, boxes))
+
+    if not row_candidates:
+        return []
+    return max(row_candidates, key=lambda item: item[0])[1]
+
+
+def bottom_row_boxes_from_columns(
+    column_segments: list[tuple[int, int]],
+    row_y: int,
+    row_height: int,
+    image_width: int,
+    image_height: int,
+    expected_cards: int,
+) -> list[CropBox]:
+    if not column_segments:
+        return []
+    left = min(start for start, _ in column_segments)
+    right = max(end for _, end in column_segments)
+    row_width = right - left
+    if row_width <= 0:
+        return []
+
+    if len(column_segments) >= expected_cards:
+        chosen = choose_bottom_row_segments(column_segments, image_width, expected_cards)
+        segment_widths = [end - start for start, end in chosen]
+        card_height = inferred_card_height(int(np.median(segment_widths)), row_height, image_height)
+        y = inferred_card_y(row_y, row_height, card_height, image_height)
+        return [
+            normalize_card_box_dimensions(
+                CropBox(
+                    x=start,
+                    y=y,
+                    width=max(24, end - start),
+                    height=card_height,
+                    confidence=0.80,
+                ),
+                image_width,
+                image_height,
+            )
+            for start, end in chosen
+        ]
+
+    slot_width = row_width / expected_cards
+    card_width = int(slot_width)
+    card_height = inferred_card_height(card_width, row_height, image_height)
+    y = inferred_card_y(row_y, row_height, card_height, image_height)
+    boxes = []
+    for index in range(expected_cards):
+        slot_left = left + index * slot_width
+        slot_center = slot_left + slot_width / 2
+        x = int(round(slot_center - card_width / 2))
+        boxes.append(
+            CropBox(
+                x=max(0, min(x, image_width - card_width)),
+                y=y,
+                width=max(24, card_width),
+                height=card_height,
+                confidence=0.68,
+            )
+        )
+    return sorted(boxes, key=lambda box: box.x)
+
+
+def inferred_card_height(card_width: int, row_height: int, image_height: int) -> int:
+    height_from_width = int(round(card_width * 1.40))
+    return max(34, min(max(row_height, height_from_width), int(image_height * 0.34)))
+
+
+def inferred_card_y(row_y: int, row_height: int, card_height: int, image_height: int) -> int:
+    missing_height = max(0, card_height - row_height)
+    y = row_y - int(missing_height * 0.22)
+    return max(0, min(y, image_height - card_height))
+
+
+def choose_bottom_row_segments(
+    column_segments: list[tuple[int, int]],
+    image_width: int,
+    expected_cards: int,
+) -> list[tuple[int, int]]:
+    if len(column_segments) <= expected_cards:
+        return column_segments
+    candidates: list[tuple[float, list[tuple[int, int]]]] = []
+    for start in range(0, len(column_segments) - expected_cards + 1):
+        group = column_segments[start : start + expected_cards]
+        widths = [end - begin for begin, end in group]
+        centers = [(begin + end) / 2 for begin, end in group]
+        gaps = [centers[index + 1] - centers[index] for index in range(expected_cards - 1)]
+        span = (group[-1][1] - group[0][0]) / max(image_width, 1)
+        width_consistency = float(np.std(widths) / max(np.mean(widths), 1))
+        gap_consistency = float(np.std(gaps) / max(np.mean(gaps), 1)) if gaps else 0.0
+        score = span - width_consistency - gap_consistency
+        candidates.append((score, group))
+    return max(candidates, key=lambda item: item[0])[1]
 
 
 def detect_mtgo_hand_row_boxes(image: np.ndarray, expected_cards: int = 7) -> list[CropBox]:

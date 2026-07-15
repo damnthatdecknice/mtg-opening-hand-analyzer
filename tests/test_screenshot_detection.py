@@ -110,3 +110,25 @@ def test_detector_infers_seven_bottom_slots_from_partial_detection() -> None:
     assert boxes == sorted(boxes, key=lambda box: box.x)
     assert 775 <= boxes[3].y <= 825
     assert 720 <= boxes[3].x <= 900
+
+
+def test_detector_slices_adjacent_bottom_hand_into_seven_cards() -> None:
+    image = np.zeros((1000, 1800, 3), dtype=np.uint8)
+    image[:] = (16, 18, 22)
+    y = 735
+    card_w, card_h = 150, 220
+    start_x = 360
+    for index in range(7):
+        x = start_x + index * card_w
+        cv2.rectangle(image, (x, y), (x + card_w - 1, y + card_h), (225, 225, 232), 3)
+        cv2.rectangle(image, (x + 8, y + 22), (x + card_w - 9, y + 124), (70, 130, 190), -1)
+        cv2.rectangle(image, (x + 8, y + 146), (x + card_w - 9, y + 211), (205, 220, 230), -1)
+
+    boxes = detect_hand_region_boxes(image)
+
+    assert len(boxes) == 7
+    assert boxes == sorted(boxes, key=lambda box: box.x)
+    assert 720 <= boxes[0].y <= 750
+    assert 335 <= boxes[0].x <= 385
+    assert 140 <= boxes[0].width <= 170
+    assert boxes[-1].x + boxes[-1].width <= start_x + card_w * 7 + 35
