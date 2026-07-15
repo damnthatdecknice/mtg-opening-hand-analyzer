@@ -7,8 +7,9 @@ import time
 from collections import Counter
 from pathlib import Path
 
+from PySide6.QtCharts import QBarCategoryAxis, QBarSeries, QBarSet, QChart, QChartView, QLineSeries, QValueAxis
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -58,7 +59,7 @@ from mtg_hand_analyzer.settings import (
     SAMPLE_DECK_PATH,
     ensure_data_dirs,
 )
-from mtg_hand_analyzer.window_capture import capture_window_to_file, find_mtgo_window, is_supported_platform
+from mtg_hand_analyzer.window_capture import capture_foreground_window_to_file, is_supported_platform
 
 
 def bundled_path(*parts: str) -> Path:
@@ -135,45 +136,50 @@ class DesktopAnalyzer(QMainWindow):
         left_layout.setSpacing(12)
         splitter.addWidget(left)
 
-        deck_buttons = QHBoxLayout()
-        deck_buttons.addWidget(QLabel("Decklist"))
-        deck_buttons.addStretch()
-        sample_button = QPushButton("Sample Deck")
-        sample_button.clicked.connect(self.load_sample_deck)
-        paste_button = QPushButton("Paste Clipboard")
-        paste_button.clicked.connect(self.paste_deck)
-        deck_buttons.addWidget(sample_button)
-        deck_buttons.addWidget(paste_button)
-        left_layout.addLayout(deck_buttons)
-
-        self.deck_text = QTextEdit()
-        self.deck_text.setObjectName("deckInput")
-        self.deck_text.setAcceptRichText(False)
-        self.deck_text.setPlaceholderText("Paste an MTG Arena decklist here.")
-        left_layout.addWidget(self.deck_text, stretch=3)
-
-        options = QHBoxLayout()
-        self.on_play = QRadioButton("On the play")
-        self.on_draw = QRadioButton("On the draw")
-        self.on_play.setChecked(True)
-        refresh_label = QLabel("Card data refreshes from Scryfall when parsing.")
-        refresh_label.setStyleSheet("color: #6da9df;")
-        options.addWidget(refresh_label)
-        options.addStretch()
-        options.addWidget(self.on_play)
-        options.addWidget(self.on_draw)
-        left_layout.addLayout(options)
-
-        self.status = QLabel("Ready.")
-        self.status.setObjectName("statusText")
-        left_layout.addWidget(self.status)
+        analysis_group = QGroupBox("Analysis")
+        analysis_group.setObjectName("glassPanel")
+        analysis_layout = QVBoxLayout(analysis_group)
+        self.result_tabs = QTabWidget()
+        self.output = QTextEdit()
+        self.output.setReadOnly(True)
+        self.output.setPlainText("Paste a decklist, confirm seven cards, then analyze.")
+        self.overview_charts = QWidget()
+        self.overview_chart_layout = QVBoxLayout(self.overview_charts)
+        self.overview_chart_layout.setContentsMargins(0, 0, 0, 0)
+        self.overview_chart_layout.setSpacing(10)
+        overview_panel = QWidget()
+        overview_layout = QVBoxLayout(overview_panel)
+        overview_layout.setContentsMargins(0, 0, 0, 0)
+        overview_layout.addWidget(self.output, stretch=1)
+        overview_layout.addWidget(self.overview_charts, stretch=1)
+        self.deep_output = QTextEdit()
+        self.deep_output.setReadOnly(True)
+        self.deep_output.setPlainText("Detailed data will appear after analysis.")
+        self.mana_curve_panel = QWidget()
+        self.mana_curve_layout = QVBoxLayout(self.mana_curve_panel)
+        self.mana_curve_layout.setContentsMargins(0, 0, 0, 0)
+        self.mana_curve_layout.setSpacing(10)
+        self.mulligan_output = QTextEdit()
+        self.mulligan_output.setReadOnly(True)
+        self.mulligan_output.setPlainText("Mulligan comparison will appear after analysis.")
+        self.other_output = QTextEdit()
+        self.other_output.setReadOnly(True)
+        self.other_output.setPlainText("Competitive notes will appear after analysis.")
+        self.result_tabs.addTab(overview_panel, "Overview")
+        self.result_tabs.addTab(self.deep_output, "Deep Data")
+        self.result_tabs.addTab(self.mana_curve_panel, "Mana Curve")
+        self.result_tabs.addTab(self.mulligan_output, "Mulligan")
+        self.result_tabs.addTab(self.other_output, "OTHER")
+        analysis_layout.addWidget(self.result_tabs)
+        left_layout.addWidget(analysis_group, stretch=5)
+        self.reset_analysis_charts()
 
         hand_group = QGroupBox("Confirmed Opening Hand")
         hand_group.setObjectName("glassPanel")
         self.hand_layout = QGridLayout(hand_group)
         self.hand_layout.setHorizontalSpacing(8)
         self.hand_layout.setVerticalSpacing(8)
-        left_layout.addWidget(hand_group, stretch=2)
+        left_layout.addWidget(hand_group, stretch=1)
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
@@ -204,28 +210,39 @@ class DesktopAnalyzer(QMainWindow):
         image_layout.addWidget(self.crop_scroll)
         right_layout.addWidget(image_group, stretch=1)
 
-        analysis_group = QGroupBox("Analysis")
-        analysis_group.setObjectName("glassPanel")
-        analysis_layout = QVBoxLayout(analysis_group)
-        self.result_tabs = QTabWidget()
-        self.output = QTextEdit()
-        self.output.setReadOnly(True)
-        self.output.setPlainText("Paste a decklist, confirm seven cards, then analyze.")
-        self.deep_output = QTextEdit()
-        self.deep_output.setReadOnly(True)
-        self.deep_output.setPlainText("Detailed data will appear after analysis.")
-        self.mulligan_output = QTextEdit()
-        self.mulligan_output.setReadOnly(True)
-        self.mulligan_output.setPlainText("Mulligan comparison will appear after analysis.")
-        self.other_output = QTextEdit()
-        self.other_output.setReadOnly(True)
-        self.other_output.setPlainText("Competitive notes will appear after analysis.")
-        self.result_tabs.addTab(self.output, "Overview")
-        self.result_tabs.addTab(self.deep_output, "Deep Data")
-        self.result_tabs.addTab(self.mulligan_output, "Mulligan")
-        self.result_tabs.addTab(self.other_output, "OTHER")
-        analysis_layout.addWidget(self.result_tabs)
-        right_layout.addWidget(analysis_group, stretch=1)
+        deck_group = QGroupBox("Deck Matrix")
+        deck_group.setObjectName("glassPanel")
+        deck_layout = QVBoxLayout(deck_group)
+        deck_buttons = QHBoxLayout()
+        deck_buttons.addWidget(QLabel("Paste your main deck first. Put Sideboard on its own line for sideboard cards."))
+        deck_buttons.addStretch()
+        sample_button = QPushButton("Sample Deck")
+        sample_button.clicked.connect(self.load_sample_deck)
+        paste_button = QPushButton("Paste Clipboard")
+        paste_button.clicked.connect(self.paste_deck)
+        deck_buttons.addWidget(sample_button)
+        deck_buttons.addWidget(paste_button)
+        deck_layout.addLayout(deck_buttons)
+        self.deck_text = QTextEdit()
+        self.deck_text.setObjectName("deckInput")
+        self.deck_text.setAcceptRichText(False)
+        self.deck_text.setPlaceholderText("Paste an MTG Arena decklist here.")
+        deck_layout.addWidget(self.deck_text, stretch=1)
+        options = QHBoxLayout()
+        self.on_play = QRadioButton("On the play")
+        self.on_draw = QRadioButton("On the draw")
+        self.on_play.setChecked(True)
+        refresh_label = QLabel("Card data refreshes from Scryfall when parsing.")
+        refresh_label.setStyleSheet("color: #6da9df;")
+        options.addWidget(refresh_label)
+        options.addStretch()
+        options.addWidget(self.on_play)
+        options.addWidget(self.on_draw)
+        deck_layout.addLayout(options)
+        self.status = QLabel("Ready.")
+        self.status.setObjectName("statusText")
+        deck_layout.addWidget(self.status)
+        right_layout.addWidget(deck_group, stretch=1)
 
     def apply_theme(self) -> None:
         background = bundled_path("assets", "jace_user_background.png").as_posix()
@@ -435,20 +452,18 @@ class DesktopAnalyzer(QMainWindow):
         if not is_supported_platform():
             QMessageBox.information(self, "MTGO Capture", "MTGO window capture is only available on Windows.")
             return
-        window = find_mtgo_window()
-        if window is None:
-            QMessageBox.information(
-                self,
-                "MTGO Capture",
-                "Bring the Magic: The Gathering Online match window with your hand visible to the foreground, then try again. As a fallback, I look for an MTGO window title containing 1-on-1 or 3-4.",
-            )
-            return
         path = Path(tempfile.gettempdir()) / "mtg_hand_analyzer_mtgo_window.png"
         try:
-            capture_window_to_file(window, path)
+            self.showMinimized()
+            QApplication.processEvents()
+            time.sleep(0.65)
+            capture_foreground_window_to_file(path)
         except Exception as exc:
             QMessageBox.critical(self, "MTGO Capture", f"The MTGO window could not be captured:\n{exc}")
             return
+        finally:
+            self.showNormal()
+            self.activateWindow()
         self.process_image_path(path)
 
     def process_image_path(self, image_path: Path) -> None:
@@ -517,6 +532,7 @@ class DesktopAnalyzer(QMainWindow):
         self.deep_output.setPlainText("Detailed data will appear after analysis.")
         self.mulligan_output.setPlainText("Mulligan comparison will appear after analysis.")
         self.other_output.setPlainText("Competitive notes will appear after analysis.")
+        self.reset_analysis_charts()
         self.status.setText("Recognition finished. Confirm/correct the seven dropdowns, then click Analyze.")
 
     def current_hand(self) -> list[str]:
@@ -527,6 +543,191 @@ class DesktopAnalyzer(QMainWindow):
 
     def effective_counts_for_hand(self, hand: list[str]) -> tuple[dict[str, int], list[str]]:
         return analysis_counts_for_hand(self.deck.main_counts(), self.deck.sideboard_counts(), hand)
+
+    def clear_layout(self, layout: QVBoxLayout) -> None:
+        while layout.count():
+            item = layout.takeAt(0)
+            if widget := item.widget():
+                widget.deleteLater()
+
+    def reset_analysis_charts(self) -> None:
+        self.clear_layout(self.overview_chart_layout)
+        self.clear_layout(self.mana_curve_layout)
+        self.overview_chart_layout.addWidget(self.chart_placeholder("Charts will appear here after analysis."))
+        self.mana_curve_layout.addWidget(self.chart_placeholder("Deck mana curve will appear here after analysis."))
+
+    def chart_placeholder(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setMinimumHeight(150)
+        label.setStyleSheet(
+            "background: rgba(3, 8, 17, 210); color: #adc3dd; "
+            "border: 1px solid rgba(128, 205, 255, 50); border-radius: 8px;"
+        )
+        return label
+
+    def chart_view(self, chart: QChart, height: int = 230) -> QChartView:
+        chart.setBackgroundBrush(QColor(5, 10, 19, 230))
+        chart.setTitleBrush(QColor("#f4f9ff"))
+        chart.legend().setLabelColor(QColor("#f4f9ff"))
+        chart.legend().setVisible(True)
+        view = QChartView(chart)
+        view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        view.setMinimumHeight(height)
+        view.setMaximumHeight(height + 50)
+        view.setStyleSheet(
+            "background: rgba(3, 8, 17, 220); border: 1px solid rgba(128, 205, 255, 56); border-radius: 8px;"
+        )
+        return view
+
+    def style_axis(self, axis: QValueAxis | QBarCategoryAxis) -> None:
+        axis.setLabelsColor(QColor("#adc3dd"))
+        axis.setTitleBrush(QColor("#adc3dd"))
+        axis.setGridLineColor(QColor(85, 135, 175, 75))
+        axis.setLinePenColor(QColor("#406b92"))
+
+    def line_chart(self, title: str, rows: list[dict], height: int = 230) -> QWidget:
+        if not rows:
+            return self.chart_placeholder(f"{title}: not enough data yet.")
+        chart = QChart()
+        chart.setTitle(title)
+        series_by_name: dict[str, QLineSeries] = {}
+        for row in rows:
+            name = row["series"]
+            series = series_by_name.setdefault(name, QLineSeries())
+            series.setName(name)
+            series.append(float(row["turn"]), float(row["chance"]))
+        for series in series_by_name.values():
+            chart.addSeries(series)
+
+        turns = [int(row["turn"]) for row in rows]
+        max_chance = max(float(row["chance"]) for row in rows)
+        axis_x = QValueAxis()
+        axis_x.setRange(min(turns), max(turns))
+        axis_x.setTickCount(max(2, max(turns) - min(turns) + 1))
+        axis_x.setLabelFormat("%d")
+        axis_x.setTitleText("Turn")
+        axis_y = QValueAxis()
+        axis_y.setRange(0, min(100, max(25, int(max_chance + 10))))
+        axis_y.setLabelFormat("%.0f%%")
+        axis_y.setTitleText("Chance")
+        self.style_axis(axis_x)
+        self.style_axis(axis_y)
+        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
+        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
+        for series in series_by_name.values():
+            series.attachAxis(axis_x)
+            series.attachAxis(axis_y)
+        return self.chart_view(chart, height)
+
+    def bar_chart(self, title: str, values: dict[str, int], height: int = 260) -> QWidget:
+        if not values:
+            return self.chart_placeholder(f"{title}: parse a deck first.")
+        categories = list(values)
+        bar_set = QBarSet("Cards")
+        bar_set.setColor(QColor("#65d8ff"))
+        for category in categories:
+            bar_set.append(values[category])
+        series = QBarSeries()
+        series.append(bar_set)
+        chart = QChart()
+        chart.setTitle(title)
+        chart.addSeries(series)
+
+        axis_x = QBarCategoryAxis()
+        axis_x.append(categories)
+        axis_y = QValueAxis()
+        axis_y.setRange(0, max(4, max(values.values()) + 2))
+        axis_y.setLabelFormat("%d")
+        axis_y.setTitleText("Cards")
+        self.style_axis(axis_x)
+        self.style_axis(axis_y)
+        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
+        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
+        series.attachAxis(axis_x)
+        series.attachAxis(axis_y)
+        return self.chart_view(chart, height)
+
+    def land_plan_chart_rows(self, report: dict) -> list[dict]:
+        rows: list[dict] = []
+        land_drop_probs = report.get("land_drop_probabilities", {})
+        draw_adjusted_drop_probs = report.get("draw_adjusted_land_drop_probabilities", {})
+        effective_drop_probs = report.get("effective_land_drop_probabilities", {})
+        turns = sorted(
+            {
+                int(label.split(" by turn ")[-1])
+                for label in [*land_drop_probs.keys(), *effective_drop_probs.keys()]
+                if " by turn " in label
+            }
+        )
+        for turn in turns:
+            land_key = f"Hit land {turn} by turn {turn}"
+            draw_key = f"Hit land {turn} by turn {turn} with draw/look spells"
+            source_key = f"Hit source {turn} by turn {turn}"
+            if land_key in land_drop_probs:
+                rows.append({"turn": turn, "chance": round(land_drop_probs[land_key] * 100, 1), "series": "Natural lands"})
+            if draw_key in draw_adjusted_drop_probs:
+                rows.append(
+                    {
+                        "turn": turn,
+                        "chance": round(draw_adjusted_drop_probs[draw_key] * 100, 1),
+                        "series": "With draw/look spells",
+                    }
+                )
+            if source_key in effective_drop_probs:
+                rows.append(
+                    {
+                        "turn": turn,
+                        "chance": round(effective_drop_probs[source_key] * 100, 1),
+                        "series": "Land or land-equivalent",
+                    }
+                )
+        return rows
+
+    def draw_impact_chart_rows(self, report: dict) -> list[dict]:
+        rows: list[dict] = []
+        for turn, impact in report.get("card_draw_impact", {}).items():
+            rows.append(
+                {
+                    "turn": turn,
+                    "chance": round(impact["next_land_natural"] * 100, 1),
+                    "series": "Natural next land",
+                }
+            )
+            rows.append(
+                {
+                    "turn": turn,
+                    "chance": round(impact["next_land_with_hand_draw"] * 100, 1),
+                    "series": "With draw/look spells",
+                }
+            )
+        return rows
+
+    def deck_curve_counts(self) -> dict[str, int]:
+        buckets: dict[str, int] = {"Land": 0, "0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6+": 0}
+        for name, qty in self.deck.main_counts().items():
+            card = self.cards.get(name)
+            if not card:
+                continue
+            if card.is_land:
+                buckets["Land"] += qty
+                continue
+            value = int(card.mana_value)
+            key = "6+" if value >= 6 else str(value)
+            buckets[key] += qty
+        return buckets
+
+    def update_analysis_charts(self, report: dict) -> None:
+        self.clear_layout(self.overview_chart_layout)
+        self.clear_layout(self.mana_curve_layout)
+        self.overview_chart_layout.addWidget(
+            self.line_chart("Land Drops Through Turn 8", self.land_plan_chart_rows(report), height=220)
+        )
+        self.overview_chart_layout.addWidget(
+            self.line_chart("Next-Land Odds: Natural vs Draw/Look Spells", self.draw_impact_chart_rows(report), height=220)
+        )
+        self.mana_curve_layout.addWidget(self.bar_chart("Main Deck Mana Curve", self.deck_curve_counts(), height=300))
+        self.mana_curve_layout.addStretch()
 
     def analyze(self) -> None:
         hand = self.current_hand()
@@ -554,6 +755,7 @@ class DesktopAnalyzer(QMainWindow):
         self.deep_output.setPlainText(self.format_deep_report(hand, report))
         self.mulligan_output.setPlainText(self.format_mulligan_report(hand, report))
         self.other_output.setPlainText(self.format_other_report(hand, report))
+        self.update_analysis_charts(report)
         self.result_tabs.setCurrentIndex(0)
         self.status.setText("Analysis complete.")
 

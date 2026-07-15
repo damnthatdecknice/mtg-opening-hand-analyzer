@@ -155,6 +155,13 @@ def find_mtgo_window(*, prefer_foreground: bool = True) -> WindowInfo | None:
     return max(matches, key=lambda window: window.width * window.height)
 
 
+def capture_foreground_window_to_file(output_path: Path) -> Path:
+    window = foreground_window()
+    if window is None:
+        raise RuntimeError("No foreground window was available to capture.")
+    return capture_window_to_file(window, output_path)
+
+
 def capture_window_to_file(window: WindowInfo, output_path: Path) -> Path:
     if not is_supported_platform():
         raise RuntimeError("MTGO window capture is only available on Windows.")
