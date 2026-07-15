@@ -1064,6 +1064,24 @@ def run_analysis(hand: list[str], play_draw: PlayDraw, trials: int, seed: int) -
     return report, cards
 
 
+def save_confirmed_hand_and_analyze(hand: list[str], message: str) -> None:
+    st.session_state.confirmed_hand = hand
+    with st.spinner("Saving hand and running analysis..."):
+        try:
+            report, cards = run_analysis(
+                hand,
+                PlayDraw(st.session_state.play_draw),
+                int(st.session_state.trials),
+                int(st.session_state.seed),
+            )
+        except ValueError as exc:
+            st.error(str(exc))
+            return
+    st.session_state.last_report = report
+    st.session_state.last_cards = {name: card.model_dump() for name, card in cards.items()}
+    st.success(message + " Analysis updated.")
+
+
 inject_theme()
 init_state()
 render_header()
@@ -1128,8 +1146,7 @@ with hand_tab:
                 for error in errors:
                     st.error(error)
                 if not errors:
-                    st.session_state.confirmed_hand = pasted
-                    st.success("Pasted hand saved for analysis.")
+                    save_confirmed_hand_and_analyze(pasted, "Pasted hand saved.")
             defaults = st.session_state.confirmed_hand if len(st.session_state.confirmed_hand) == 7 else []
             selected: list[str] = []
             cols = st.columns(7)
@@ -1151,8 +1168,7 @@ with hand_tab:
             for error in errors:
                 st.error(error)
             if st.button("Use this hand", disabled=bool(errors)):
-                st.session_state.confirmed_hand = selected
-                st.success("Hand saved for analysis.")
+                save_confirmed_hand_and_analyze(selected, "Hand saved.")
     with hand_spacer_col:
         st.empty()
 
@@ -1234,8 +1250,7 @@ with shot_tab:
             for error in errors:
                 st.error(error)
             if st.button("Use recognized hand", disabled=bool(errors)):
-                st.session_state.confirmed_hand = confirmed
-                st.success("Recognized hand saved for analysis.")
+                save_confirmed_hand_and_analyze(confirmed, "Recognized hand saved.")
     with shot_spacer_col:
         st.empty()
 
