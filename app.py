@@ -928,10 +928,10 @@ def best_mulligan_six(opening_seven: list[str], cards: dict[str, CardData]) -> t
     return best_hand, best_bottom, best_score
 
 
-def mulligan_comparison_lines(counts: dict[str, int], cards: dict[str, CardData], current_score: int, samples: int = 1500) -> list[str]:
+def mulligan_simulation_summary(counts: dict[str, int], cards: dict[str, CardData], current_score: int, samples: int = 1500) -> dict:
     deck_cards = [name for name, qty in counts.items() for _ in range(qty)]
     if len(deck_cards) < 7:
-        return ["Not enough main-deck cards to simulate a fresh 7."]
+        return {"available": False, "message": "Not enough main-deck cards to simulate a fresh 7."}
     rng = random.Random(20260714)
     scores: list[int] = []
     bottomed: Counter[str] = Counter()
@@ -952,14 +952,37 @@ def mulligan_comparison_lines(counts: dict[str, int], cards: dict[str, CardData]
     p75 = scores[(len(scores) * 3) // 4]
     common_bottoms = ", ".join(f"{name} ({count / samples:.0%})" for name, count in bottomed.most_common(3))
     land_mix = ", ".join(f"{lands} land: {count / samples:.0%}" for lands, count in sorted(land_counts.items()))
+    return {
+        "available": True,
+        "average": average,
+        "median": median,
+        "better": better,
+        "same_or_better": same_or_better,
+        "p25": p25,
+        "p75": p75,
+        "common_bottoms": common_bottoms,
+        "land_mix": land_mix,
+    }
+
+
+def mulligan_comparison_lines(
+    counts: dict[str, int],
+    cards: dict[str, CardData],
+    current_score: int,
+    samples: int = 1500,
+    summary: dict | None = None,
+) -> list[str]:
+    summary = summary or mulligan_simulation_summary(counts, cards, current_score, samples)
+    if not summary.get("available"):
+        return [str(summary.get("message", "Not enough main-deck cards to simulate a fresh 7."))]
     return [
         f"Current hand texture: {current_score}/100.",
-        f"Simulated mulligan-to-six average: {average:.1f}/100; median: {median}/100.",
-        f"Middle half of mulligan outcomes: {p25}/100 to {p75}/100.",
-        f"Fresh 7 then bottom 1 is better about {better:.1%} of the time.",
-        f"Fresh 7 then bottom 1 is at least as good about {same_or_better:.1%} of the time.",
-        f"Typical kept-six land counts: {land_mix}.",
-        f"Most commonly bottomed cards: {common_bottoms}.",
+        f"Simulated mulligan-to-six average: {summary['average']:.1f}/100; median: {summary['median']}/100.",
+        f"Middle half of mulligan outcomes: {summary['p25']}/100 to {summary['p75']}/100.",
+        f"Fresh 7 then bottom 1 is better about {summary['better']:.1%} of the time.",
+        f"Fresh 7 then bottom 1 is at least as good about {summary['same_or_better']:.1%} of the time.",
+        f"Typical kept-six land counts: {summary['land_mix']}.",
+        f"Most commonly bottomed cards: {summary['common_bottoms']}.",
         "This is a seeded simulation, not exact matchup EV.",
     ]
 
@@ -1460,6 +1483,7 @@ with results_tab:
             spells = [name for name in hand if cards.get(name) and not cards[name].is_land]
             draw_sources = report["hand_draw_sources"]
             library_draw_sources = report["library_draw_sources"]
+            mulligan_summary = mulligan_simulation_summary(main_counts(), cards, score)
             observed_sideboard = report.get("observed_sideboard_cards", [])
             if observed_sideboard:
                 st.info(
@@ -1470,11 +1494,16 @@ with results_tab:
 
             overview, deep, curve, mulligan, other = st.tabs(["Overview", "Deep Data", "Mana Curve", "Mulligan", "OTHER"])
             with overview:
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Lands", report["lands_in_hand"])
-                m2.metric("Effective sources", report.get("effective_lands_in_hand", report["lands_in_hand"]))
-                m3.metric("Avg mana value", f"{report['average_mana_value']:.2f}")
-                m4.metric("Texture", f"{score}/100")
+                m1, m2, m3, m4, m5 = st.columns(5)
+                m1.metric("Hand texture", f"{score}/100")
+                m2.metric("Lands in hand", report["lands_in_hand"])
+                m3.metric("3rd land by T3", fmt_pct(land_turn_3))
+                if mulligan_summary.get("available"):
+                    m4.metric("Mull to 6 avg", f"{mulligan_summary['average']:.1f}/100")
+                    m5.metric("Mull to 6 median", f"{mulligan_summary['median']}/100")
+                else:
+                    m4.metric("Mull to 6 avg", "n/a")
+                    m5.metric("Mull to 6 median", "n/a")
                 st.write("**Opening Hand Tags**")
                 st.write(" ".join(f"`{tag}`" for tag in opening_hand_tags(report, hand, cards, castability)))
                 st.write("**Keep or Mulligan Signals**")
@@ -1515,7 +1544,7 @@ with results_tab:
                 else:
                     st.write("- No clear draw/look spell in the confirmed hand.")
                 st.write("**Mulligan Comparison**")
-                for line in mulligan_comparison_lines(main_counts(), cards, score)[:5]:
+                for line in mulligan_comparison_lines(main_counts(), cards, score, summary=mulligan_summary)[:5]:
                     st.write("- " + line)
                 st.caption("Full mulligan details remain in the Mulligan tab.")
                 st.write("**Ramp Check**")
@@ -1640,7 +1669,7 @@ with results_tab:
                 st.write(f"- Hand texture score: {score}/100 ({score_label(score)})")
                 st.write("- " + land_sentence(report["lands_in_hand"], land_turn_3, land_turn_4))
                 st.write("**Fresh 7, Bottom 1**")
-                for line in mulligan_comparison_lines(main_counts(), cards, score):
+                for line in mulligan_comparison_lines(main_counts(), cards, score, summary=mulligan_summary):
                     st.write("- " + line)
                 st.caption("This compares your current 7 to a seeded London mulligan to 6.")
 
