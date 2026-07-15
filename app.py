@@ -24,7 +24,7 @@ from mtg_hand_analyzer.card_draw import draw_look_depth
 from mtg_hand_analyzer.card_recognition import recognize_crops
 from mtg_hand_analyzer.deck_parser import parse_decklist, structural_warnings, validate_hand_counts
 from mtg_hand_analyzer.land_inference import enrich_card_data
-from mtg_hand_analyzer.mana import parse_mana_cost
+from mtg_hand_analyzer.mana import mana_value_from_cost, parse_mana_cost
 from mtg_hand_analyzer.models import CardData, PlayDraw
 from mtg_hand_analyzer.screenshot_detection import detect_hand_region_boxes, load_image, save_crops
 from mtg_hand_analyzer.settings import CARD_DB_PATH, CARD_FIXTURE_PATH, SAMPLE_DECK_PATH, ensure_data_dirs
@@ -369,6 +369,67 @@ def deck_curve_rows(counts: dict[str, int], cards: dict[str, CardData]) -> list[
     return [{"slot": key, "cards": value} for key, value in buckets.items()]
 
 
+def spell_curve_rows(counts: dict[str, int], cards: dict[str, CardData]) -> list[dict]:
+    return [row for row in deck_curve_rows(counts, cards) if row["slot"] != "Land"]
+
+
+def checked_card_mana_value(card: CardData) -> tuple[float | None, str]:
+    direct_value = mana_value_from_cost(card.mana_cost)
+    if direct_value or card.mana_cost:
+        return direct_value, "mana cost"
+    for face in card.faces:
+        if "Land" not in face.type_line and face.mana_cost:
+            return mana_value_from_cost(face.mana_cost), f"face: {face.name}"
+    if card.is_land:
+        return 0.0, "land"
+    return None, "Scryfall value only"
+
+
+def mana_value_audit_rows(counts: dict[str, int], cards: dict[str, CardData]) -> list[dict]:
+    rows = []
+    for name, qty in counts.items():
+        card = cards.get(name)
+        if not card:
+            rows.append(
+                {
+                    "status": "Missing",
+                    "card": name,
+                    "qty": qty,
+                    "app mana value": "",
+                    "symbol check": "",
+                    "check source": "No card data found",
+                    "mana cost used": "",
+                    "type": "",
+                    "multiface": "",
+                }
+            )
+            continue
+        checked_value, check_source = checked_card_mana_value(card)
+        if checked_value is None:
+            status = "Scryfall only"
+            checked_display = ""
+        elif abs(card.mana_value - checked_value) > 0.01:
+            status = "Review"
+            checked_display = checked_value
+        else:
+            status = "OK"
+            checked_display = checked_value
+        rows.append(
+            {
+                "status": status,
+                "card": name,
+                "qty": qty,
+                "app mana value": card.mana_value,
+                "symbol check": checked_display,
+                "check source": check_source,
+                "mana cost used": card.mana_cost or "(none)",
+                "type": card.type_line,
+                "multiface": "yes" if card.is_multiface else "no",
+            }
+        )
+    return rows
+
+
 def run_analysis(hand: list[str], play_draw: PlayDraw, trials: int, seed: int) -> tuple[dict, dict[str, CardData]]:
     counts = main_counts()
     cards = resolve_cards(list(counts))
@@ -380,7 +441,7 @@ init_state()
 st.title("MTG Opening Hand Analyzer")
 st.caption("Opening-hand math for Magic. Hosted web use means uploaded screenshots are processed on this app server.")
 
-deck_tab, hand_tab, shot_tab, results_tab = st.tabs(["Deck", "Hand", "Screenshot", "Results"])
+deck_tab, hand_tab, shot_tab, curve_tab, results_tab = st.tabs(["Deck", "Hand", "Screenshot", "Mana Curve", "Results"])
 
 with deck_tab:
     st.subheader("Deck")
@@ -512,6 +573,60 @@ with shot_tab:
         if st.button("Use recognized hand", disabled=bool(errors)):
             st.session_state.confirmed_hand = confirmed
             st.success("Recognized hand saved for analysis.")
+
+with curve_tab:
+    st.subheader("Deck Mana Curve")
+    counts = main_counts()
+    if not counts:
+        st.warning("Paste a deck first.")
+    else:
+        st.write("Refresh card data, then use this tab to catch bad mana values before analyzing hands.")
+        if st.button("Refresh deck mana values from Scryfall", type="primary"):
+            with st.spinner("Refreshing Scryfall data and checking mana values..."):
+                st.session_state.curve_cards = {
+                    name: card.model_dump()
+                    for name, card in resolve_cards(list(counts)).items()
+                }
+            st.success("Deck mana values refreshed.")
+
+        raw_curve_cards = st.session_state.get("curve_cards")
+        if not raw_curve_cards:
+            st.info("Click refresh to build the curve and mana value audit.")
+        else:
+            cards = {name: CardData.model_validate(payload) for name, payload in raw_curve_cards.items()}
+            missing = [name for name in counts if name not in cards]
+            if missing:
+                st.warning("Some current deck cards have not been refreshed yet. Click refresh after deck edits.")
+
+            land_total = sum(qty for name, qty in counts.items() if cards.get(name) and cards[name].is_land)
+            spell_total = sum(qty for name, qty in counts.items() if cards.get(name) and not cards[name].is_land)
+            avg_spell_mv_values = [
+                cards[name].mana_value
+                for name, qty in counts.items()
+                for _ in range(qty)
+                if cards.get(name) and not cards[name].is_land
+            ]
+            avg_spell_mv = sum(avg_spell_mv_values) / len(avg_spell_mv_values) if avg_spell_mv_values else 0.0
+
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Lands", land_total)
+            c2.metric("Spells", spell_total)
+            c3.metric("Avg spell mana value", f"{avg_spell_mv:.2f}")
+
+            st.write("**Spell Mana Curve**")
+            curve_rows = spell_curve_rows(counts, cards)
+            st.bar_chart(curve_rows, x="slot", y="cards")
+            st.dataframe(curve_rows, hide_index=True, width="stretch")
+
+            st.write("**Mana Value Verification**")
+            audit_rows = mana_value_audit_rows(counts, cards)
+            issue_count = sum(1 for row in audit_rows if row["status"] in {"Review", "Missing", "Scryfall only"})
+            if issue_count:
+                st.warning(f"{issue_count} card(s) need a closer look.")
+            else:
+                st.success("All deck mana values passed the symbol/face check.")
+            st.dataframe(audit_rows, hide_index=True, width="stretch")
+            st.caption("MDFCs and other multiface cards are checked against the castable nonland face when possible; lands are counted as 0.")
 
 with results_tab:
     st.subheader("Results")
