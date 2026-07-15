@@ -253,13 +253,13 @@ def inject_theme() -> None:
             border-radius: 8px;
           }
           div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-            min-height: 3rem;
+            min-height: 4.5rem;
           }
           div[data-testid="stSelectbox"] div[data-baseweb="select"] {
             min-width: 0;
           }
           div[data-testid="stSelectbox"] div[data-baseweb="select"] span {
-            font-size: 1rem;
+            font-size: 1.5rem;
             white-space: normal;
             line-height: 1.2;
           }
@@ -373,6 +373,30 @@ def inject_theme() -> None:
           }
           .section-card .mtg-subtitle {
             line-height: 1.55;
+          }
+          .crop-preview-strip {
+            display: flex;
+            gap: 18px;
+            margin: 18px 0 16px;
+            max-width: min(1420px, 98vw);
+            overflow-x: auto;
+            padding: 10px 2px 16px;
+          }
+          .crop-preview-card {
+            flex: 0 0 auto;
+            text-align: center;
+          }
+          .crop-preview-card img {
+            background: rgba(3, 8, 17, 0.86);
+            border: 1px solid rgba(128, 205, 255, 0.32);
+            border-radius: 6px;
+            box-shadow: 0 14px 30px rgba(0,0,0,0.38);
+            width: clamp(155px, 10.8vw, 215px);
+          }
+          .crop-preview-card figcaption {
+            color: var(--jace-muted);
+            font-weight: 800;
+            margin-top: 8px;
           }
           @media (max-width: 900px) {
             .jace-bg-layer {
@@ -599,6 +623,20 @@ def ocr_result_map() -> dict[int, dict]:
     return mapped
 
 
+def crop_preview_strip(crop_paths: list[Path]) -> None:
+    cards = []
+    for idx, path in enumerate(crop_paths):
+        cards.append(
+            f"""
+            <figure class="crop-preview-card">
+              <img src="{image_data_url(path)}" alt="Crop {idx + 1}" />
+              <figcaption>Crop {idx + 1}</figcaption>
+            </figure>
+            """
+        )
+    st.markdown(f"<div class=\"crop-preview-strip\">{''.join(cards)}</div>", unsafe_allow_html=True)
+
+
 def process_screenshot(image_path: Path, prefix: str) -> None:
     st.image(Image.open(image_path), caption="Screenshot", width="stretch")
     image = load_image(image_path)
@@ -615,10 +653,7 @@ def process_screenshot(image_path: Path, prefix: str) -> None:
     crop_paths = save_crops(image, boxes, prefix=prefix)
     st.session_state.boxes = [box.model_dump() for box in boxes]
     st.session_state.crop_paths = [str(path) for path in crop_paths]
-    crop_cols = st.columns(7, gap="small")
-    for idx, path in enumerate(crop_paths):
-        with crop_cols[idx]:
-            st.image(str(path), caption=f"Crop {idx + 1}")
+    crop_preview_strip(crop_paths)
     if crop_paths:
         ocr_payload = title_ocr_component(
             crops=[{"id": index, "dataUrl": image_data_url(path)} for index, path in enumerate(crop_paths)],
