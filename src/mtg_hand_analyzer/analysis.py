@@ -20,6 +20,8 @@ from mtg_hand_analyzer.probability import (
     remove_hand_from_deck,
 )
 
+TURN_PROBABILITY_RANGE = range(2, 9)
+
 
 def analyze_hand(
     main_counts: dict[str, int],
@@ -50,7 +52,7 @@ def analyze_hand(
     library_size = sum(library.values())
 
     land_probs: dict[str, ProbabilityDetail] = {}
-    for turn in range(2, 6):
+    for turn in TURN_PROBABILITY_RANGE:
         draws = draws_by_beginning_of_turn(turn, play_draw)
         land_probs[f"Next land by turn {turn}"] = probability_detail(
             f"Next land by turn {turn}", library, land_names, draws, 1
@@ -63,10 +65,10 @@ def analyze_hand(
             draws_by_beginning_of_turn(target, play_draw),
             target,
         )
-        for target in [2, 3, 4]
+        for target in TURN_PROBABILITY_RANGE
     }
     effective_land_probs: dict[str, ProbabilityDetail] = {}
-    for turn in range(2, 6):
+    for turn in TURN_PROBABILITY_RANGE:
         draws = draws_by_beginning_of_turn(turn, play_draw)
         effective_land_probs[f"Next land/equivalent by turn {turn}"] = probability_detail(
             f"Next land/equivalent by turn {turn}", library, effective_land_names, draws, 1
@@ -79,7 +81,7 @@ def analyze_hand(
             draws_by_beginning_of_turn(target, play_draw),
             target,
         )
-        for target in [2, 3, 4]
+        for target in TURN_PROBABILITY_RANGE
     }
 
     category_probs: dict[str, list[ProbabilityDetail]] = {}
@@ -93,7 +95,7 @@ def analyze_hand(
                 draws_by_beginning_of_turn(turn, play_draw),
                 1,
             )
-            for turn in range(2, 6)
+            for turn in TURN_PROBABILITY_RANGE
         ]
 
     castability = castability_monte_carlo(hand, library, cards, play_draw, trials=trials, seed=seed)
@@ -104,7 +106,7 @@ def analyze_hand(
     hand_land_equivalent_sources = land_equivalent_sources(cards, set(hand))
     library_land_equivalent_sources = land_equivalent_sources(cards, set(library))
     card_draw_impact = {}
-    for turn in range(2, 6):
+    for turn in TURN_PROBABILITY_RANGE:
         natural_draws = draws_by_beginning_of_turn(turn, play_draw)
         extra_looks = expected_extra_looks_by_turn(hand_draw_sources, castability, turn)
         card_draw_impact[turn] = {

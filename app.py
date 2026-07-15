@@ -949,7 +949,14 @@ def land_plan_chart_rows(report: dict) -> list[dict]:
     rows: list[dict] = []
     land_drop_probs = report.get("land_drop_probabilities", {})
     effective_drop_probs = report.get("effective_land_drop_probabilities", {})
-    for turn in [2, 3, 4]:
+    turns = sorted(
+        {
+            int(label.split(" by turn ")[-1])
+            for label in [*land_drop_probs.keys(), *effective_drop_probs.keys()]
+            if " by turn " in label
+        }
+    )
+    for turn in turns:
         land_key = f"Hit land {turn} by turn {turn}"
         source_key = f"Hit source {turn} by turn {turn}"
         if land_key in land_drop_probs:
@@ -968,7 +975,8 @@ def land_plan_chart_rows(report: dict) -> list[dict]:
                     "series": "Land or land-equivalent",
                 }
             )
-        rows.append({"turn": turn, "chance": 75.0, "series": "75% keep benchmark"})
+        if turn <= 4:
+            rows.append({"turn": turn, "chance": 75.0, "series": "75% keep benchmark"})
     return rows
 
 
@@ -1407,7 +1415,9 @@ with results_tab:
                 st.write("- " + effective_source_sentence(report))
                 st.write("- " + card_draw_sentence(draw_sources, library_draw_sources))
                 st.write("**Land Drop Plan**")
-                st.line_chart(land_plan_chart_rows(report), x="turn", y="chance", color="series", height=260)
+                chart_col, _chart_space = st.columns([0.68, 0.32])
+                with chart_col:
+                    st.line_chart(land_plan_chart_rows(report), x="turn", y="chance", color="series", height=220)
                 if land_turn_3 >= 0.75:
                     st.success(f"Third-land check: {fmt_pct(land_turn_3)} by turn 3. This clears the 75% planning benchmark.")
                 else:
@@ -1429,7 +1439,9 @@ with results_tab:
                         st.write(f"- {detail}: {fmt_pct(report['land_probabilities'][detail].probability)}")
                 st.write("**Card Draw and Looks**")
                 if draw_sources:
-                    st.line_chart(draw_impact_chart_rows(report), x="turn", y="chance", color="series", height=230)
+                    chart_col, _chart_space = st.columns([0.68, 0.32])
+                    with chart_col:
+                        st.line_chart(draw_impact_chart_rows(report), x="turn", y="chance", color="series", height=210)
                     for source in draw_sources:
                         st.write(f"- {source.card_name}: sees {source.cards_seen} card(s) deep and draws {source.cards_drawn}.")
                     for turn, impact in report["card_draw_impact"].items():

@@ -18,3 +18,6 @@ def test_sample_workflow() -> None:
     assert report["lands_in_hand"] == 3
     assert report["lands_remaining"] == 25
     assert "Land" in report["category_probabilities"]
+    assert "Hit land 8 by turn 8" in report["land_drop_probabilities"]
+    assert "Next land by turn 8" in report["land_probabilities"]
+    assert report["category_probabilities"]["Land"][-1].label == "Land by turn 8"
