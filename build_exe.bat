@@ -17,7 +17,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-%PYTHON% -m PyInstaller --noconfirm --clean --windowed --name "MTG Opening Hand Analyzer" --paths src --add-data "app.py;." --add-data "assets;assets" --add-data "components;components" --add-data "data\samples;data\samples" local_web_launcher.py
+%PYTHON% -m PyInstaller --noconfirm --clean --windowed --name "MTG Opening Hand Analyzer" --paths src --copy-metadata streamlit --copy-metadata altair --copy-metadata pyarrow --add-data "app.py;." --add-data "assets;assets" --add-data "components;components" --add-data "data\samples;data\samples" local_web_launcher.py
 if errorlevel 1 (
   echo Build failed.
   pause
