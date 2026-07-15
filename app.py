@@ -252,10 +252,14 @@ def inject_theme() -> None:
             color: var(--jace-text);
             border-radius: 8px;
           }
+          div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+            min-height: 3rem;
+          }
           div[data-testid="stSelectbox"] div[data-baseweb="select"] {
             min-width: 0;
           }
           div[data-testid="stSelectbox"] div[data-baseweb="select"] span {
+            font-size: 1rem;
             white-space: normal;
             line-height: 1.2;
           }
@@ -1161,7 +1165,7 @@ with deck_tab:
 
 with hand_tab:
     st.subheader("Confirm Opening Hand")
-    hand_col, hand_spacer_col = content_rail(0.92)
+    hand_col, hand_spacer_col = content_rail(0.985)
     with hand_col:
         section_panel("manual override", "Enter the exact seven cards when screenshot recognition is uncertain, or use this to validate a known opener directly.")
         counts = main_counts()
@@ -1185,7 +1189,7 @@ with hand_tab:
                     save_confirmed_hand_and_analyze(pasted, "Pasted hand saved.")
             defaults = st.session_state.confirmed_hand if len(st.session_state.confirmed_hand) == 7 else []
             selected: list[str] = []
-            cols = st.columns(7)
+            cols = st.columns(7, gap="small")
             for index in range(7):
                 default = defaults[index] if index < len(defaults) else unique_options[index % len(unique_options)]
                 with cols[index]:
