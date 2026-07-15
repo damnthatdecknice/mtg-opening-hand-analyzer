@@ -33,6 +33,10 @@ MTGO_TITLE_HINTS = (
     "magic the gathering online",
     "mtgo",
 )
+MTGO_MATCH_TITLE_HINTS = (
+    "1-on-1",
+    "3-4",
+)
 
 
 def is_supported_platform() -> bool:
@@ -42,6 +46,11 @@ def is_supported_platform() -> bool:
 def title_matches_mtgo(title: str, hints: Iterable[str] = MTGO_TITLE_HINTS) -> bool:
     normalized = " ".join(title.casefold().split())
     return any(hint in normalized for hint in hints)
+
+
+def title_matches_mtgo_match(title: str) -> bool:
+    normalized = " ".join(title.casefold().split())
+    return title_matches_mtgo(title) and any(hint in normalized for hint in MTGO_MATCH_TITLE_HINTS)
 
 
 def list_visible_windows() -> list[WindowInfo]:
@@ -89,10 +98,60 @@ def list_visible_windows() -> list[WindowInfo]:
     return windows
 
 
-def find_mtgo_window() -> WindowInfo | None:
+def window_info_from_handle(handle: int) -> WindowInfo | None:
+    if not is_supported_platform() or not handle:
+        return None
+
+    user32 = ctypes.windll.user32
+
+    class RECT(ctypes.Structure):
+        _fields_ = [
+            ("left", ctypes.c_long),
+            ("top", ctypes.c_long),
+            ("right", ctypes.c_long),
+            ("bottom", ctypes.c_long),
+        ]
+
+    if not user32.IsWindowVisible(handle):
+        return None
+    length = user32.GetWindowTextLengthW(handle)
+    if length <= 0:
+        return None
+    buffer = ctypes.create_unicode_buffer(length + 1)
+    user32.GetWindowTextW(handle, buffer, length + 1)
+    rect = RECT()
+    if not user32.GetWindowRect(handle, ctypes.byref(rect)):
+        return None
+    window = WindowInfo(
+        handle=int(handle),
+        title=buffer.value,
+        left=int(rect.left),
+        top=int(rect.top),
+        right=int(rect.right),
+        bottom=int(rect.bottom),
+    )
+    if window.width < 400 or window.height < 300:
+        return None
+    return window
+
+
+def foreground_window() -> WindowInfo | None:
+    if not is_supported_platform():
+        return None
+    return window_info_from_handle(ctypes.windll.user32.GetForegroundWindow())
+
+
+def find_mtgo_window(*, prefer_foreground: bool = True) -> WindowInfo | None:
+    if prefer_foreground:
+        active = foreground_window()
+        if active and title_matches_mtgo(active.title):
+            return active
     matches = [window for window in list_visible_windows() if title_matches_mtgo(window.title)]
     if not matches:
         return None
+    match_windows = [window for window in matches if title_matches_mtgo_match(window.title)]
+    if match_windows:
+        return max(match_windows, key=lambda window: window.width * window.height)
     return max(matches, key=lambda window: window.width * window.height)
 
 
@@ -101,9 +160,10 @@ def capture_window_to_file(window: WindowInfo, output_path: Path) -> Path:
         raise RuntimeError("MTGO window capture is only available on Windows.")
 
     user32 = ctypes.windll.user32
-    user32.ShowWindow(window.handle, 9)
-    user32.SetForegroundWindow(window.handle)
-    time.sleep(0.25)
+    if user32.GetForegroundWindow() != window.handle:
+        user32.ShowWindow(window.handle, 9)
+        user32.SetForegroundWindow(window.handle)
+        time.sleep(0.25)
 
     image = ImageGrab.grab(bbox=(window.left, window.top, window.right, window.bottom), all_screens=True)
     output_path.parent.mkdir(parents=True, exist_ok=True)

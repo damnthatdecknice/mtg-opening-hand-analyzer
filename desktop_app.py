@@ -440,7 +440,7 @@ class DesktopAnalyzer(QMainWindow):
             QMessageBox.information(
                 self,
                 "MTGO Capture",
-                "I could not find a visible Magic: The Gathering Online window. Open MTGO with the hand visible, then try again.",
+                "Bring the Magic: The Gathering Online match window with your hand visible to the foreground, then try again. As a fallback, I look for an MTGO window title containing 1-on-1 or 3-4.",
             )
             return
         path = Path(tempfile.gettempdir()) / "mtg_hand_analyzer_mtgo_window.png"

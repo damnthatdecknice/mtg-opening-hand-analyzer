@@ -1289,7 +1289,7 @@ with shot_tab:
             if st.button("Capture MTGO Window", type="primary", disabled=not is_supported_platform()):
                 window = find_mtgo_window()
                 if window is None:
-                    st.error("I could not find a visible Magic: The Gathering Online window. Open MTGO with the hand visible, then try again.")
+                    st.error("Bring the Magic: The Gathering Online match window with your hand visible to the foreground, then try again. As a fallback, I look for an MTGO window title containing 1-on-1 or 3-4.")
                 else:
                     capture_path = Path(tempfile.gettempdir()) / "mtg_hand_analyzer_mtgo_window.png"
                     try:
