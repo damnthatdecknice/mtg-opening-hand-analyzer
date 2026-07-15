@@ -6,7 +6,13 @@ import numpy as np
 from PIL import Image, ImageEnhance
 
 from mtg_hand_analyzer.card_data import FixtureCardDataProvider
-from mtg_hand_analyzer.card_recognition import apply_global_card_assignment, ensure_artwork, recognize_crops, trim_dark_border
+from mtg_hand_analyzer.card_recognition import (
+    apply_global_card_assignment,
+    ensure_artwork,
+    recognize_crops,
+    trim_dark_border,
+    verification_for_candidates,
+)
 from mtg_hand_analyzer.models import CardData, CropBox, RecognitionCandidate
 from mtg_hand_analyzer.settings import CARD_FIXTURE_PATH
 
@@ -72,6 +78,35 @@ def test_global_assignment_avoids_repeating_nonlands_when_alternative_is_close()
 
     assert [row[0].card_name for row in assigned].count("A") == 4
     assert [row[0].card_name for row in assigned].count("B") == 1
+
+
+def test_verification_flags_close_candidates_for_review() -> None:
+    label, notes = verification_for_candidates(
+        [
+            RecognitionCandidate(
+                card_name="A",
+                score=0.71,
+                confidence_label="medium",
+                signals={"title_strip": 0.80, "art_histogram": 0.80},
+            ),
+            RecognitionCandidate(card_name="B", score=0.69, confidence_label="medium"),
+        ]
+    )
+
+    assert label == "Double-check"
+    assert any("nearly tied" in note for note in notes)
+
+
+def test_verification_flags_deck_count_override_for_review() -> None:
+    label, notes = verification_for_candidates(
+        [
+            RecognitionCandidate(card_name="Assigned", score=0.72, confidence_label="medium"),
+            RecognitionCandidate(card_name="Raw Best", score=0.82, confidence_label="high"),
+        ]
+    )
+
+    assert label == "Needs review"
+    assert any("Deck-count" in note for note in notes)
 
 
 def test_trim_dark_border_removes_preview_padding() -> None:

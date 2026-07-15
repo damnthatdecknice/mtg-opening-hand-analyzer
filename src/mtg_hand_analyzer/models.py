@@ -127,6 +127,8 @@ class RecognitionResult(BaseModel):
     crop_box: CropBox
     candidates: list[RecognitionCandidate] = Field(default_factory=list)
     crop_path: Path | None = None
+    verification_label: str = "review"
+    verification_notes: list[str] = Field(default_factory=list)
 
 
 class ConfirmedHand(BaseModel):

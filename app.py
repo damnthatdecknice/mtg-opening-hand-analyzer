@@ -602,12 +602,22 @@ with shot_tab:
                 index=unique_options.index(best) if best in unique_options else 0,
                 key=f"recognized_card_{idx}",
             )
+            verification = result.get("verification_label", "Review")
+            notes = result.get("verification_notes", [])
+            if verification == "Likely":
+                cols[1].success("Likely")
+            elif verification == "Double-check":
+                cols[1].warning("Double-check: " + " ".join(notes[:2]))
+            else:
+                cols[1].error("Needs review: " + " ".join(notes[:2]))
             cols[2].dataframe(
                 [
                     {
                         "candidate": candidate["card_name"],
                         "score": round(candidate["score"], 3),
                         "confidence": candidate["confidence_label"],
+                        "title": round(candidate.get("signals", {}).get("title_strip", 0), 3),
+                        "art": round(candidate.get("signals", {}).get("art_histogram", 0), 3),
                     }
                     for candidate in result["candidates"]
                 ],

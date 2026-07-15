@@ -324,7 +324,10 @@ class DesktopAnalyzer(QMainWindow):
                 f"{candidate.card_name} ({candidate.confidence_label}, {candidate.score:.3f})"
                 for candidate in result.candidates
             ]
-            lines.append(f"{index}. " + "; ".join(candidates))
+            notes = " ".join(result.verification_notes[:2])
+            lines.append(f"{index}. {result.verification_label}: " + "; ".join(candidates))
+            if notes:
+                lines.append(f"   Check: {notes}")
         self.output.setPlainText("\n".join(lines))
         self.deep_output.setPlainText("Detailed data will appear after analysis.")
         self.mulligan_output.setPlainText("Mulligan comparison will appear after analysis.")

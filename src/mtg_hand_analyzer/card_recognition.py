@@ -260,6 +260,37 @@ def apply_global_card_assignment(
     return reordered
 
 
+def verification_for_candidates(candidates: list[RecognitionCandidate]) -> tuple[str, list[str]]:
+    if not candidates:
+        return "Needs review", ["No recognition candidates were generated."]
+    best = candidates[0]
+    runner_up = candidates[1] if len(candidates) > 1 else None
+    notes: list[str] = []
+    if runner_up:
+        gap = best.score - runner_up.score
+        if gap < 0:
+            notes.append(f"Deck-count check selected this over a higher raw image score ({runner_up.card_name}).")
+        elif gap < 0.025:
+            notes.append(f"Top two image matches are nearly tied: {runner_up.card_name}.")
+        elif gap < 0.060:
+            notes.append(f"Runner-up is close: {runner_up.card_name}.")
+    title_score = best.signals.get("title_strip", 0.0)
+    art_score = best.signals.get("art_histogram", 0.0)
+    if best.score < 0.58:
+        notes.append("Overall image match is weak.")
+    elif best.score < 0.68:
+        notes.append("Overall image match is only moderate.")
+    if title_score and title_score < 0.70:
+        notes.append("Card-name/title strip match is weak.")
+    if art_score and art_score < 0.58:
+        notes.append("Artwork color check is weak.")
+    if best.score < 0.58 or any(note.startswith("Deck-count") for note in notes):
+        return "Needs review", notes
+    if notes:
+        return "Double-check", notes
+    return "Likely", ["Top match is clearly ahead on the available image checks."]
+
+
 def recognize_crops(
     crop_paths: list[Path],
     boxes: list[CropBox],
@@ -294,12 +325,15 @@ def recognize_crops(
     assigned_candidates = apply_global_card_assignment(scored_by_crop, deck_cards)
     results: list[RecognitionResult] = []
     for index, (crop_path, candidates) in enumerate(zip(crop_paths, assigned_candidates, strict=True)):
+        verification_label, verification_notes = verification_for_candidates(candidates)
         results.append(
             RecognitionResult(
                 crop_index=index,
                 crop_box=boxes[index],
                 candidates=candidates[:top_n],
                 crop_path=crop_path,
+                verification_label=verification_label,
+                verification_notes=verification_notes,
             )
         )
     return results
