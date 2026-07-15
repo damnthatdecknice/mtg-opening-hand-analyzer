@@ -27,6 +27,8 @@ KNOWN_LAND_MANA = {
     "volcanic island": ["U", "R"],
     "inspiring vantage": ["R", "W"],
     "battlefield forge": ["R", "W", "C"],
+    "llanowar wastes": ["B", "G", "C"],
+    "blooming marsh": ["B", "G"],
 }
 
 

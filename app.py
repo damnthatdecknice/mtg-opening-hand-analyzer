@@ -384,6 +384,10 @@ def spell_curve_rows(counts: dict[str, int], cards: dict[str, CardData]) -> list
 
 
 def checked_card_mana_value(card: CardData) -> tuple[float | None, str]:
+    if card.source == "unresolved":
+        return None, "lookup failed"
+    if not card.type_line and not card.mana_cost:
+        return None, "missing card data"
     direct_value = mana_value_from_cost(card.mana_cost)
     if direct_value or card.mana_cost:
         return direct_value, "mana cost"
@@ -415,7 +419,10 @@ def mana_value_audit_rows(counts: dict[str, int], cards: dict[str, CardData]) ->
             )
             continue
         checked_value, check_source = checked_card_mana_value(card)
-        if checked_value is None:
+        if check_source in {"lookup failed", "missing card data"}:
+            status = "Lookup failed"
+            checked_display = ""
+        elif checked_value is None:
             status = "Scryfall only"
             checked_display = ""
         elif abs(card.mana_value - checked_value) > 0.01:
@@ -630,13 +637,13 @@ with curve_tab:
 
             st.write("**Mana Value Verification**")
             audit_rows = mana_value_audit_rows(counts, cards)
-            issue_count = sum(1 for row in audit_rows if row["status"] in {"Review", "Missing", "Scryfall only"})
+            issue_count = sum(1 for row in audit_rows if row["status"] in {"Review", "Missing", "Lookup failed", "Scryfall only"})
             if issue_count:
                 st.warning(f"{issue_count} card(s) need a closer look.")
             else:
                 st.success("All deck mana values passed the symbol/face check.")
             st.dataframe(audit_rows, hide_index=True, width="stretch")
-            st.caption("MDFCs and other multiface cards are checked against the castable nonland face when possible; lands are counted as 0.")
+            st.caption("MDFCs and other multiface cards are checked against the castable nonland face when possible; lands are counted as 0. Lookup failed means Scryfall did not return usable card data during refresh.")
 
 with results_tab:
     st.subheader("Results")

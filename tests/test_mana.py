@@ -80,7 +80,11 @@ def test_shock_and_fast_lands_are_not_always_tapped() -> None:
 def test_known_land_inference_for_empty_cache() -> None:
     steam_vents = infer_land_card("Steam Vents")
     spirebluff = infer_land_card("Spirebluff Canal")
+    llanowar_wastes = infer_land_card("Llanowar Wastes")
+    blooming_marsh = infer_land_card("Blooming Marsh")
     island = infer_land_card("Island")
     assert steam_vents is not None and steam_vents.is_land and set(steam_vents.produced_mana) == {"U", "R"}
     assert spirebluff is not None and spirebluff.is_land and set(spirebluff.produced_mana) == {"U", "R"}
+    assert llanowar_wastes is not None and llanowar_wastes.is_land and set(llanowar_wastes.produced_mana) == {"B", "G", "C"}
+    assert blooming_marsh is not None and blooming_marsh.is_land and set(blooming_marsh.produced_mana) == {"B", "G"}
     assert island is not None and island.is_land and island.produced_mana == ["U"]
