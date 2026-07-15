@@ -34,7 +34,7 @@ def detect_hand_region_boxes(image: np.ndarray, expected_cards: int = 7) -> list
     chosen = select_best_seven(scaled_boxes, width, height, expected_cards)
     if len(chosen) == expected_cards:
         return [normalize_card_box_dimensions(box, width, height) for box in chosen]
-    return normalized_fallback_boxes(width, height, expected_cards)
+    return normalized_bottom_hand_boxes(width, height, expected_cards)
 
 
 def detect_mtgo_hand_row_boxes(image: np.ndarray, expected_cards: int = 7) -> list[CropBox]:
@@ -221,9 +221,74 @@ def detect_mtgo_bottom_hand_boxes(image: np.ndarray, expected_cards: int = 7) ->
             )
         )
 
-    if len(card_like) < expected_cards:
+    if len(card_like) >= expected_cards:
+        return select_best_bottom_row(card_like, width, height, expected_cards)
+    inferred = infer_bottom_hand_boxes_from_partial_row(card_like, width, height, expected_cards)
+    if len(inferred) == expected_cards:
+        return inferred
+    return []
+
+
+def infer_bottom_hand_boxes_from_partial_row(
+    boxes: list[CropBox],
+    image_width: int,
+    image_height: int,
+    expected_cards: int,
+) -> list[CropBox]:
+    boxes = sorted(non_overlapping_boxes(boxes), key=lambda box: box.x)
+    if len(boxes) < 2:
         return []
-    return select_best_bottom_row(card_like, width, height, expected_cards)
+    widths = [box.width for box in boxes]
+    heights = [box.height for box in boxes]
+    card_width = int(np.median(widths))
+    card_height = int(np.median(heights))
+    centers = [box.x + box.width / 2 for box in boxes]
+    gaps = [centers[index + 1] - centers[index] for index in range(len(centers) - 1)]
+    plausible_gaps = [gap for gap in gaps if card_width * 0.45 <= gap <= card_width * 1.85]
+    if plausible_gaps:
+        step = int(np.median(plausible_gaps))
+    else:
+        span = boxes[-1].x + boxes[-1].width - boxes[0].x
+        step = int((span - card_width) / max(expected_cards - 1, 1))
+    if step <= 0:
+        return []
+
+    first_center = min(centers)
+    best_start_center = first_center
+    best_score = float("inf")
+    for anchor_index, center in enumerate(centers):
+        for slot_index in range(expected_cards):
+            start_center = center - slot_index * step
+            slot_centers = [start_center + index * step for index in range(expected_cards)]
+            if slot_centers[0] - card_width / 2 < 0 or slot_centers[-1] + card_width / 2 > image_width:
+                continue
+            score = sum(min(abs(center - slot_center) for slot_center in slot_centers) for center in centers)
+            score += abs(anchor_index - slot_index) * 0.05
+            if score < best_score:
+                best_score = score
+                best_start_center = start_center
+
+    y_values = [box.y for box in boxes]
+    y = int(np.median(y_values))
+    card_width = max(24, min(card_width, image_width))
+    card_height = max(34, min(card_height, image_height))
+    result = []
+    for index in range(expected_cards):
+        center = best_start_center + index * step
+        x = int(round(center - card_width / 2))
+        normalized = normalize_card_box_dimensions(
+            CropBox(
+                x=max(0, min(x, image_width - card_width)),
+                y=max(0, min(y, image_height - card_height)),
+                width=card_width,
+                height=card_height,
+                confidence=0.62,
+            ),
+            image_width,
+            image_height,
+        )
+        result.append(normalized)
+    return sorted(result, key=lambda box: box.x)
 
 
 def density_segments(
@@ -424,12 +489,16 @@ def iou(a: CropBox, b: CropBox) -> float:
 
 
 def normalized_fallback_boxes(width: int, height: int, expected_cards: int = 7) -> list[CropBox]:
+    return normalized_bottom_hand_boxes(width, height, expected_cards)
+
+
+def normalized_bottom_hand_boxes(width: int, height: int, expected_cards: int = 7) -> list[CropBox]:
     aspect = width / max(height, 1)
     if aspect >= 1.45:
-        card_w = int(width * 0.115)
-        card_h = int(card_w * 1.38)
-        overlap = int(card_w * 0.18)
-        y = int(height * 0.62)
+        card_h = int(height * 0.24)
+        card_w = int(card_h * 0.70)
+        overlap = max(0, int((expected_cards * card_w - width * 0.72) / max(expected_cards - 1, 1)))
+        y = int(height - card_h - max(6, height * 0.015))
     else:
         card_h = int(height * 0.82)
         card_w = int(card_h / 1.38)

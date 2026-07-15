@@ -88,3 +88,25 @@ def test_detector_handles_shifted_hand_row_without_fixed_bottom_assumption() -> 
     assert 540 <= boxes[0].y <= 610
     assert boxes[0].height >= 220
     assert boxes == sorted(boxes, key=lambda box: box.x)
+
+
+def test_detector_infers_seven_bottom_slots_from_partial_detection() -> None:
+    image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    image[:] = (18, 20, 24)
+    y = 805
+    for index in range(7):
+        x = 250 + index * 195
+        if index == 3:
+            cv2.rectangle(image, (x, y), (x + 165, y + 235), (42, 42, 48), -1)
+            continue
+        cv2.rectangle(image, (x - 8, y - 8), (x + 173, y + 248), (6, 6, 6), -1)
+        cv2.rectangle(image, (x, y), (x + 165, y + 235), (230, 230, 235), 3)
+        cv2.rectangle(image, (x + 8, y + 24), (x + 157, y + 132), (80, 150, 210), -1)
+        cv2.rectangle(image, (x + 8, y + 153), (x + 157, y + 225), (210, 225, 235), -1)
+
+    boxes = detect_hand_region_boxes(image)
+
+    assert len(boxes) == 7
+    assert boxes == sorted(boxes, key=lambda box: box.x)
+    assert 775 <= boxes[3].y <= 825
+    assert 720 <= boxes[3].x <= 900
