@@ -252,6 +252,13 @@ def inject_theme() -> None:
             color: var(--jace-text);
             border-radius: 8px;
           }
+          div[data-testid="stSelectbox"] div[data-baseweb="select"] {
+            min-width: 0;
+          }
+          div[data-testid="stSelectbox"] div[data-baseweb="select"] span {
+            white-space: normal;
+            line-height: 1.2;
+          }
           div[data-testid="stDataFrame"] {
             background: rgba(5, 10, 19, 0.9);
             border-radius: 8px;
@@ -1172,10 +1179,12 @@ with hand_tab:
                     save_confirmed_hand_and_analyze(pasted, "Pasted hand saved.")
             defaults = st.session_state.confirmed_hand if len(st.session_state.confirmed_hand) == 7 else []
             selected: list[str] = []
-            cols = st.columns(7)
+            hand_rows = [st.columns(4), st.columns(3)]
             for index in range(7):
                 default = defaults[index] if index < len(defaults) else unique_options[index % len(unique_options)]
-                with cols[index]:
+                row_index = 0 if index < 4 else 1
+                row_position = index if index < 4 else index - 4
+                with hand_rows[row_index][row_position]:
                     selected.append(
                         st.selectbox(
                             f"Card {index + 1}",
