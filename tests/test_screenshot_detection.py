@@ -67,3 +67,23 @@ def test_detector_handles_mtgo_bottom_hand_layout() -> None:
     assert 760 <= boxes[0].y <= 790
     assert 170 <= boxes[0].x <= 205
     assert 140 <= boxes[0].width <= 180
+
+
+def test_detector_handles_shifted_hand_row_without_fixed_bottom_assumption() -> None:
+    image = np.zeros((1100, 1900, 3), dtype=np.uint8)
+    image[:] = (24, 28, 34)
+    cv2.rectangle(image, (130, 120), (1760, 520), (70, 80, 90), -1)
+    y = 575
+    for index in range(7):
+        x = 250 + index * 180
+        cv2.rectangle(image, (x - 8, y - 8), (x + 168, y + 237), (8, 8, 8), -1)
+        cv2.rectangle(image, (x, y), (x + 160, y + 225), (232, 232, 238), 3)
+        cv2.rectangle(image, (x + 8, y + 20), (x + 152, y + 125), (80, 150, 210), -1)
+        cv2.rectangle(image, (x + 8, y + 145), (x + 152, y + 215), (210, 225, 235), -1)
+
+    boxes = detect_hand_region_boxes(image)
+
+    assert len(boxes) == 7
+    assert boxes[0].confidence > 0.35
+    assert 560 <= boxes[0].y <= 610
+    assert boxes == sorted(boxes, key=lambda box: box.x)

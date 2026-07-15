@@ -108,6 +108,8 @@ def process_screenshot(image_path: Path, prefix: str) -> None:
     st.image(Image.open(image_path), caption="Screenshot", width="stretch")
     image = load_image(image_path)
     boxes = detect_hand_region_boxes(image)
+    if boxes and max(box.confidence for box in boxes) <= 0.36:
+        st.warning("Card positions were estimated instead of confidently detected. If the crops look wrong, use a tighter screenshot around the hand or upload a different screenshot size.")
     crop_paths = save_crops(image, boxes, prefix=prefix)
     st.session_state.boxes = [box.model_dump() for box in boxes]
     st.session_state.crop_paths = [str(path) for path in crop_paths]
