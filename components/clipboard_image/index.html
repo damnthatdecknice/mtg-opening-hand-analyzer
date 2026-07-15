@@ -122,6 +122,11 @@
         Streamlit.setFrameHeight(document.body.scrollHeight);
       }
 
+      function announceReady() {
+        Streamlit.setComponentReady();
+        sendHeight();
+      }
+
       function setStatus(message) {
         status.textContent = message;
         sendHeight();
@@ -182,12 +187,14 @@
       }
 
       window.addEventListener("load", () => {
-        Streamlit.setComponentReady();
         zone.focus();
-        sendHeight();
-        window.requestAnimationFrame(sendHeight);
-        window.setTimeout(sendHeight, 100);
-        window.setTimeout(sendHeight, 500);
+        announceReady();
+        window.requestAnimationFrame(announceReady);
+        window.setTimeout(announceReady, 100);
+        window.setTimeout(announceReady, 500);
+        window.setTimeout(announceReady, 1000);
+        window.setTimeout(announceReady, 2000);
+        window.setTimeout(announceReady, 4000);
       });
 
       zone.addEventListener("click", () => {
