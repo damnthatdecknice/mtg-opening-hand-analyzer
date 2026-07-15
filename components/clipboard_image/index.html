@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://unpkg.com/streamlit-component-lib@2.0.0/dist/index.js"></script>
+    <style>
+      body {
+        margin: 0;
+        font-family: sans-serif;
+      }
+      #paste-zone {
+        align-items: center;
+        border: 1px dashed #6da9df;
+        border-radius: 8px;
+        color: #f5f7fb;
+        display: flex;
+        justify-content: center;
+        min-height: 118px;
+        outline: none;
+        padding: 16px;
+        text-align: center;
+      }
+      #paste-zone:focus {
+        border-color: #4aa3ff;
+        box-shadow: 0 0 0 2px rgba(74, 163, 255, 0.25);
+      }
+      #status {
+        color: #b8c7d9;
+        font-size: 13px;
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="paste-zone" tabindex="0">
+      Click here, then paste a screenshot with Ctrl+V
+    </div>
+    <div id="status">No pasted screenshot yet.</div>
+    <script>
+      const zone = document.getElementById("paste-zone");
+      const status = document.getElementById("status");
+
+      function sendHeight() {
+        Streamlit.setFrameHeight(document.body.scrollHeight);
+      }
+
+      window.addEventListener("load", () => {
+        Streamlit.setComponentReady();
+        sendHeight();
+      });
+
+      zone.addEventListener("paste", async (event) => {
+        const items = Array.from(event.clipboardData?.items || []);
+        const imageItem = items.find((item) => item.type.startsWith("image/"));
+        if (!imageItem) {
+          status.textContent = "Clipboard did not contain an image.";
+          sendHeight();
+          return;
+        }
+        event.preventDefault();
+        const file = imageItem.getAsFile();
+        const reader = new FileReader();
+        reader.onload = () => {
+          status.textContent = "Screenshot pasted. Processing in the app...";
+          Streamlit.setComponentValue({
+            dataUrl: reader.result,
+            name: file?.name || "pasted-screenshot.png",
+            type: file?.type || "image/png",
+            timestamp: Date.now(),
+          });
+          sendHeight();
+        };
+        reader.readAsDataURL(file);
+      });
+    </script>
+  </body>
+</html>

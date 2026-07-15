@@ -9,6 +9,7 @@ from collections import Counter
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent
@@ -33,6 +34,10 @@ ensure_data_dirs()
 
 card_cache = CardCache(CARD_DB_PATH)
 fixture_provider = FixtureCardDataProvider(CARD_FIXTURE_PATH)
+paste_image_component = components.declare_component(
+    "paste_image_component",
+    path=str(ROOT / "components" / "clipboard_image"),
+)
 
 
 def init_state() -> None:
@@ -47,6 +52,7 @@ def init_state() -> None:
         "play_draw": PlayDraw.PLAY.value,
         "trials": 5000,
         "seed": 20260714,
+        "last_pasted_image_timestamp": 0,
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
@@ -75,6 +81,46 @@ def remember_deck_in_url(deck_text: str) -> None:
         st.query_params["deck"] = encoded
     elif "deck" in st.query_params:
         del st.query_params["deck"]
+
+
+def pasted_image_path(payload: dict | None) -> Path | None:
+    if not payload or not isinstance(payload, dict):
+        return None
+    data_url = payload.get("dataUrl", "")
+    if not isinstance(data_url, str) or "," not in data_url:
+        return None
+    header, encoded = data_url.split(",", 1)
+    suffix = ".png"
+    if "jpeg" in header or "jpg" in header:
+        suffix = ".jpg"
+    elif "webp" in header:
+        suffix = ".webp"
+    try:
+        image_bytes = base64.b64decode(encoded)
+    except Exception:
+        return None
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
+        handle.write(image_bytes)
+        return Path(handle.name)
+
+
+def process_screenshot(image_path: Path, prefix: str) -> None:
+    st.image(Image.open(image_path), caption="Screenshot", width="stretch")
+    image = load_image(image_path)
+    boxes = detect_hand_region_boxes(image)
+    crop_paths = save_crops(image, boxes, prefix=prefix)
+    st.session_state.boxes = [box.model_dump() for box in boxes]
+    st.session_state.crop_paths = [str(path) for path in crop_paths]
+    crop_cols = st.columns(7)
+    for idx, path in enumerate(crop_paths):
+        with crop_cols[idx]:
+            st.image(str(path), caption=f"Crop {idx + 1}")
+    if st.button("Run recognition", key=f"run_recognition_{prefix}"):
+        with st.spinner("Refreshing card data from Scryfall and matching crops..."):
+            cards = resolve_cards(list(main_counts()))
+            results = recognize_crops(crop_paths, boxes, cards)
+        st.session_state.recognition_results = [result.model_dump(mode="json") for result in results]
+        st.success("Recognition candidates generated.")
 
 
 def resolve_cards(names: list[str]) -> dict[str, CardData]:
@@ -406,29 +452,28 @@ with hand_tab:
 
 with shot_tab:
     st.subheader("Screenshot Recognition")
-    st.write("Drag/drop or browse for an MTGO/Arena screenshot. Recognition is only a first pass; confirm the seven cards before analysis.")
-    upload = st.file_uploader("Drag/drop or browse for PNG, JPG, JPEG, or WEBP", type=["png", "jpg", "jpeg", "webp"])
+    st.write("Paste, drag/drop, or browse for an MTGO/Arena screenshot. Recognition is only a first pass; confirm the seven cards before analysis.")
+    pasted_payload = paste_image_component(key="pasted_screenshot")
+    pasted_timestamp = pasted_payload.get("timestamp", 0) if isinstance(pasted_payload, dict) else 0
+    if pasted_timestamp and pasted_timestamp != st.session_state.last_pasted_image_timestamp:
+        pasted_path = pasted_image_path(pasted_payload)
+        if pasted_path:
+            st.session_state.last_pasted_image_timestamp = pasted_timestamp
+            st.session_state.pasted_image_path = str(pasted_path)
+            st.success("Pasted screenshot received.")
+        else:
+            st.error("The pasted clipboard data could not be read as an image.")
+
+    if st.session_state.get("pasted_image_path"):
+        process_screenshot(Path(st.session_state.pasted_image_path), "pasted")
+
+    upload = st.file_uploader("Or drag/drop or browse for PNG, JPG, JPEG, or WEBP", type=["png", "jpg", "jpeg", "webp"])
     if upload:
         suffix = Path(upload.name).suffix or ".png"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
             handle.write(upload.getbuffer())
             image_path = Path(handle.name)
-        st.image(Image.open(image_path), caption="Uploaded screenshot", width="stretch")
-        image = load_image(image_path)
-        boxes = detect_hand_region_boxes(image)
-        crop_paths = save_crops(image, boxes, prefix="web")
-        st.session_state.boxes = [box.model_dump() for box in boxes]
-        st.session_state.crop_paths = [str(path) for path in crop_paths]
-        crop_cols = st.columns(7)
-        for idx, path in enumerate(crop_paths):
-            with crop_cols[idx]:
-                st.image(str(path), caption=f"Crop {idx + 1}")
-        if st.button("Run recognition"):
-            with st.spinner("Refreshing card data from Scryfall and matching crops..."):
-                cards = resolve_cards(list(main_counts()))
-                results = recognize_crops(crop_paths, boxes, cards)
-            st.session_state.recognition_results = [result.model_dump(mode="json") for result in results]
-            st.success("Recognition candidates generated.")
+        process_screenshot(image_path, "web")
 
     results = st.session_state.recognition_results
     if results and unique_options:

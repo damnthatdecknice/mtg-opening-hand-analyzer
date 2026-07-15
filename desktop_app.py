@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import random
+import tempfile
 from collections import Counter
 from pathlib import Path
 
@@ -85,10 +86,13 @@ class DesktopAnalyzer(QMainWindow):
         parse_button.clicked.connect(self.parse_deck)
         image_button = QPushButton("Load Image")
         image_button.clicked.connect(self.load_image_file)
+        paste_image_button = QPushButton("Paste Screenshot")
+        paste_image_button.clicked.connect(self.paste_image)
         analyze_button = QPushButton("Analyze")
         analyze_button.clicked.connect(self.analyze)
         header.addWidget(parse_button)
         header.addWidget(image_button)
+        header.addWidget(paste_image_button)
         header.addWidget(analyze_button)
         layout.addLayout(header)
 
@@ -253,11 +257,25 @@ class DesktopAnalyzer(QMainWindow):
         )
         if not filename:
             return
+        self.process_image_path(Path(filename))
+
+    def paste_image(self) -> None:
+        image = QApplication.clipboard().image()
+        if image.isNull():
+            QMessageBox.information(self, "Clipboard", "The clipboard does not contain a screenshot image.")
+            return
+        path = Path(tempfile.gettempdir()) / "mtg_hand_analyzer_pasted_screenshot.png"
+        if not image.save(str(path), "PNG"):
+            QMessageBox.critical(self, "Clipboard", "The pasted screenshot could not be saved for analysis.")
+            return
+        self.process_image_path(path)
+
+    def process_image_path(self, image_path: Path) -> None:
         self.parse_deck()
         self.status.setText("Detecting seven crops and matching them against the deck...")
         QApplication.processEvents()
         try:
-            image = load_image(Path(filename))
+            image = load_image(image_path)
             boxes = detect_hand_region_boxes(image)
             crop_paths = save_crops(image, boxes, prefix="desktop")
             results = recognize_crops(crop_paths, boxes, self.cards)
@@ -270,7 +288,7 @@ class DesktopAnalyzer(QMainWindow):
             result.candidates[0].card_name if result.candidates else sorted(self.deck.main_counts())[0]
             for result in results
         ]
-        self.show_recognition(Path(filename), crop_paths, results, defaults)
+        self.show_recognition(image_path, crop_paths, results, defaults)
 
     def show_recognition(self, screenshot: Path, crop_paths: list[Path], results, defaults: list[str]) -> None:
         pixmap = QPixmap(str(screenshot))
