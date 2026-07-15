@@ -156,6 +156,18 @@ def retry_card_lookups(names: list[str], delay_seconds: float = 0.75) -> dict[st
     return cards
 
 
+def failed_lookup_names_from_cards(counts: dict[str, int], cards: dict[str, CardData]) -> list[str]:
+    return [
+        row["card"]
+        for row in mana_value_audit_rows(counts, cards)
+        if row["status"] in {"Missing", "Lookup failed"}
+    ]
+
+
+def card_payloads(cards: dict[str, CardData]) -> dict[str, dict]:
+    return {name: card.model_dump() for name, card in cards.items()}
+
+
 def parsed_deck():
     return parse_decklist(st.session_state.deck_text)
 
@@ -659,10 +671,18 @@ with curve_tab:
         st.write("Refresh card data, then use this tab to catch bad mana values before analyzing hands.")
         if st.button("Refresh deck mana values from Scryfall", type="primary"):
             with st.spinner("Refreshing Scryfall data and checking mana values..."):
-                st.session_state.curve_cards = {
-                    name: card.model_dump()
-                    for name, card in resolve_cards(list(counts)).items()
-                }
+                refreshed_cards = resolve_cards(list(counts))
+                auto_retry_names = failed_lookup_names_from_cards(counts, refreshed_cards)
+                if auto_retry_names:
+                    st.info(
+                        "Retrying failed lookup"
+                        + ("s" if len(auto_retry_names) != 1 else "")
+                        + " automatically: "
+                        + ", ".join(auto_retry_names)
+                    )
+                    retried_cards = retry_card_lookups(auto_retry_names)
+                    refreshed_cards.update(retried_cards)
+                st.session_state.curve_cards = card_payloads(refreshed_cards)
             st.success("Deck mana values refreshed.")
 
         raw_curve_cards = st.session_state.get("curve_cards")
@@ -716,10 +736,7 @@ with curve_tab:
                         retried = retry_card_lookups(failed_lookup_names)
                         updated_cards = dict(cards)
                         updated_cards.update(retried)
-                        st.session_state.curve_cards = {
-                            name: card.model_dump()
-                            for name, card in updated_cards.items()
-                        }
+                        st.session_state.curve_cards = card_payloads(updated_cards)
                     still_failed = [
                         name
                         for name, card in retried.items()
