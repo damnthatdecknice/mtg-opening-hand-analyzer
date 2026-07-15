@@ -4,6 +4,7 @@ import random
 import sys
 import tempfile
 import base64
+import html
 from difflib import SequenceMatcher
 import time
 import zlib
@@ -50,6 +51,269 @@ title_ocr_component = components.declare_component(
     "title_ocr_component",
     path=str(ROOT / "components" / "title_ocr"),
 )
+
+
+def inject_theme() -> None:
+    st.markdown(
+        """
+        <style>
+          :root {
+            --bg: #080b10;
+            --panel: rgba(16, 22, 32, 0.88);
+            --panel-strong: rgba(22, 31, 45, 0.96);
+            --line: rgba(141, 166, 196, 0.24);
+            --text: #eff5ff;
+            --muted: #94a6bb;
+            --blue: #3fa7ff;
+            --gold: #d9ad58;
+            --red: #ff654e;
+            --green: #61d394;
+            --black: #18151f;
+          }
+          .stApp {
+            background:
+              radial-gradient(circle at 12% 6%, rgba(63, 167, 255, 0.14), transparent 28rem),
+              radial-gradient(circle at 87% 12%, rgba(217, 173, 88, 0.12), transparent 25rem),
+              linear-gradient(180deg, #0b0f16 0%, #080b10 48%, #0c1017 100%);
+            color: var(--text);
+          }
+          .stApp::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background-image:
+              linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 34px 34px;
+            mask-image: linear-gradient(to bottom, rgba(0,0,0,0.82), transparent 72%);
+          }
+          .block-container {
+            max-width: 1480px;
+            padding-top: 1.35rem;
+          }
+          .mtg-header {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background:
+              linear-gradient(135deg, rgba(20, 29, 43, 0.96), rgba(10, 13, 20, 0.92)),
+              repeating-linear-gradient(90deg, transparent 0 18px, rgba(255,255,255,0.025) 18px 19px);
+            box-shadow: 0 18px 60px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.08);
+            padding: 22px 24px;
+            margin-bottom: 16px;
+            position: relative;
+            overflow: hidden;
+          }
+          .mtg-header::after {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #f5ead1, #3fa7ff, #18151f, #ff654e, #61d394);
+          }
+          .mtg-kicker {
+            color: var(--gold);
+            font-size: 0.78rem;
+            font-weight: 800;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+          }
+          .mtg-title {
+            color: var(--text);
+            font-size: clamp(2rem, 4vw, 3.9rem);
+            font-weight: 900;
+            letter-spacing: 0;
+            line-height: 1.02;
+            margin: 6px 0 8px;
+          }
+          .mtg-subtitle {
+            color: var(--muted);
+            font-size: 1rem;
+            margin: 0;
+            max-width: 820px;
+          }
+          .mana-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 18px;
+          }
+          .mana-pip {
+            align-items: center;
+            border: 1px solid rgba(255,255,255,0.38);
+            border-radius: 999px;
+            display: inline-flex;
+            font-weight: 900;
+            height: 34px;
+            justify-content: center;
+            width: 34px;
+            box-shadow: inset 0 1px 6px rgba(255,255,255,0.25), 0 4px 12px rgba(0,0,0,0.35);
+          }
+          .pip-w { background: #f2e7c7; color: #242018; }
+          .pip-u { background: #2c9de8; color: #06101a; }
+          .pip-b { background: #1d1924; color: #f0eef4; }
+          .pip-r { background: #d95d44; color: #1b0805; }
+          .pip-g { background: #4fa86d; color: #06150b; }
+          div[data-testid="stTabs"] button {
+            border-radius: 0;
+            color: #b7c8dd;
+            font-weight: 800;
+          }
+          div[data-testid="stTabs"] button[aria-selected="true"] {
+            color: #ffffff;
+            border-bottom-color: var(--blue);
+          }
+          div[data-testid="stMetric"] {
+            background: linear-gradient(180deg, rgba(24, 34, 50, 0.95), rgba(12, 17, 25, 0.95));
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 14px 16px;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+          }
+          div[data-testid="stMetric"] label {
+            color: var(--muted);
+            font-weight: 800;
+          }
+          div[data-testid="stMetricValue"] {
+            color: var(--text);
+            font-weight: 900;
+          }
+          div[data-testid="stExpander"],
+          div[data-testid="stDataFrame"],
+          div[data-testid="stFileUploader"],
+          div[data-testid="stTextArea"] textarea,
+          div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+          div[data-testid="stNumberInput"] input {
+            border-color: var(--line);
+          }
+          div[data-testid="stTextArea"] textarea,
+          div[data-testid="stTextInput"] input,
+          div[data-testid="stNumberInput"] input {
+            background: rgba(8, 12, 18, 0.86);
+            color: var(--text);
+            border-radius: 6px;
+          }
+          .stButton > button {
+            background: linear-gradient(180deg, rgba(48, 71, 102, 0.95), rgba(25, 35, 51, 0.95));
+            border: 1px solid rgba(93, 173, 245, 0.46);
+            border-radius: 6px;
+            color: #f7fbff;
+            font-weight: 850;
+            box-shadow: 0 8px 22px rgba(0,0,0,0.25);
+          }
+          .stButton > button:hover {
+            border-color: var(--gold);
+            color: #ffffff;
+            transform: translateY(-1px);
+          }
+          .stAlert {
+            border-radius: 8px;
+            border: 1px solid var(--line);
+          }
+          h2, h3 {
+            letter-spacing: 0;
+          }
+          .section-card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 14px 16px;
+            margin: 10px 0 14px;
+          }
+          .hand-strip {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: repeat(7, minmax(96px, 1fr));
+            margin: 12px 0 18px;
+          }
+          .hand-card {
+            background: linear-gradient(180deg, #1b2432, #0b0f16);
+            border: 1px solid rgba(217, 173, 88, 0.34);
+            border-radius: 8px;
+            min-height: 112px;
+            overflow: hidden;
+            padding: 8px;
+            position: relative;
+            box-shadow: 0 10px 24px rgba(0,0,0,0.32);
+          }
+          .hand-card::before {
+            content: "";
+            display: block;
+            height: 4px;
+            margin: -8px -8px 8px;
+            background: linear-gradient(90deg, #f2e7c7, #2c9de8, #1d1924, #d95d44, #4fa86d);
+          }
+          .hand-card-index {
+            color: var(--gold);
+            font-size: 0.68rem;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+          }
+          .hand-card-name {
+            color: var(--text);
+            font-size: 0.88rem;
+            font-weight: 850;
+            line-height: 1.18;
+            margin-top: 8px;
+            overflow-wrap: anywhere;
+          }
+          @media (max-width: 900px) {
+            .hand-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .mtg-header { padding: 18px; }
+          }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_header() -> None:
+    st.markdown(
+        """
+        <div class="mtg-header">
+          <div class="mtg-kicker">Competitive opener lab</div>
+          <div class="mtg-title">MTG Opening Hand Analyzer</div>
+          <p class="mtg-subtitle">
+            Opening-hand math for Magic, with screenshot recognition, Scryfall checks, castability simulation, and mulligan context.
+          </p>
+          <div class="mana-row" aria-hidden="true">
+            <span class="mana-pip pip-w">W</span>
+            <span class="mana-pip pip-u">U</span>
+            <span class="mana-pip pip-b">B</span>
+            <span class="mana-pip pip-r">R</span>
+            <span class="mana-pip pip-g">G</span>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_hand_strip(hand: list[str]) -> None:
+    cards = []
+    for index, name in enumerate(hand, start=1):
+        cards.append(
+            f"""
+            <div class="hand-card">
+              <div class="hand-card-index">CARD {index}</div>
+              <div class="hand-card-name">{html.escape(name)}</div>
+            </div>
+            """
+        )
+    st.markdown(f'<div class="hand-strip">{"".join(cards)}</div>', unsafe_allow_html=True)
+
+
+def section_panel(title: str, body: str) -> None:
+    st.markdown(
+        f"""
+        <div class="section-card">
+          <div class="mtg-kicker">{html.escape(title)}</div>
+          <div class="mtg-subtitle">{html.escape(body)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def init_state() -> None:
@@ -664,14 +928,15 @@ def run_analysis(hand: list[str], play_draw: PlayDraw, trials: int, seed: int) -
     return report, cards
 
 
+inject_theme()
 init_state()
-st.title("MTG Opening Hand Analyzer")
-st.caption("Opening-hand math for Magic. Hosted web use means uploaded screenshots are processed on this app server.")
+render_header()
 
 deck_tab, hand_tab, shot_tab, curve_tab, results_tab = st.tabs(["Deck", "Hand", "Screenshot", "Mana Curve", "Results"])
 
 with deck_tab:
     st.subheader("Deck")
+    section_panel("deck matrix", "Paste your main deck and optional sideboard. Sideboard cards are used for screenshot recognition only unless they appear in the confirmed hand.")
     st.session_state.deck_text = st.text_area("Paste MTG Arena decklist", st.session_state.deck_text, height=330)
     c_save, c_clear = st.columns([1, 1])
     if c_save.button("Remember this deck in this browser"):
@@ -702,6 +967,7 @@ with deck_tab:
 
 with hand_tab:
     st.subheader("Confirm Opening Hand")
+    section_panel("manual override", "Enter the exact seven cards when screenshot recognition is uncertain, or use this to validate a known opener directly.")
     counts = main_counts()
     selectable_counts = recognition_counts()
     unique_options = sorted(selectable_counts)
@@ -748,7 +1014,7 @@ with hand_tab:
 
 with shot_tab:
     st.subheader("Screenshot Recognition")
-    st.write("Paste, drag/drop, or browse for an MTGO/Arena screenshot. Recognition is only a first pass; confirm the seven cards before analysis.")
+    section_panel("vision stack", "Paste, drag/drop, or browse for an MTGO/Arena screenshot. Recognition is a first pass; the final seven cards stay under your control.")
     pasted_payload = paste_image_component(key="pasted_screenshot", default=None, height=150)
     pasted_timestamp = pasted_payload.get("timestamp", 0) if isinstance(pasted_payload, dict) else 0
     if pasted_timestamp and pasted_timestamp != st.session_state.last_pasted_image_timestamp:
@@ -835,6 +1101,7 @@ with shot_tab:
 
 with curve_tab:
     st.subheader("Deck Mana Curve")
+    section_panel("mana audit", "Refresh Scryfall data and inspect the curve, MDFC checks, and any cards that need another lookup.")
     counts = main_counts()
     if not counts:
         st.warning("Paste a deck first.")
@@ -927,6 +1194,8 @@ with results_tab:
     if len(hand) != 7:
         st.warning("Confirm a seven-card hand first.")
     else:
+        section_panel("opening hand telemetry", "Analyze land drops, effective sources, draw depth, castability, ramp, and mulligan pressure for the confirmed seven.")
+        render_hand_strip(hand)
         c1, c2, c3 = st.columns(3)
         play_draw = c1.radio("Play or draw", [PlayDraw.PLAY.value, PlayDraw.DRAW.value], horizontal=True)
         trials = c2.number_input("Castability simulations", min_value=1000, max_value=50000, value=int(st.session_state.trials), step=1000)
