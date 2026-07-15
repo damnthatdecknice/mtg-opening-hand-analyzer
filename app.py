@@ -230,14 +230,15 @@ def inject_theme() -> None:
           div[data-testid="stTextArea"] textarea,
           div[data-testid="stTextInput"] input,
           div[data-testid="stNumberInput"] input {
-            background: rgba(4, 10, 20, 0.9);
+            background: rgba(3, 8, 17, 0.96);
             color: var(--jace-text);
             border-radius: 6px;
             caret-color: var(--jace-cyan);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 12px 28px rgba(0,0,0,0.2);
           }
           div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
           div[data-testid="stFileUploader"] section {
-            background: rgba(6, 13, 25, 0.88);
+            background: rgba(6, 13, 25, 0.94);
             color: var(--jace-text);
             border-radius: 8px;
           }
@@ -293,13 +294,43 @@ def inject_theme() -> None:
             padding: 0.1rem 0.32rem;
           }
           .section-card {
-            background: var(--jace-panel);
+            background:
+              linear-gradient(135deg, rgba(15, 33, 58, 0.86), rgba(6, 12, 24, 0.82)),
+              radial-gradient(circle at 92% 12%, rgba(101, 216, 255, 0.12), transparent 18rem);
             border: 1px solid var(--jace-border-soft);
             border-radius: 10px;
-            padding: 14px 16px;
-            margin: 10px 0 14px;
+            padding: 14px 18px 16px;
+            margin: 10px 0 16px;
             backdrop-filter: blur(10px) saturate(118%);
             box-shadow: var(--jace-shadow), inset 0 1px 0 rgba(255,255,255,0.08);
+            position: relative;
+            overflow: hidden;
+          }
+          .section-card::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(180deg, var(--jace-cyan), var(--jace-violet));
+            opacity: 0.9;
+          }
+          .section-card::after {
+            content: "";
+            position: absolute;
+            left: 18px;
+            right: 18px;
+            bottom: 0;
+            height: 1px;
+            background: linear-gradient(90deg, rgba(101,216,255,0.4), transparent 65%);
+          }
+          .section-card .mtg-kicker,
+          .section-card .mtg-subtitle {
+            position: relative;
+          }
+          .section-card .mtg-subtitle {
+            line-height: 1.55;
           }
           .hand-strip {
             display: grid;
@@ -1028,7 +1059,7 @@ deck_tab, hand_tab, shot_tab, curve_tab, results_tab = st.tabs(["Deck", "Hand", 
 with deck_tab:
     st.subheader("Deck")
     section_panel("deck matrix", "Paste your main deck and optional sideboard. Sideboard cards are used for screenshot recognition only unless they appear in the confirmed hand.")
-    st.session_state.deck_text = st.text_area("Paste MTG Arena decklist", st.session_state.deck_text, height=330)
+    st.session_state.deck_text = st.text_area("Paste MTG Arena decklist", st.session_state.deck_text, height=260)
     c_save, c_clear = st.columns([1, 1])
     if c_save.button("Remember this deck in this browser"):
         remember_deck_in_url(st.session_state.deck_text)
