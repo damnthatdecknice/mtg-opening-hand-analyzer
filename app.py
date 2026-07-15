@@ -627,14 +627,12 @@ def crop_preview_strip(crop_paths: list[Path]) -> None:
     cards = []
     for idx, path in enumerate(crop_paths):
         cards.append(
-            f"""
-            <figure class="crop-preview-card">
-              <img src="{image_data_url(path)}" alt="Crop {idx + 1}" />
-              <figcaption>Crop {idx + 1}</figcaption>
-            </figure>
-            """
+            f'<figure class="crop-preview-card">'
+            f'<img src="{image_data_url(path)}" alt="Crop {idx + 1}" />'
+            f"<figcaption>Crop {idx + 1}</figcaption>"
+            f"</figure>"
         )
-    st.markdown(f"<div class=\"crop-preview-strip\">{''.join(cards)}</div>", unsafe_allow_html=True)
+    st.markdown(f'<div class="crop-preview-strip">{"".join(cards)}</div>', unsafe_allow_html=True)
 
 
 def process_screenshot(image_path: Path, prefix: str) -> None:
