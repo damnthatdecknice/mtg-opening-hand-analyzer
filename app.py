@@ -1122,7 +1122,10 @@ with deck_tab:
     st.subheader("Deck")
     deck_input_col, deck_spacer_col = content_rail()
     with deck_input_col:
-        section_panel("deck matrix", "Paste your main deck and optional sideboard. Sideboard cards are used for screenshot recognition only unless they appear in the confirmed hand.")
+        section_panel(
+            "deck matrix",
+            "Paste your main deck first. To include a sideboard, put Sideboard on its own line, then list those cards below it. Sideboard cards help screenshot recognition, but are ignored for analysis unless one appears in the confirmed hand.",
+        )
         st.session_state.deck_text = st.text_area("Paste MTG Arena decklist", st.session_state.deck_text, height=260)
         c_save, c_clear = st.columns([1, 1])
         if c_save.button("Remember this deck in this browser"):
