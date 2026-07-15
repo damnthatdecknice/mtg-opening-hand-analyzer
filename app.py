@@ -1155,14 +1155,6 @@ with shot_tab:
     if st.session_state.get("pasted_image_path"):
         process_screenshot(Path(st.session_state.pasted_image_path), "pasted")
 
-    upload = st.file_uploader("Or drag/drop or browse for PNG, JPG, JPEG, or WEBP", type=["png", "jpg", "jpeg", "webp"])
-    if upload:
-        suffix = Path(upload.name).suffix or ".png"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
-            handle.write(upload.getbuffer())
-            image_path = Path(handle.name)
-        process_screenshot(image_path, "web")
-
     results = st.session_state.recognition_results
     if results and unique_options:
         st.divider()
