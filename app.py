@@ -426,8 +426,8 @@ def section_panel(title: str, body: str, *, wide: bool = False) -> None:
     )
 
 
-def content_rail():
-    return st.columns([0.68, 0.32], gap="large")
+def content_rail(main_ratio: float = 0.68):
+    return st.columns([main_ratio, 1 - main_ratio], gap="large")
 
 
 def init_state() -> None:
@@ -1161,7 +1161,7 @@ with deck_tab:
 
 with hand_tab:
     st.subheader("Confirm Opening Hand")
-    hand_col, hand_spacer_col = content_rail()
+    hand_col, hand_spacer_col = content_rail(0.92)
     with hand_col:
         section_panel("manual override", "Enter the exact seven cards when screenshot recognition is uncertain, or use this to validate a known opener directly.")
         counts = main_counts()
@@ -1185,12 +1185,10 @@ with hand_tab:
                     save_confirmed_hand_and_analyze(pasted, "Pasted hand saved.")
             defaults = st.session_state.confirmed_hand if len(st.session_state.confirmed_hand) == 7 else []
             selected: list[str] = []
-            hand_rows = [st.columns(4), st.columns(3)]
+            cols = st.columns(7)
             for index in range(7):
                 default = defaults[index] if index < len(defaults) else unique_options[index % len(unique_options)]
-                row_index = 0 if index < 4 else 1
-                row_position = index if index < 4 else index - 4
-                with hand_rows[row_index][row_position]:
+                with cols[index]:
                     selected.append(
                         st.selectbox(
                             f"Card {index + 1}",
