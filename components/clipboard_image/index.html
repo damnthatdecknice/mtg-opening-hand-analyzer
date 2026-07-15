@@ -2,7 +2,6 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <script src="https://unpkg.com/streamlit-component-lib@2.0.0/dist/index.js"></script>
     <style>
       body {
         margin: 0;
@@ -14,15 +13,51 @@
         border-radius: 8px;
         color: #f5f7fb;
         display: flex;
+        flex-direction: column;
+        gap: 8px;
         justify-content: center;
         min-height: 118px;
         outline: none;
         padding: 16px;
         text-align: center;
       }
-      #paste-zone:focus {
+      #paste-zone:focus,
+      #paste-zone.dragging {
         border-color: #4aa3ff;
         box-shadow: 0 0 0 2px rgba(74, 163, 255, 0.25);
+      }
+      #file-input {
+        display: none;
+      }
+      #paste-button,
+      #choose-button {
+        background: #243447;
+        border: 1px solid #6da9df;
+        border-radius: 6px;
+        color: #f5f7fb;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 700;
+        padding: 8px 12px;
+      }
+      #paste-button:focus,
+      #choose-button:focus {
+        outline: 2px solid rgba(74, 163, 255, 0.5);
+        outline-offset: 2px;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+      }
+      .primary {
+        font-size: 15px;
+        font-weight: 700;
+      }
+      .secondary {
+        color: #b8c7d9;
+        font-size: 13px;
       }
       #status {
         color: #b8c7d9;
@@ -33,44 +68,172 @@
   </head>
   <body>
     <div id="paste-zone" tabindex="0">
-      Click here, then paste a screenshot with Ctrl+V
+      <div class="primary">Add a screenshot from your clipboard</div>
+      <div class="actions">
+        <button id="paste-button" type="button">Paste Clipboard</button>
+        <button id="choose-button" type="button">Choose Image</button>
+      </div>
+      <div class="secondary">You can also click this box and press Ctrl+V, or drag/drop an image here.</div>
     </div>
+    <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
     <div id="status">No pasted screenshot yet.</div>
     <script>
+      const Streamlit = {
+        setComponentReady() {
+          window.parent.postMessage(
+            {
+              isStreamlitMessage: true,
+              type: "streamlit:componentReady",
+              apiVersion: 1,
+            },
+            "*"
+          );
+        },
+        setComponentValue(value) {
+          window.parent.postMessage(
+            {
+              isStreamlitMessage: true,
+              type: "streamlit:setComponentValue",
+              value,
+              dataType: "json",
+            },
+            "*"
+          );
+        },
+        setFrameHeight(height) {
+          window.parent.postMessage(
+            {
+              isStreamlitMessage: true,
+              type: "streamlit:setFrameHeight",
+              height,
+            },
+            "*"
+          );
+        },
+      };
+
       const zone = document.getElementById("paste-zone");
       const status = document.getElementById("status");
+      const fileInput = document.getElementById("file-input");
+      const pasteButton = document.getElementById("paste-button");
+      const chooseButton = document.getElementById("choose-button");
 
       function sendHeight() {
         Streamlit.setFrameHeight(document.body.scrollHeight);
       }
 
-      window.addEventListener("load", () => {
-        Streamlit.setComponentReady();
+      function setStatus(message) {
+        status.textContent = message;
         sendHeight();
-      });
+      }
 
-      zone.addEventListener("paste", async (event) => {
+      function sendFile(file, source) {
+        if (!file || !file.type.startsWith("image/")) {
+          setStatus("That was not an image. Try a screenshot, PNG, JPG, or WEBP.");
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          setStatus(`Screenshot ${source}. Processing in the app...`);
+          Streamlit.setComponentValue({
+            dataUrl: reader.result,
+            name: file.name || "pasted-screenshot.png",
+            type: file.type || "image/png",
+            timestamp: Date.now(),
+            source,
+          });
+        };
+        reader.onerror = () => setStatus("The browser could not read that image.");
+        reader.readAsDataURL(file);
+      }
+
+      async function pasteFromClipboard() {
+        if (!navigator.clipboard?.read) {
+          setStatus("This browser does not allow clipboard images from a button. Try Ctrl+V or Upload.");
+          return;
+        }
+        try {
+          const items = await navigator.clipboard.read();
+          for (const item of items) {
+            const imageType = item.types.find((type) => type.startsWith("image/"));
+            if (imageType) {
+              const blob = await item.getType(imageType);
+              const extension = imageType.split("/")[1] || "png";
+              const file = new File([blob], `clipboard-screenshot.${extension}`, { type: imageType });
+              sendFile(file, "pasted");
+              return;
+            }
+          }
+          setStatus("Clipboard did not contain an image.");
+        } catch (error) {
+          setStatus("The browser blocked clipboard access. Click the box and press Ctrl+V, or use Upload.");
+        }
+      }
+
+      function handlePaste(event) {
         const items = Array.from(event.clipboardData?.items || []);
         const imageItem = items.find((item) => item.type.startsWith("image/"));
         if (!imageItem) {
-          status.textContent = "Clipboard did not contain an image.";
-          sendHeight();
+          setStatus("Clipboard did not contain an image.");
           return;
         }
         event.preventDefault();
-        const file = imageItem.getAsFile();
-        const reader = new FileReader();
-        reader.onload = () => {
-          status.textContent = "Screenshot pasted. Processing in the app...";
-          Streamlit.setComponentValue({
-            dataUrl: reader.result,
-            name: file?.name || "pasted-screenshot.png",
-            type: file?.type || "image/png",
-            timestamp: Date.now(),
-          });
-          sendHeight();
-        };
-        reader.readAsDataURL(file);
+        sendFile(imageItem.getAsFile(), "pasted");
+      }
+
+      window.addEventListener("load", () => {
+        Streamlit.setComponentReady();
+        zone.focus();
+        sendHeight();
+        window.requestAnimationFrame(sendHeight);
+        window.setTimeout(sendHeight, 100);
+        window.setTimeout(sendHeight, 500);
+      });
+
+      zone.addEventListener("click", () => {
+        zone.focus();
+      });
+
+      zone.addEventListener("dblclick", () => {
+        fileInput.click();
+      });
+
+      pasteButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        pasteFromClipboard();
+      });
+
+      chooseButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        fileInput.click();
+      });
+
+      document.addEventListener("paste", handlePaste);
+      window.addEventListener("paste", handlePaste);
+
+      zone.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        zone.classList.add("dragging");
+      });
+
+      zone.addEventListener("dragleave", () => {
+        zone.classList.remove("dragging");
+      });
+
+      zone.addEventListener("drop", (event) => {
+        event.preventDefault();
+        zone.classList.remove("dragging");
+        const file = Array.from(event.dataTransfer?.files || []).find((candidate) =>
+          candidate.type.startsWith("image/")
+        );
+        sendFile(file, "dropped");
+      });
+
+      fileInput.addEventListener("change", () => {
+        const file = fileInput.files?.[0];
+        if (file) {
+          sendFile(file, "selected");
+        }
       });
     </script>
   </body>

@@ -453,7 +453,7 @@ with hand_tab:
 with shot_tab:
     st.subheader("Screenshot Recognition")
     st.write("Paste, drag/drop, or browse for an MTGO/Arena screenshot. Recognition is only a first pass; confirm the seven cards before analysis.")
-    pasted_payload = paste_image_component(key="pasted_screenshot")
+    pasted_payload = paste_image_component(key="pasted_screenshot", default=None, height=150)
     pasted_timestamp = pasted_payload.get("timestamp", 0) if isinstance(pasted_payload, dict) else 0
     if pasted_timestamp and pasted_timestamp != st.session_state.last_pasted_image_timestamp:
         pasted_path = pasted_image_path(pasted_payload)
