@@ -341,6 +341,9 @@ def inject_theme() -> None:
             position: relative;
             overflow: hidden;
           }
+          .section-card.wide {
+            max-width: min(1080px, 76vw);
+          }
           .section-card::before {
             content: "";
             position: absolute;
@@ -410,10 +413,11 @@ def render_header() -> None:
     )
 
 
-def section_panel(title: str, body: str) -> None:
+def section_panel(title: str, body: str, *, wide: bool = False) -> None:
+    card_class = "section-card wide" if wide else "section-card"
     st.markdown(
         f"""
-        <div class="section-card">
+        <div class="{card_class}">
           <div class="mtg-kicker">{html.escape(title)}</div>
           <div class="mtg-subtitle">{html.escape(body)}</div>
         </div>
@@ -1123,6 +1127,7 @@ with deck_tab:
         section_panel(
             "deck matrix",
             "Paste your main deck first. To include a sideboard, put Sideboard on its own line, then list those cards below it. Sideboard cards help screenshot recognition, but are ignored for analysis unless one appears in the confirmed hand.",
+            wide=True,
         )
         st.session_state.deck_text = st.text_area("Paste MTG Arena decklist", st.session_state.deck_text, height=260)
         c_save, c_clear = st.columns([1, 1])
