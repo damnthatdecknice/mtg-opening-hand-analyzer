@@ -57,6 +57,7 @@ from mtg_hand_analyzer.settings import (
     SAMPLE_DECK_PATH,
     ensure_data_dirs,
 )
+from mtg_hand_analyzer.window_capture import capture_window_to_file, find_mtgo_window, is_supported_platform
 
 
 class DesktopAnalyzer(QMainWindow):
@@ -89,16 +90,19 @@ class DesktopAnalyzer(QMainWindow):
         header.addWidget(title)
         header.addStretch()
         parse_button = QPushButton("Parse Deck")
-        parse_button.clicked.connect(self.parse_deck)
+        parse_button.clicked.connect(lambda: self.parse_deck())
         image_button = QPushButton("Load Image")
         image_button.clicked.connect(self.load_image_file)
         paste_image_button = QPushButton("Paste Screenshot")
         paste_image_button.clicked.connect(self.paste_image)
+        capture_mtgo_button = QPushButton("Capture MTGO Window")
+        capture_mtgo_button.clicked.connect(self.capture_mtgo_window)
         analyze_button = QPushButton("Analyze")
         analyze_button.clicked.connect(self.analyze)
         header.addWidget(parse_button)
         header.addWidget(image_button)
         header.addWidget(paste_image_button)
+        header.addWidget(capture_mtgo_button)
         header.addWidget(analyze_button)
         layout.addLayout(header)
 
@@ -199,9 +203,9 @@ class DesktopAnalyzer(QMainWindow):
         self.deck_text.setPlainText(text)
         self.parse_deck()
 
-    def parse_deck(self, rebuild_hand: bool = True) -> None:
+    def parse_deck(self, rebuild_hand: bool = True, force_refresh: bool = True) -> None:
         self.deck = parse_decklist(self.deck_text.toPlainText())
-        self.cards = self.resolve_cards(list(self.selectable_counts()))
+        self.cards = self.resolve_cards(list(self.selectable_counts()), force_refresh=force_refresh)
         if rebuild_hand:
             self.build_hand_selectors()
         message = f"Parsed {self.deck.main_total} main-deck cards and {self.deck.sideboard_total} sideboard cards."
@@ -214,14 +218,14 @@ class DesktopAnalyzer(QMainWindow):
             )
         self.status.setText(message)
 
-    def resolve_cards(self, names: list[str]) -> dict[str, CardData]:
+    def resolve_cards(self, names: list[str], force_refresh: bool = True) -> dict[str, CardData]:
         provider = ScryfallProvider(retries=3)
         cards: dict[str, CardData] = {}
         for name in names:
             card = self.card_cache.resolve(
                 name,
                 provider,
-                force_refresh=True,
+                force_refresh=force_refresh,
             )
             if not card:
                 time.sleep(0.75)
@@ -283,8 +287,28 @@ class DesktopAnalyzer(QMainWindow):
             return
         self.process_image_path(path)
 
+    def capture_mtgo_window(self) -> None:
+        if not is_supported_platform():
+            QMessageBox.information(self, "MTGO Capture", "MTGO window capture is only available on Windows.")
+            return
+        window = find_mtgo_window()
+        if window is None:
+            QMessageBox.information(
+                self,
+                "MTGO Capture",
+                "I could not find a visible Magic: The Gathering Online window. Open MTGO with the hand visible, then try again.",
+            )
+            return
+        path = Path(tempfile.gettempdir()) / "mtg_hand_analyzer_mtgo_window.png"
+        try:
+            capture_window_to_file(window, path)
+        except Exception as exc:
+            QMessageBox.critical(self, "MTGO Capture", f"The MTGO window could not be captured:\n{exc}")
+            return
+        self.process_image_path(path)
+
     def process_image_path(self, image_path: Path) -> None:
-        self.parse_deck()
+        self.parse_deck(force_refresh=False)
         self.status.setText("Detecting seven crops and matching them against the deck...")
         QApplication.processEvents()
         try:

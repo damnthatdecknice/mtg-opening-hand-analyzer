@@ -11,7 +11,7 @@ if exist ".venv\Scripts\python.exe" (
     set PYTHON=python
   )
 )
-%PYTHON% -m pip install -r requirements.txt pyinstaller
+%PYTHON% -m pip install -r requirements.txt PySide6 pyinstaller
 if errorlevel 1 (
   echo Could not install build dependencies.
   pause
