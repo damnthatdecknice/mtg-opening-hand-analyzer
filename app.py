@@ -54,9 +54,9 @@ title_ocr_component = components.declare_component(
 
 
 def jace_background_data_uri() -> str:
-    background_path = ROOT / "assets" / "jace_mindscape.svg"
+    background_path = ROOT / "assets" / "jace_user_background.png"
     encoded = base64.b64encode(background_path.read_bytes()).decode("ascii")
-    return f"data:image/svg+xml;base64,{encoded}"
+    return f"data:image/png;base64,{encoded}"
 
 
 def inject_theme() -> None:
@@ -65,9 +65,9 @@ def inject_theme() -> None:
         <style>
           :root {
             --jace-bg: #030711;
-            --jace-overlay: rgba(2, 7, 17, 0.74);
-            --jace-panel: rgba(9, 18, 33, 0.88);
-            --jace-panel-strong: rgba(11, 23, 42, 0.93);
+            --jace-overlay: rgba(2, 7, 17, 0.58);
+            --jace-panel: rgba(9, 18, 33, 0.86);
+            --jace-panel-strong: rgba(11, 23, 42, 0.92);
             --jace-border: rgba(128, 205, 255, 0.34);
             --jace-border-soft: rgba(130, 157, 198, 0.22);
             --jace-text: #f4f9ff;
@@ -83,7 +83,7 @@ def inject_theme() -> None:
           .stApp {
             background:
               linear-gradient(var(--jace-overlay), var(--jace-overlay)),
-              url("__JACE_BG__") center center / cover fixed no-repeat,
+              url("__JACE_BG__") center right / cover fixed no-repeat,
               var(--jace-bg);
             color: var(--jace-text);
           }
@@ -93,8 +93,8 @@ def inject_theme() -> None:
             inset: 0;
             pointer-events: none;
             background:
-              radial-gradient(ellipse at center, rgba(4, 9, 18, 0.52) 0%, rgba(4, 9, 18, 0.38) 36%, rgba(4, 9, 18, 0.1) 72%),
-              linear-gradient(90deg, rgba(1, 5, 13, 0.58), transparent 18%, transparent 82%, rgba(1, 5, 13, 0.58));
+              radial-gradient(ellipse at center, rgba(4, 9, 18, 0.5) 0%, rgba(4, 9, 18, 0.34) 36%, rgba(4, 9, 18, 0.06) 72%),
+              linear-gradient(90deg, rgba(1, 5, 13, 0.58), transparent 22%, transparent 78%, rgba(1, 5, 13, 0.14));
             z-index: 0;
           }
           .stApp::after {
@@ -104,8 +104,8 @@ def inject_theme() -> None:
             pointer-events: none;
             background:
               linear-gradient(180deg, rgba(255,255,255,0.035), transparent 18rem),
-              radial-gradient(circle at 50% 22%, rgba(101, 216, 255, 0.12), transparent 16rem);
-            opacity: 0.55;
+              radial-gradient(circle at 78% 32%, rgba(101, 216, 255, 0.08), transparent 18rem);
+            opacity: 0.42;
             z-index: 0;
           }
           .block-container {
@@ -121,7 +121,7 @@ def inject_theme() -> None:
             border: 1px solid var(--jace-border);
             border-radius: 10px;
             background:
-              linear-gradient(135deg, rgba(13, 31, 56, 0.92), rgba(5, 11, 22, 0.88)),
+              linear-gradient(135deg, rgba(13, 31, 56, 0.88), rgba(5, 11, 22, 0.84)),
               radial-gradient(circle at 92% 0%, rgba(101, 216, 255, 0.16), transparent 22rem);
             backdrop-filter: blur(12px) saturate(130%);
             box-shadow: var(--jace-shadow), inset 0 1px 0 rgba(255,255,255,0.12);
@@ -312,7 +312,7 @@ def inject_theme() -> None:
             margin: 12px 0 18px;
           }
           .hand-card {
-            background: linear-gradient(180deg, rgba(15, 33, 57, 0.92), rgba(5, 10, 19, 0.9));
+            background: linear-gradient(180deg, rgba(15, 33, 57, 0.88), rgba(5, 10, 19, 0.88));
             border: 1px solid rgba(101, 216, 255, 0.3);
             border-radius: 8px;
             min-height: 112px;
@@ -345,7 +345,7 @@ def inject_theme() -> None:
           }
           @media (max-width: 900px) {
             .stApp {
-              background-position: center top;
+              background-position: 68% top;
               background-size: auto 100%;
             }
             .hand-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
