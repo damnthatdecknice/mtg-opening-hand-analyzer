@@ -8,44 +8,16 @@
         font-family: sans-serif;
         margin: 0;
       }
-      #panel {
-        align-items: center;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-      }
-      button {
-        background: #243447;
-        border: 1px solid #6da9df;
-        border-radius: 6px;
-        color: #f5f7fb;
-        cursor: pointer;
-        font-size: 14px;
-        font-weight: 700;
-        padding: 8px 12px;
-      }
-      button:disabled {
-        cursor: progress;
-        opacity: 0.65;
-      }
       #status {
         color: #b8c7d9;
         font-size: 13px;
-      }
-      #results {
-        color: #dbe8f6;
-        font-size: 13px;
-        line-height: 1.35;
-        margin-top: 8px;
       }
     </style>
   </head>
   <body>
     <div id="panel">
-      <button id="ocr-button" type="button">Read card names from crops</button>
-      <span id="status">Browser OCR is idle.</span>
+      <span id="status">Reading crop titles as an extra check...</span>
     </div>
-    <div id="results"></div>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script>
       const Streamlit = {
@@ -69,13 +41,13 @@
         },
       };
 
-      const button = document.getElementById("ocr-button");
       const status = document.getElementById("status");
-      const resultsNode = document.getElementById("results");
       let crops = [];
+      let lastCropSignature = "";
+      let isRunning = false;
 
       function setHeight() {
-        Streamlit.setFrameHeight(145);
+        Streamlit.setFrameHeight(54);
       }
 
       function setStatus(text) {
@@ -122,6 +94,9 @@
       }
 
       async function runOcr() {
+        if (isRunning) {
+          return;
+        }
         if (!window.Tesseract) {
           setStatus("OCR library did not load. The image matcher still works.");
           return;
@@ -130,7 +105,7 @@
           setStatus("No crops are available yet.");
           return;
         }
-        button.disabled = true;
+        isRunning = true;
         const results = [];
         try {
           for (let index = 0; index < crops.length; index += 1) {
@@ -142,15 +117,12 @@
             const confidence = Number(response?.data?.confidence || 0);
             results.push({ id: crop.id, text, confidence });
           }
-          resultsNode.textContent = results
-            .map((result) => `Crop ${result.id + 1}: ${result.text || "(no text)"}`)
-            .join(" | ");
           Streamlit.setComponentValue({ timestamp: Date.now(), results });
-          setStatus("OCR complete.");
+          setStatus("Crop title check complete.");
         } catch (error) {
           setStatus("OCR could not read these crops. You can still use the matcher and dropdowns.");
         } finally {
-          button.disabled = false;
+          isRunning = false;
           setHeight();
         }
       }
@@ -161,10 +133,14 @@
           return;
         }
         crops = Array.isArray(data.args?.crops) ? data.args.crops : [];
+        const cropSignature = crops.map((crop) => `${crop.id}:${crop.dataUrl?.length || 0}`).join("|");
         setHeight();
+        if (crops.length && cropSignature !== lastCropSignature) {
+          lastCropSignature = cropSignature;
+          window.setTimeout(runOcr, 50);
+        }
       });
 
-      button.addEventListener("click", runOcr);
       window.addEventListener("load", () => {
         Streamlit.setComponentReady();
         setHeight();

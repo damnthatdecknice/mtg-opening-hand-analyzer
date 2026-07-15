@@ -598,6 +598,7 @@ def process_screenshot(image_path: Path, prefix: str) -> None:
     if st.session_state.get("crop_signature") != crop_signature:
         st.session_state.crop_signature = crop_signature
         st.session_state.ocr_results = []
+        st.session_state.recognition_signature = ""
     crop_paths = save_crops(image, boxes, prefix=prefix)
     st.session_state.boxes = [box.model_dump() for box in boxes]
     st.session_state.crop_paths = [str(path) for path in crop_paths]
@@ -606,23 +607,23 @@ def process_screenshot(image_path: Path, prefix: str) -> None:
         with crop_cols[idx]:
             st.image(str(path), caption=f"Crop {idx + 1}")
     if crop_paths:
-        st.write("**Optional title OCR double-check**")
-        st.caption("This reads the name strips in your browser and uses them as an extra hint for the dropdown defaults.")
         ocr_payload = title_ocr_component(
             crops=[{"id": index, "dataUrl": image_data_url(path)} for index, path in enumerate(crop_paths)],
             key=f"title_ocr_{prefix}",
             default=None,
-            height=145,
+            height=54,
         )
         if isinstance(ocr_payload, dict) and ocr_payload.get("results"):
             st.session_state.ocr_results = ocr_payload["results"]
-            st.success("Browser OCR results received.")
-    if st.button("Run recognition", key=f"run_recognition_{prefix}"):
-        with st.spinner("Refreshing card data from Scryfall and matching crops..."):
-            cards = resolve_cards(list(recognition_counts()))
+    counts = recognition_counts()
+    recognition_signature = f"{crop_signature}:{sorted(counts.items())}"
+    if crop_paths and counts and st.session_state.get("recognition_signature") != recognition_signature:
+        with st.spinner("Reading crops and matching cards..."):
+            cards = resolve_cards(list(counts))
             results = recognize_crops(crop_paths, boxes, cards)
+        st.session_state.recognition_signature = recognition_signature
         st.session_state.recognition_results = [result.model_dump(mode="json") for result in results]
-        st.success("Recognition candidates generated.")
+        st.success("Card candidates generated. Confirm or correct the seven cards below.")
 
 
 def resolve_cards(names: list[str], retry_delay_seconds: float = 0.75) -> dict[str, CardData]:
