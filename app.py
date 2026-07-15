@@ -992,8 +992,6 @@ def land_plan_chart_rows(report: dict) -> list[dict]:
                     "series": "Land or land-equivalent",
                 }
             )
-        if turn <= 4:
-            rows.append({"turn": turn, "chance": 75.0, "series": "75% keep benchmark"})
     return rows
 
 
@@ -1435,13 +1433,7 @@ with results_tab:
                 chart_col, _chart_space = st.columns([0.68, 0.32])
                 with chart_col:
                     st.line_chart(land_plan_chart_rows(report), x="turn", y="chance", color="series", height=220)
-                if land_turn_3 >= 0.75:
-                    st.success(f"Third-land check: {fmt_pct(land_turn_3)} by turn 3. This clears the 75% planning benchmark.")
-                else:
-                    st.warning(
-                        f"Third-land check: {fmt_pct(land_turn_3)} by turn 3. "
-                        "For many fair hands, 75%+ is a useful baseline before calling the mana stable."
-                    )
+                st.info(f"Third-land check: {fmt_pct(land_turn_3)} by turn 3.")
                 st.write("**Key Chances**")
                 st.write(f"- Find the 3rd land by turn 3: {fmt_pct(land_turn_3)}")
                 st.write(f"- Find the 4th land by turn 4: {fmt_pct(land_turn_4)}")
