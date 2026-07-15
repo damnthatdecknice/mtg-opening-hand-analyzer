@@ -1059,15 +1059,19 @@ deck_tab, hand_tab, shot_tab, curve_tab, results_tab = st.tabs(["Deck", "Hand", 
 with deck_tab:
     st.subheader("Deck")
     section_panel("deck matrix", "Paste your main deck and optional sideboard. Sideboard cards are used for screenshot recognition only unless they appear in the confirmed hand.")
-    st.session_state.deck_text = st.text_area("Paste MTG Arena decklist", st.session_state.deck_text, height=260)
-    c_save, c_clear = st.columns([1, 1])
-    if c_save.button("Remember this deck in this browser"):
-        remember_deck_in_url(st.session_state.deck_text)
-        st.success("Deck saved into this page URL. Refreshing or reopening this URL will restore it.")
-    if c_clear.button("Clear remembered deck"):
-        if "deck" in st.query_params:
-            del st.query_params["deck"]
-        st.success("Remembered deck cleared from the URL.")
+    deck_input_col, deck_spacer_col = st.columns([0.68, 0.32])
+    with deck_input_col:
+        st.session_state.deck_text = st.text_area("Paste MTG Arena decklist", st.session_state.deck_text, height=260)
+        c_save, c_clear = st.columns([1, 1])
+        if c_save.button("Remember this deck in this browser"):
+            remember_deck_in_url(st.session_state.deck_text)
+            st.success("Deck saved into this page URL. Refreshing or reopening this URL will restore it.")
+        if c_clear.button("Clear remembered deck"):
+            if "deck" in st.query_params:
+                del st.query_params["deck"]
+            st.success("Remembered deck cleared from the URL.")
+    with deck_spacer_col:
+        st.empty()
     if st.query_params.get("deck"):
         st.caption("This deck is stored in the page URL. Do not share the URL if the decklist is private.")
     deck = parsed_deck()
