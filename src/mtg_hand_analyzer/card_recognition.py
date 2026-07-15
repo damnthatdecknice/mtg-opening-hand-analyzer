@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 from functools import lru_cache
+from pathlib import Path
+from typing import NamedTuple
 from urllib.parse import quote
 
 import cv2
@@ -15,6 +16,15 @@ from mtg_hand_analyzer.settings import ARTWORK_DIR
 
 REQUEST_HEADERS = {"User-Agent": "MTGOpeningHandAnalyzer/0.1 local-desktop-app"}
 TITLE_STRIP_SIZE = (180, 34)
+
+
+class ImageFeatureSet(NamedTuple):
+    phash: imagehash.ImageHash
+    histogram: np.ndarray
+    edges: np.ndarray
+    title_strip: np.ndarray
+    art_histogram: np.ndarray
+    nameplate: np.ndarray
 
 
 def label_for_score(score: float) -> str:
@@ -148,8 +158,15 @@ def download_url_to_image(url: str, path: Path) -> bool:
     return True
 
 
-def image_features(path: Path) -> tuple[imagehash.ImageHash, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    pil = normalized_card_image(path)
+def image_features(path: Path) -> ImageFeatureSet:
+    stat = path.stat()
+    return _cached_image_features(str(path), stat.st_mtime_ns, stat.st_size)
+
+
+@lru_cache(maxsize=4096)
+def _cached_image_features(path: str, mtime_ns: int, size: int) -> ImageFeatureSet:
+    _ = (mtime_ns, size)
+    pil = normalized_card_image(Path(path))
     phash = imagehash.phash(pil)
     arr = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
     hist = cv2.calcHist([arr], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
@@ -161,7 +178,7 @@ def image_features(path: Path) -> tuple[imagehash.ImageHash, np.ndarray, np.ndar
     art = arr[35:132, 10:150]
     art_hist = cv2.calcHist([art], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
     cv2.normalize(art_hist, art_hist)
-    return phash, hist.flatten(), edges, title_strip, art_hist.flatten(), nameplate
+    return ImageFeatureSet(phash, hist.flatten(), edges, title_strip, art_hist.flatten(), nameplate)
 
 
 def normalized_card_image(path: Path) -> Image.Image:
@@ -222,7 +239,7 @@ def shifted_edge_similarity(a: np.ndarray, b: np.ndarray, max_shift: int = 4) ->
 
 
 def rendered_title_match_score(crop_path: Path, card_name: str) -> float:
-    crop_plate = image_features(crop_path)[5]
+    crop_plate = image_features(crop_path).nameplate
     rendered_plate = rendered_nameplate_edges(card_name)
     return shifted_edge_similarity(crop_plate, rendered_plate)
 
@@ -250,16 +267,18 @@ def trim_dark_border(arr: np.ndarray) -> np.ndarray:
 
 
 def compare_images(crop_path: Path, candidate_path: Path) -> dict[str, float]:
-    crop_hash, crop_hist, crop_edges, crop_title, crop_art_hist, _crop_nameplate = image_features(crop_path)
-    cand_hash, cand_hist, cand_edges, cand_title, cand_art_hist, _cand_nameplate = image_features(candidate_path)
-    hash_score = max(0.0, 1.0 - (crop_hash - cand_hash) / 64.0)
-    hist_score = float(cv2.compareHist(crop_hist.astype("float32"), cand_hist.astype("float32"), cv2.HISTCMP_CORREL))
+    crop = image_features(crop_path)
+    candidate = image_features(candidate_path)
+    hash_score = max(0.0, 1.0 - (crop.phash - candidate.phash) / 64.0)
+    hist_score = float(cv2.compareHist(crop.histogram.astype("float32"), candidate.histogram.astype("float32"), cv2.HISTCMP_CORREL))
     hist_score = max(0.0, min(1.0, (hist_score + 1.0) / 2.0))
-    edge_diff = np.mean(cv2.absdiff(crop_edges, cand_edges)) / 255.0
+    edge_diff = np.mean(cv2.absdiff(crop.edges, candidate.edges)) / 255.0
     edge_score = max(0.0, 1.0 - float(edge_diff))
-    title_diff = np.mean(cv2.absdiff(crop_title, cand_title)) / 255.0
+    title_diff = np.mean(cv2.absdiff(crop.title_strip, candidate.title_strip)) / 255.0
     title_score = max(0.0, 1.0 - float(title_diff))
-    art_hist_score = float(cv2.compareHist(crop_art_hist.astype("float32"), cand_art_hist.astype("float32"), cv2.HISTCMP_CORREL))
+    art_hist_score = float(
+        cv2.compareHist(crop.art_histogram.astype("float32"), candidate.art_histogram.astype("float32"), cv2.HISTCMP_CORREL)
+    )
     art_hist_score = max(0.0, min(1.0, (art_hist_score + 1.0) / 2.0))
     score = 0.24 * hash_score + 0.18 * hist_score + 0.18 * edge_score + 0.22 * title_score + 0.18 * art_hist_score
     return {

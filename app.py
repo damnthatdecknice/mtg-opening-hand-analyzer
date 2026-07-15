@@ -4,6 +4,7 @@ import random
 import sys
 import tempfile
 import base64
+from difflib import SequenceMatcher
 import time
 import zlib
 from collections import Counter
@@ -32,7 +33,7 @@ from mtg_hand_analyzer.deck_parser import (
 )
 from mtg_hand_analyzer.land_inference import enrich_card_data
 from mtg_hand_analyzer.mana import mana_value_from_cost, parse_mana_cost
-from mtg_hand_analyzer.models import CardData, PlayDraw
+from mtg_hand_analyzer.models import CardData, CropBox, PlayDraw
 from mtg_hand_analyzer.screenshot_detection import detect_hand_region_boxes, load_image, save_crops
 from mtg_hand_analyzer.settings import CARD_DB_PATH, CARD_FIXTURE_PATH, SAMPLE_DECK_PATH, ensure_data_dirs
 
@@ -44,6 +45,10 @@ fixture_provider = FixtureCardDataProvider(CARD_FIXTURE_PATH)
 paste_image_component = components.declare_component(
     "paste_image_component",
     path=str(ROOT / "components" / "clipboard_image"),
+)
+title_ocr_component = components.declare_component(
+    "title_ocr_component",
+    path=str(ROOT / "components" / "title_ocr"),
 )
 
 
@@ -60,6 +65,11 @@ def init_state() -> None:
         "trials": 5000,
         "seed": 20260714,
         "last_pasted_image_timestamp": 0,
+        "ocr_results": [],
+        "crop_adjust_x": 0,
+        "crop_adjust_y": 0,
+        "crop_adjust_width": 100,
+        "crop_adjust_height": 100,
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
@@ -111,12 +121,114 @@ def pasted_image_path(payload: dict | None) -> Path | None:
         return Path(handle.name)
 
 
+def image_data_url(path: Path) -> str:
+    suffix = path.suffix.lower()
+    mime = "image/png"
+    if suffix in {".jpg", ".jpeg"}:
+        mime = "image/jpeg"
+    elif suffix == ".webp":
+        mime = "image/webp"
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
+
+
+def crop_adjustment_controls(prefix: str) -> tuple[int, int, int, int]:
+    with st.expander("Adjust detected card row", expanded=False):
+        st.caption("Use these when the seven crop previews are shifted, too narrow, or clipping the card names.")
+        c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1])
+        x_offset = c1.slider("Move sideways", -120, 120, int(st.session_state.crop_adjust_x), 2, key=f"{prefix}_crop_x")
+        y_offset = c2.slider("Move up/down", -120, 120, int(st.session_state.crop_adjust_y), 2, key=f"{prefix}_crop_y")
+        width_pct = c3.slider("Crop width", 75, 135, int(st.session_state.crop_adjust_width), 1, key=f"{prefix}_crop_w")
+        height_pct = c4.slider("Crop height", 75, 140, int(st.session_state.crop_adjust_height), 1, key=f"{prefix}_crop_h")
+        if c5.button("Reset", key=f"{prefix}_crop_reset"):
+            for key, value in {
+                "crop_adjust_x": 0,
+                "crop_adjust_y": 0,
+                "crop_adjust_width": 100,
+                "crop_adjust_height": 100,
+            }.items():
+                st.session_state[key] = value
+            st.rerun()
+        st.session_state.crop_adjust_x = x_offset
+        st.session_state.crop_adjust_y = y_offset
+        st.session_state.crop_adjust_width = width_pct
+        st.session_state.crop_adjust_height = height_pct
+    return x_offset, y_offset, width_pct, height_pct
+
+
+def adjusted_crop_boxes(
+    boxes: list[CropBox],
+    image_width: int,
+    image_height: int,
+    x_offset: int,
+    y_offset: int,
+    width_pct: int,
+    height_pct: int,
+) -> list[CropBox]:
+    adjusted: list[CropBox] = []
+    for box in boxes:
+        new_width = min(image_width, max(8, int(round(box.width * width_pct / 100))))
+        new_height = min(image_height, max(8, int(round(box.height * height_pct / 100))))
+        center_x = box.x + box.width // 2 + x_offset
+        center_y = box.y + box.height // 2 + y_offset
+        x = max(0, min(image_width - new_width, center_x - new_width // 2))
+        y = max(0, min(image_height - new_height, center_y - new_height // 2))
+        adjusted.append(
+            CropBox(
+                x=int(x),
+                y=int(y),
+                width=int(min(new_width, image_width - x)),
+                height=int(min(new_height, image_height - y)),
+                confidence=box.confidence,
+            )
+        )
+    return adjusted
+
+
+def clean_ocr_text(text: str) -> str:
+    return " ".join("".join(ch if ch.isalnum() or ch in " '-,/" else " " for ch in text).split()).strip()
+
+
+def best_ocr_match(text: str, options: list[str]) -> tuple[str | None, float]:
+    cleaned = clean_ocr_text(text).casefold()
+    if not cleaned:
+        return None, 0.0
+    best_name = None
+    best_score = 0.0
+    for option in options:
+        option_key = option.casefold()
+        score = SequenceMatcher(None, cleaned, option_key).ratio()
+        if cleaned in option_key:
+            score = max(score, min(1.0, len(cleaned) / max(1, len(option_key)) + 0.2))
+        if score > best_score:
+            best_name = option
+            best_score = score
+    return best_name, best_score
+
+
+def ocr_result_map() -> dict[int, dict]:
+    results = st.session_state.get("ocr_results", [])
+    if not isinstance(results, list):
+        return {}
+    mapped: dict[int, dict] = {}
+    for result in results:
+        if isinstance(result, dict) and isinstance(result.get("id"), int):
+            mapped[result["id"]] = result
+    return mapped
+
+
 def process_screenshot(image_path: Path, prefix: str) -> None:
     st.image(Image.open(image_path), caption="Screenshot", width="stretch")
     image = load_image(image_path)
     boxes = detect_hand_region_boxes(image)
     if boxes and max(box.confidence for box in boxes) <= 0.36:
         st.warning("Card positions were estimated instead of confidently detected. If the crops look wrong, use a tighter screenshot around the hand or upload a different screenshot size.")
+    x_offset, y_offset, width_pct, height_pct = crop_adjustment_controls(prefix)
+    boxes = adjusted_crop_boxes(boxes, image.shape[1], image.shape[0], x_offset, y_offset, width_pct, height_pct)
+    crop_signature = f"{image_path}:{x_offset}:{y_offset}:{width_pct}:{height_pct}"
+    if st.session_state.get("crop_signature") != crop_signature:
+        st.session_state.crop_signature = crop_signature
+        st.session_state.ocr_results = []
     crop_paths = save_crops(image, boxes, prefix=prefix)
     st.session_state.boxes = [box.model_dump() for box in boxes]
     st.session_state.crop_paths = [str(path) for path in crop_paths]
@@ -124,6 +236,18 @@ def process_screenshot(image_path: Path, prefix: str) -> None:
     for idx, path in enumerate(crop_paths):
         with crop_cols[idx]:
             st.image(str(path), caption=f"Crop {idx + 1}")
+    if crop_paths:
+        st.write("**Optional title OCR double-check**")
+        st.caption("This reads the name strips in your browser and uses them as an extra hint for the dropdown defaults.")
+        ocr_payload = title_ocr_component(
+            crops=[{"id": index, "dataUrl": image_data_url(path)} for index, path in enumerate(crop_paths)],
+            key=f"title_ocr_{prefix}",
+            default=None,
+            height=145,
+        )
+        if isinstance(ocr_payload, dict) and ocr_payload.get("results"):
+            st.session_state.ocr_results = ocr_payload["results"]
+            st.success("Browser OCR results received.")
     if st.button("Run recognition", key=f"run_recognition_{prefix}"):
         with st.spinner("Refreshing card data from Scryfall and matching crops..."):
             cards = resolve_cards(list(recognition_counts()))
@@ -218,6 +342,46 @@ def hand_texture_score(report: dict, castability: dict) -> int:
     if castability and all(estimate.by_turn.get(2, 0.0) < 0.5 for estimate in castability.values()):
         score -= 15
     return max(0, min(100, score))
+
+
+def opening_hand_tags(report: dict, hand: list[str], cards: dict[str, CardData], castability: dict) -> list[str]:
+    tags: list[str] = []
+    lands = report.get("lands_in_hand", 0)
+    effective_sources = report.get("effective_lands_in_hand", lands)
+    early_play_count = report["early_plays"].get(1, 0) + report["early_plays"].get(2, 0)
+    spells = [name for name in hand if cards.get(name) and not cards[name].is_land]
+    avg_mv = report.get("average_mana_value", 0.0)
+    if lands <= 1:
+        tags.append("mana light")
+    elif lands >= 5:
+        tags.append("flood risk")
+    elif lands in {2, 3}:
+        tags.append("normal land count")
+    if effective_sources > lands:
+        tags.append("has land-equivalent ramp")
+    if early_play_count:
+        tags.append("early play available")
+    else:
+        tags.append("slow start")
+    if report.get("hand_draw_sources"):
+        tags.append("has card selection")
+    if report.get("hand_ramp_sources"):
+        tags.append("has ramp")
+    if avg_mv >= 3.0 and lands < 3:
+        tags.append("top-heavy for its lands")
+    if castability and spells:
+        weak_casts = [
+            name
+            for name in spells
+            if castability.get(name) and max(castability[name].by_turn.get(1, 0.0), castability[name].by_turn.get(2, 0.0)) < 0.45
+        ]
+        if len(weak_casts) >= max(1, len(spells) // 2):
+            tags.append("castability concern")
+    if report.get("observed_sideboard_cards"):
+        tags.append("sideboard card seen")
+    if not tags:
+        tags.append("clean but unremarkable")
+    return tags
 
 
 def land_sentence(lands_in_hand: int, third_land: float, fourth_land: float) -> str:
@@ -614,6 +778,7 @@ with shot_tab:
         confirmed: list[str] = []
         selectable_counts = recognition_counts()
         unique_options = sorted(selectable_counts)
+        ocr_by_crop = ocr_result_map()
         for result in results:
             idx = result["crop_index"]
             cols = st.columns([1, 2, 3])
@@ -621,12 +786,19 @@ with shot_tab:
                 cols[0].image(result["crop_path"], caption=f"Crop {idx + 1}")
             labels = [candidate["card_name"] for candidate in result["candidates"]]
             best = labels[0] if labels else unique_options[0]
+            ocr_result = ocr_by_crop.get(idx, {})
+            ocr_match, ocr_score = best_ocr_match(str(ocr_result.get("text", "")), unique_options)
+            if ocr_match and ocr_score >= 0.72:
+                best = ocr_match
             choice = cols[1].selectbox(
                 f"Card {idx + 1}",
                 unique_options,
                 index=unique_options.index(best) if best in unique_options else 0,
                 key=f"recognized_card_{idx}",
             )
+            if ocr_result:
+                ocr_text = clean_ocr_text(str(ocr_result.get("text", ""))) or "no title text read"
+                cols[1].caption(f"OCR: {ocr_text} ({ocr_score:.0%} deck match)")
             verification = result.get("verification_label", "Review")
             notes = result.get("verification_notes", [])
             if verification == "Likely":
@@ -799,6 +971,8 @@ with results_tab:
                 m2.metric("Effective sources", report.get("effective_lands_in_hand", report["lands_in_hand"]))
                 m3.metric("Avg mana value", f"{report['average_mana_value']:.2f}")
                 m4.metric("Texture", f"{score}/100")
+                st.write("**Opening Hand Tags**")
+                st.write(" ".join(f"`{tag}`" for tag in opening_hand_tags(report, hand, cards, castability)))
                 st.write("**Keep or Mulligan Signals**")
                 st.write("- " + land_sentence(report["lands_in_hand"], land_turn_3, land_turn_4))
                 st.write("- " + effective_source_sentence(report))

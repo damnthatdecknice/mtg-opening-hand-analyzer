@@ -1,0 +1,174 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        color: #f5f7fb;
+        font-family: sans-serif;
+        margin: 0;
+      }
+      #panel {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      button {
+        background: #243447;
+        border: 1px solid #6da9df;
+        border-radius: 6px;
+        color: #f5f7fb;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 700;
+        padding: 8px 12px;
+      }
+      button:disabled {
+        cursor: progress;
+        opacity: 0.65;
+      }
+      #status {
+        color: #b8c7d9;
+        font-size: 13px;
+      }
+      #results {
+        color: #dbe8f6;
+        font-size: 13px;
+        line-height: 1.35;
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="panel">
+      <button id="ocr-button" type="button">Read card names from crops</button>
+      <span id="status">Browser OCR is idle.</span>
+    </div>
+    <div id="results"></div>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script>
+      const Streamlit = {
+        setComponentReady() {
+          window.parent.postMessage(
+            { isStreamlitMessage: true, type: "streamlit:componentReady", apiVersion: 1 },
+            "*"
+          );
+        },
+        setComponentValue(value) {
+          window.parent.postMessage(
+            { isStreamlitMessage: true, type: "streamlit:setComponentValue", value, dataType: "json" },
+            "*"
+          );
+        },
+        setFrameHeight(height) {
+          window.parent.postMessage(
+            { isStreamlitMessage: true, type: "streamlit:setFrameHeight", height },
+            "*"
+          );
+        },
+      };
+
+      const button = document.getElementById("ocr-button");
+      const status = document.getElementById("status");
+      const resultsNode = document.getElementById("results");
+      let crops = [];
+
+      function setHeight() {
+        Streamlit.setFrameHeight(145);
+      }
+
+      function setStatus(text) {
+        status.textContent = text;
+        setHeight();
+      }
+
+      function cleanText(text) {
+        return (text || "")
+          .replace(/[^A-Za-z0-9 '\-,/]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function loadImage(dataUrl) {
+        return new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = reject;
+          image.src = dataUrl;
+        });
+      }
+
+      async function titleStripDataUrl(dataUrl) {
+        const image = await loadImage(dataUrl);
+        const stripHeight = Math.max(18, Math.round(image.height * 0.17));
+        const canvas = document.createElement("canvas");
+        const scale = 5;
+        canvas.width = image.width * scale;
+        canvas.height = stripHeight * scale;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(image, 0, 0, image.width, stripHeight, 0, 0, canvas.width, canvas.height);
+        const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        for (let index = 0; index < pixels.data.length; index += 4) {
+          const gray = pixels.data[index] * 0.299 + pixels.data[index + 1] * 0.587 + pixels.data[index + 2] * 0.114;
+          const boosted = gray > 145 ? 255 : gray < 80 ? 0 : gray;
+          pixels.data[index] = boosted;
+          pixels.data[index + 1] = boosted;
+          pixels.data[index + 2] = boosted;
+        }
+        ctx.putImageData(pixels, 0, 0);
+        return canvas.toDataURL("image/png");
+      }
+
+      async function runOcr() {
+        if (!window.Tesseract) {
+          setStatus("OCR library did not load. The image matcher still works.");
+          return;
+        }
+        if (!crops.length) {
+          setStatus("No crops are available yet.");
+          return;
+        }
+        button.disabled = true;
+        const results = [];
+        try {
+          for (let index = 0; index < crops.length; index += 1) {
+            const crop = crops[index];
+            setStatus(`Reading crop ${index + 1} of ${crops.length}...`);
+            const strip = await titleStripDataUrl(crop.dataUrl);
+            const response = await Tesseract.recognize(strip, "eng");
+            const text = cleanText(response?.data?.text || "");
+            const confidence = Number(response?.data?.confidence || 0);
+            results.push({ id: crop.id, text, confidence });
+          }
+          resultsNode.textContent = results
+            .map((result) => `Crop ${result.id + 1}: ${result.text || "(no text)"}`)
+            .join(" | ");
+          Streamlit.setComponentValue({ timestamp: Date.now(), results });
+          setStatus("OCR complete.");
+        } catch (error) {
+          setStatus("OCR could not read these crops. You can still use the matcher and dropdowns.");
+        } finally {
+          button.disabled = false;
+          setHeight();
+        }
+      }
+
+      window.addEventListener("message", (event) => {
+        const data = event.data || {};
+        if (data.type !== "streamlit:render") {
+          return;
+        }
+        crops = Array.isArray(data.args?.crops) ? data.args.crops : [];
+        setHeight();
+      });
+
+      button.addEventListener("click", runOcr);
+      window.addEventListener("load", () => {
+        Streamlit.setComponentReady();
+        setHeight();
+      });
+    </script>
+  </body>
+</html>
