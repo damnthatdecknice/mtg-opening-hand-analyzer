@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import Protocol
 
@@ -84,8 +85,9 @@ class FixtureCardDataProvider:
 
 
 class ScryfallProvider:
-    def __init__(self, timeout: float = 15.0) -> None:
+    def __init__(self, timeout: float = 15.0, retries: int = 2) -> None:
         self.timeout = timeout
+        self.retries = retries
         self.headers = {
             "User-Agent": "MTGOpeningHandAnalyzer/0.1 local-desktop-app",
             "Accept": "application/json",
@@ -102,16 +104,39 @@ class ScryfallProvider:
         return None
 
     def get_card_by_param(self, param_name: str, name: str) -> CardData | None:
-        response = requests.get(
-            "https://api.scryfall.com/cards/named",
-            params={param_name: name},
-            timeout=self.timeout,
-            headers=self.headers,
-        )
+        response = self.request_named(param_name, name)
         if response.status_code == 404:
             return None
         response.raise_for_status()
         return card_from_scryfall(response.json())
+
+    def request_named(self, param_name: str, name: str) -> requests.Response:
+        last_exc: requests.RequestException | None = None
+        for attempt in range(self.retries + 1):
+            try:
+                response = requests.get(
+                    "https://api.scryfall.com/cards/named",
+                    params={param_name: name},
+                    timeout=self.timeout,
+                    headers=self.headers,
+                )
+            except requests.RequestException as exc:
+                last_exc = exc
+                if attempt >= self.retries:
+                    raise
+                time.sleep(0.35 * (attempt + 1))
+                continue
+            if response.status_code not in {429, 500, 502, 503, 504} or attempt >= self.retries:
+                return response
+            retry_after = response.headers.get("Retry-After")
+            try:
+                delay = float(retry_after) if retry_after else 0.35 * (attempt + 1)
+            except ValueError:
+                delay = 0.35 * (attempt + 1)
+            time.sleep(min(delay, 2.0))
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("Scryfall lookup failed without a response.")
 
 
 SET_CODE_RE = re.compile(r"\s+\([A-Z0-9]{2,6}\)\s+\d+[a-z]?\s*$")
