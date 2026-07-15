@@ -403,9 +403,7 @@ def render_header() -> None:
         <div class="mtg-header">
           <div class="mtg-kicker">Competitive opener lab</div>
           <div class="mtg-title">MTG Opening Hand Analyzer</div>
-          <p class="mtg-subtitle">
-            Opening-hand math for Magic, with screenshot recognition, Scryfall checks, castability simulation, and mulligan context.
-          </p>
+          <p class="mtg-subtitle">Opening-hand math for Magic</p>
         </div>
         """,
         unsafe_allow_html=True,
