@@ -1291,7 +1291,9 @@ with curve_tab:
 
                 st.write("**Spell Mana Curve**")
                 curve_rows = spell_curve_rows(counts, cards)
-                st.bar_chart(curve_rows, x="slot", y="cards")
+                chart_col, _chart_space = st.columns([0.62, 0.38])
+                with chart_col:
+                    st.bar_chart(curve_rows, x="slot", y="cards", height=220)
                 st.dataframe(curve_rows, hide_index=True, width="stretch")
 
                 st.write("**Mana Value Verification**")
@@ -1522,7 +1524,9 @@ with results_tab:
             with curve:
                 st.write("**Deck Mana Curve**")
                 rows = deck_curve_rows(main_counts(), cards)
-                st.bar_chart(rows, x="slot", y="cards")
+                chart_col, _chart_space = st.columns([0.62, 0.38])
+                with chart_col:
+                    st.bar_chart(rows, x="slot", y="cards", height=220)
                 st.dataframe(rows, hide_index=True, width="stretch")
                 st.write("**Mana Value Audit**")
                 audit_rows = []
