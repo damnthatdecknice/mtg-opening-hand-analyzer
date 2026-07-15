@@ -4,6 +4,7 @@ import random
 import sys
 import tempfile
 import base64
+import time
 import zlib
 from collections import Counter
 from pathlib import Path
@@ -135,6 +136,19 @@ def resolve_cards(names: list[str]) -> dict[str, CardData]:
     provider = ScryfallProvider()
     cards: dict[str, CardData] = {}
     for name in names:
+        card = card_cache.resolve(name, provider, force_refresh=True)
+        if not card:
+            card = fixture_provider.get_card(name)
+        cards[name] = enrich_card_data(name, card)
+    return cards
+
+
+def retry_card_lookups(names: list[str], delay_seconds: float = 0.75) -> dict[str, CardData]:
+    provider = ScryfallProvider(retries=3)
+    cards: dict[str, CardData] = {}
+    for index, name in enumerate(names):
+        if index:
+            time.sleep(delay_seconds)
         card = card_cache.resolve(name, provider, force_refresh=True)
         if not card:
             card = fixture_provider.get_card(name)
@@ -683,10 +697,39 @@ with curve_tab:
             st.write("**Mana Value Verification**")
             audit_rows = mana_value_audit_rows(counts, cards)
             issue_count = sum(1 for row in audit_rows if row["status"] in {"Review", "Missing", "Lookup failed", "Scryfall only"})
+            failed_lookup_names = [
+                row["card"]
+                for row in audit_rows
+                if row["status"] in {"Missing", "Lookup failed"}
+            ]
             if issue_count:
                 st.warning(f"{issue_count} card(s) need a closer look.")
             else:
                 st.success("All deck mana values passed the symbol/face check.")
+            if failed_lookup_names:
+                st.caption("If Scryfall was briefly unavailable or rate-limited, retry only the failed cards instead of refreshing the full deck.")
+                if st.button(
+                    f"Retry failed lookup{'s' if len(failed_lookup_names) != 1 else ''} ({len(failed_lookup_names)})",
+                    key="retry_failed_scryfall_lookups",
+                ):
+                    with st.spinner("Retrying failed Scryfall lookup(s) with a short pause between cards..."):
+                        retried = retry_card_lookups(failed_lookup_names)
+                        updated_cards = dict(cards)
+                        updated_cards.update(retried)
+                        st.session_state.curve_cards = {
+                            name: card.model_dump()
+                            for name, card in updated_cards.items()
+                        }
+                    still_failed = [
+                        name
+                        for name, card in retried.items()
+                        if checked_card_mana_value(card)[1] in {"lookup failed", "missing card data"}
+                    ]
+                    if still_failed:
+                        st.warning("Still failed: " + ", ".join(still_failed))
+                    else:
+                        st.success("All failed lookups resolved on retry.")
+                    st.rerun()
             st.dataframe(audit_rows, hide_index=True, width="stretch")
             st.caption("MDFCs and other multiface cards are checked against the castable nonland face when possible; lands are counted as 0. Lookup failed means Scryfall did not return usable card data during refresh.")
 
