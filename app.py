@@ -142,8 +142,8 @@ def inject_theme() -> None:
               radial-gradient(circle at 92% 0%, rgba(101, 216, 255, 0.1), transparent 22rem);
             backdrop-filter: blur(12px) saturate(130%);
             box-shadow: var(--jace-shadow), inset 0 1px 0 rgba(255,255,255,0.1);
-            padding: 26px 28px;
-            margin-bottom: 16px;
+            padding: 16px 24px 18px;
+            margin-bottom: 14px;
             position: relative;
             overflow: hidden;
           }
@@ -176,11 +176,11 @@ def inject_theme() -> None:
           }
           .mtg-title {
             color: var(--jace-text);
-            font-size: clamp(2rem, 4vw, 3.9rem);
+            font-size: clamp(1.8rem, 3.4vw, 3.2rem);
             font-weight: 900;
             letter-spacing: 0;
             line-height: 1.02;
-            margin: 6px 0 8px;
+            margin: 4px 0 8px;
             position: relative;
             text-shadow: 0 0 18px rgba(101, 216, 255, 0.22);
           }
@@ -191,27 +191,6 @@ def inject_theme() -> None:
             max-width: 820px;
             position: relative;
           }
-          .mana-row {
-            display: flex;
-            gap: 8px;
-            margin-top: 18px;
-          }
-          .mana-pip {
-            align-items: center;
-            border: 1px solid rgba(255,255,255,0.38);
-            border-radius: 999px;
-            display: inline-flex;
-            font-weight: 900;
-            height: 34px;
-            justify-content: center;
-            width: 34px;
-            box-shadow: inset 0 1px 6px rgba(255,255,255,0.25), 0 4px 12px rgba(0,0,0,0.35);
-          }
-          .pip-w { background: #f2e7c7; color: #242018; }
-          .pip-u { background: #2c9de8; color: #06101a; }
-          .pip-b { background: #1d1924; color: #f0eef4; }
-          .pip-r { background: #d95d44; color: #1b0805; }
-          .pip-g { background: #4fa86d; color: #06150b; }
           div[data-testid="stTabs"] button {
             border-radius: 8px 8px 0 0;
             color: var(--jace-muted);
@@ -366,7 +345,7 @@ def inject_theme() -> None:
               background-size: auto 100%;
             }
             .hand-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-            .mtg-header { padding: 18px; }
+            .mtg-header { padding: 14px 16px 16px; }
           }
           @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after {
@@ -396,13 +375,6 @@ def render_header() -> None:
           <p class="mtg-subtitle">
             Opening-hand math for Magic, with screenshot recognition, Scryfall checks, castability simulation, and mulligan context.
           </p>
-          <div class="mana-row" aria-hidden="true">
-            <span class="mana-pip pip-w">W</span>
-            <span class="mana-pip pip-u">U</span>
-            <span class="mana-pip pip-b">B</span>
-            <span class="mana-pip pip-r">R</span>
-            <span class="mana-pip pip-g">G</span>
-          </div>
         </div>
         """,
         unsafe_allow_html=True,
