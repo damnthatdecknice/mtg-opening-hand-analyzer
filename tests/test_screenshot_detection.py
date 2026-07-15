@@ -158,3 +158,45 @@ def test_detector_keeps_consistent_width_for_low_contrast_bottom_card() -> None:
     widths = [box.width for box in boxes]
     assert max(widths) - min(widths) <= 8
     assert boxes[3].width >= boxes[0].width - 8
+
+
+def test_bottom_slot_detector_handles_large_adjacent_cards() -> None:
+    image = np.zeros((1200, 2200, 3), dtype=np.uint8)
+    image[:] = (15, 17, 20)
+    y = 760
+    card_w, card_h = 210, 305
+    start_x = 365
+    for index in range(7):
+        x = start_x + index * card_w
+        cv2.rectangle(image, (x, y), (x + card_w - 1, y + card_h), (225, 225, 232), 4)
+        cv2.rectangle(image, (x + 10, y + 25), (x + card_w - 11, y + 178), (60, 120, 190), -1)
+        cv2.rectangle(image, (x + 10, y + 205), (x + card_w - 11, y + 292), (215, 225, 230), -1)
+
+    boxes = detect_hand_region_boxes(image)
+
+    assert len(boxes) == 7
+    assert boxes == sorted(boxes, key=lambda box: box.x)
+    assert abs(boxes[0].x - start_x) <= 18
+    assert abs(boxes[0].y - y) <= 30
+    assert abs(boxes[0].width - card_w) <= 24
+    assert max(box.width for box in boxes) - min(box.width for box in boxes) <= 2
+
+
+def test_bottom_slot_detector_handles_small_adjacent_cards() -> None:
+    image = np.zeros((420, 820, 3), dtype=np.uint8)
+    image[:] = (12, 14, 18)
+    y = 242
+    card_w, card_h = 72, 104
+    start_x = 158
+    for index in range(7):
+        x = start_x + index * card_w
+        cv2.rectangle(image, (x, y), (x + card_w - 1, y + card_h), (220, 222, 228), 2)
+        cv2.rectangle(image, (x + 5, y + 14), (x + card_w - 6, y + 63), (80, 130, 170), -1)
+        cv2.rectangle(image, (x + 5, y + 75), (x + card_w - 6, y + 98), (210, 220, 225), -1)
+
+    boxes = detect_hand_region_boxes(image)
+
+    assert len(boxes) == 7
+    assert abs(boxes[0].x - start_x) <= 14
+    assert abs(boxes[0].width - card_w) <= 16
+    assert max(box.width for box in boxes) - min(box.width for box in boxes) <= 2
