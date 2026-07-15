@@ -79,6 +79,7 @@ def inject_theme() -> None:
             --jace-danger: #ff7464;
             --jace-success: #7de0b1;
             --jace-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+            --content-rail-width: min(920px, 68vw);
           }
           .stApp {
             background: var(--jace-bg);
@@ -144,7 +145,7 @@ def inject_theme() -> None:
             box-shadow: var(--jace-shadow), inset 0 1px 0 rgba(255,255,255,0.1);
             padding: 16px 24px 18px;
             margin-bottom: 14px;
-            max-width: min(980px, 68vw);
+            max-width: var(--content-rail-width);
             position: relative;
             overflow: hidden;
           }
@@ -236,6 +237,7 @@ def inject_theme() -> None:
             border-radius: 6px;
             caret-color: var(--jace-cyan);
             box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 12px 28px rgba(0,0,0,0.2);
+            max-width: var(--content-rail-width);
           }
           div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
           div[data-testid="stFileUploader"] section {
@@ -246,6 +248,14 @@ def inject_theme() -> None:
           div[data-testid="stDataFrame"] {
             background: rgba(5, 10, 19, 0.9);
             border-radius: 8px;
+            max-width: var(--content-rail-width);
+          }
+          div[data-testid="stVegaLiteChart"],
+          div[data-testid="stImage"],
+          div[data-testid="stAlert"],
+          div[data-testid="stExpander"],
+          iframe {
+            max-width: var(--content-rail-width);
           }
           img {
             opacity: 1;
@@ -302,7 +312,7 @@ def inject_theme() -> None:
             border-radius: 10px;
             padding: 14px 18px 16px;
             margin: 10px 0 16px;
-            max-width: min(920px, 68vw);
+            max-width: var(--content-rail-width);
             backdrop-filter: blur(10px) saturate(118%);
             box-shadow: var(--jace-shadow), inset 0 1px 0 rgba(255,255,255,0.08);
             position: relative;
@@ -389,6 +399,10 @@ def section_panel(title: str, body: str) -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def content_rail():
+    return st.columns([0.68, 0.32], gap="large")
 
 
 def init_state() -> None:
@@ -1058,7 +1072,7 @@ deck_tab, hand_tab, shot_tab, curve_tab, results_tab = st.tabs(["Deck", "Hand", 
 
 with deck_tab:
     st.subheader("Deck")
-    deck_input_col, deck_spacer_col = st.columns([0.68, 0.32])
+    deck_input_col, deck_spacer_col = content_rail()
     with deck_input_col:
         section_panel("deck matrix", "Paste your main deck and optional sideboard. Sideboard cards are used for screenshot recognition only unless they appear in the confirmed hand.")
         st.session_state.deck_text = st.text_area("Paste MTG Arena decklist", st.session_state.deck_text, height=260)
@@ -1070,241 +1084,253 @@ with deck_tab:
             if "deck" in st.query_params:
                 del st.query_params["deck"]
             st.success("Remembered deck cleared from the URL.")
+        if st.query_params.get("deck"):
+            st.caption("This deck is stored in the page URL. Do not share the URL if the decklist is private.")
+        deck = parsed_deck()
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Main deck", deck.main_total)
+        c2.metric("Sideboard", deck.sideboard_total)
+        c3.metric("Unique main cards", len(deck.main_counts()))
+        if deck.issues:
+            st.error("Some lines could not be parsed.")
+            for issue in deck.issues[:10]:
+                st.write(f"Line {issue.line_number}: {issue.message} `{issue.line}`")
+        for warning in structural_warnings(deck):
+            st.warning(warning)
+        with st.expander("Main deck list", expanded=False):
+            st.dataframe([line.model_dump() for line in deck.main], hide_index=True, width="stretch")
+        if deck.sideboard:
+            with st.expander("Sideboard cards used for recognition", expanded=False):
+                st.dataframe([line.model_dump() for line in deck.sideboard], hide_index=True, width="stretch")
     with deck_spacer_col:
         st.empty()
-    if st.query_params.get("deck"):
-        st.caption("This deck is stored in the page URL. Do not share the URL if the decklist is private.")
-    deck = parsed_deck()
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Main deck", deck.main_total)
-    c2.metric("Sideboard", deck.sideboard_total)
-    c3.metric("Unique main cards", len(deck.main_counts()))
-    if deck.issues:
-        st.error("Some lines could not be parsed.")
-        for issue in deck.issues[:10]:
-            st.write(f"Line {issue.line_number}: {issue.message} `{issue.line}`")
-    for warning in structural_warnings(deck):
-        st.warning(warning)
-    with st.expander("Main deck list", expanded=False):
-        st.dataframe([line.model_dump() for line in deck.main], hide_index=True, width="stretch")
-    if deck.sideboard:
-        with st.expander("Sideboard cards used for recognition", expanded=False):
-            st.dataframe([line.model_dump() for line in deck.sideboard], hide_index=True, width="stretch")
 
 with hand_tab:
     st.subheader("Confirm Opening Hand")
-    section_panel("manual override", "Enter the exact seven cards when screenshot recognition is uncertain, or use this to validate a known opener directly.")
-    counts = main_counts()
-    selectable_counts = recognition_counts()
-    unique_options = sorted(selectable_counts)
-    if not unique_options:
-        st.warning("Paste a deck first.")
-    else:
-        pasted_hand = st.text_area(
-            "Paste a hand list",
-            placeholder="One card per line, or lines like `2 Island`.",
-            height=120,
-        )
-        if st.button("Use pasted hand"):
-            pasted = parse_pasted_hand(pasted_hand, selectable_counts)
-            effective_counts, _sideboard_seen = effective_counts_for_hand(pasted)
-            errors = ["Could not find seven valid cards from the pasted hand."] if len(pasted) != 7 else validate_hand_counts(effective_counts, pasted)
+    hand_col, hand_spacer_col = content_rail()
+    with hand_col:
+        section_panel("manual override", "Enter the exact seven cards when screenshot recognition is uncertain, or use this to validate a known opener directly.")
+        counts = main_counts()
+        selectable_counts = recognition_counts()
+        unique_options = sorted(selectable_counts)
+        if not unique_options:
+            st.warning("Paste a deck first.")
+        else:
+            pasted_hand = st.text_area(
+                "Paste a hand list",
+                placeholder="One card per line, or lines like `2 Island`.",
+                height=120,
+            )
+            if st.button("Use pasted hand"):
+                pasted = parse_pasted_hand(pasted_hand, selectable_counts)
+                effective_counts, _sideboard_seen = effective_counts_for_hand(pasted)
+                errors = ["Could not find seven valid cards from the pasted hand."] if len(pasted) != 7 else validate_hand_counts(effective_counts, pasted)
+                for error in errors:
+                    st.error(error)
+                if not errors:
+                    st.session_state.confirmed_hand = pasted
+                    st.success("Pasted hand saved for analysis.")
+            defaults = st.session_state.confirmed_hand if len(st.session_state.confirmed_hand) == 7 else []
+            selected: list[str] = []
+            cols = st.columns(7)
+            for index in range(7):
+                default = defaults[index] if index < len(defaults) else unique_options[index % len(unique_options)]
+                with cols[index]:
+                    selected.append(
+                        st.selectbox(
+                            f"Card {index + 1}",
+                            unique_options,
+                            index=unique_options.index(default) if default in unique_options else 0,
+                            key=f"manual_card_{index}",
+                        )
+                    )
+            effective_counts, sideboard_seen = effective_counts_for_hand(selected)
+            errors = validate_hand_counts(effective_counts, selected)
+            if sideboard_seen:
+                st.info("Sideboard card observed in hand: " + ", ".join(sideboard_seen) + ". Analysis will include the observed copy/copies so the hand can be evaluated.")
             for error in errors:
                 st.error(error)
-            if not errors:
-                st.session_state.confirmed_hand = pasted
-                st.success("Pasted hand saved for analysis.")
-        defaults = st.session_state.confirmed_hand if len(st.session_state.confirmed_hand) == 7 else []
-        selected: list[str] = []
-        cols = st.columns(7)
-        for index in range(7):
-            default = defaults[index] if index < len(defaults) else unique_options[index % len(unique_options)]
-            with cols[index]:
-                selected.append(
-                    st.selectbox(
-                        f"Card {index + 1}",
-                        unique_options,
-                        index=unique_options.index(default) if default in unique_options else 0,
-                        key=f"manual_card_{index}",
-                    )
-                )
-        effective_counts, sideboard_seen = effective_counts_for_hand(selected)
-        errors = validate_hand_counts(effective_counts, selected)
-        if sideboard_seen:
-            st.info("Sideboard card observed in hand: " + ", ".join(sideboard_seen) + ". Analysis will include the observed copy/copies so the hand can be evaluated.")
-        for error in errors:
-            st.error(error)
-        if st.button("Use this hand", disabled=bool(errors)):
-            st.session_state.confirmed_hand = selected
-            st.success("Hand saved for analysis.")
+            if st.button("Use this hand", disabled=bool(errors)):
+                st.session_state.confirmed_hand = selected
+                st.success("Hand saved for analysis.")
+    with hand_spacer_col:
+        st.empty()
 
 with shot_tab:
     st.subheader("Screenshot Recognition")
-    section_panel("vision stack", "Paste, drag/drop, or browse for an MTGO/Arena screenshot. Recognition is a first pass; the final seven cards stay under your control.")
-    pasted_payload = paste_image_component(key="pasted_screenshot", default=None, height=150)
-    pasted_timestamp = pasted_payload.get("timestamp", 0) if isinstance(pasted_payload, dict) else 0
-    if pasted_timestamp and pasted_timestamp != st.session_state.last_pasted_image_timestamp:
-        pasted_path = pasted_image_path(pasted_payload)
-        if pasted_path:
-            st.session_state.last_pasted_image_timestamp = pasted_timestamp
-            st.session_state.pasted_image_path = str(pasted_path)
-            st.success("Pasted screenshot received.")
-        else:
-            st.error("The pasted clipboard data could not be read as an image.")
-
-    if st.session_state.get("pasted_image_path"):
-        process_screenshot(Path(st.session_state.pasted_image_path), "pasted")
-
-    results = st.session_state.recognition_results
-    if results and unique_options:
-        st.divider()
-        st.subheader("Confirm Recognized Cards")
-        confirmed: list[str] = []
-        selectable_counts = recognition_counts()
-        unique_options = sorted(selectable_counts)
-        ocr_by_crop = ocr_result_map()
-        for result in results:
-            idx = result["crop_index"]
-            cols = st.columns([1, 2, 3])
-            if result.get("crop_path"):
-                cols[0].image(result["crop_path"], caption=f"Crop {idx + 1}")
-            labels = [candidate["card_name"] for candidate in result["candidates"]]
-            best = labels[0] if labels else unique_options[0]
-            ocr_result = ocr_by_crop.get(idx, {})
-            ocr_match, ocr_score = best_ocr_match(str(ocr_result.get("text", "")), unique_options)
-            if ocr_match and ocr_score >= 0.72:
-                best = ocr_match
-            choice = cols[1].selectbox(
-                f"Card {idx + 1}",
-                unique_options,
-                index=unique_options.index(best) if best in unique_options else 0,
-                key=f"recognized_card_{idx}",
-            )
-            if ocr_result:
-                ocr_text = clean_ocr_text(str(ocr_result.get("text", ""))) or "no title text read"
-                cols[1].caption(f"OCR: {ocr_text} ({ocr_score:.0%} deck match)")
-            verification = result.get("verification_label", "Review")
-            notes = result.get("verification_notes", [])
-            if verification == "Likely":
-                cols[1].success("Likely")
-            elif verification == "Double-check":
-                cols[1].warning("Double-check: " + " ".join(notes[:2]))
+    shot_col, shot_spacer_col = content_rail()
+    with shot_col:
+        section_panel("vision stack", "Paste, drag/drop, or browse for an MTGO/Arena screenshot. Recognition is a first pass; the final seven cards stay under your control.")
+        pasted_payload = paste_image_component(key="pasted_screenshot", default=None, height=150)
+        pasted_timestamp = pasted_payload.get("timestamp", 0) if isinstance(pasted_payload, dict) else 0
+        if pasted_timestamp and pasted_timestamp != st.session_state.last_pasted_image_timestamp:
+            pasted_path = pasted_image_path(pasted_payload)
+            if pasted_path:
+                st.session_state.last_pasted_image_timestamp = pasted_timestamp
+                st.session_state.pasted_image_path = str(pasted_path)
+                st.success("Pasted screenshot received.")
             else:
-                cols[1].error("Needs review: " + " ".join(notes[:2]))
-            cols[2].dataframe(
-                [
-                    {
-                        "candidate": candidate["card_name"],
-                        "score": round(candidate["score"], 3),
-                        "confidence": candidate["confidence_label"],
-                        "title": round(candidate.get("signals", {}).get("title_strip", 0), 3),
-                        "rendered title": round(candidate.get("signals", {}).get("rendered_title", 0), 3),
-                        "art": round(candidate.get("signals", {}).get("art_histogram", 0), 3),
-                    }
-                    for candidate in result["candidates"]
-                ],
-                hide_index=True,
-                width="stretch",
-            )
-            confirmed.append(choice)
-        effective_counts, sideboard_seen = effective_counts_for_hand(confirmed)
-        errors = validate_hand_counts(effective_counts, confirmed)
-        if sideboard_seen:
-            st.info("Sideboard card observed in recognized hand: " + ", ".join(sideboard_seen) + ". Analysis will include the observed copy/copies so the hand can be evaluated.")
-        for error in errors:
-            st.error(error)
-        if st.button("Use recognized hand", disabled=bool(errors)):
-            st.session_state.confirmed_hand = confirmed
-            st.success("Recognized hand saved for analysis.")
+                st.error("The pasted clipboard data could not be read as an image.")
+
+        if st.session_state.get("pasted_image_path"):
+            process_screenshot(Path(st.session_state.pasted_image_path), "pasted")
+
+        results = st.session_state.recognition_results
+        if results and unique_options:
+            st.divider()
+            st.subheader("Confirm Recognized Cards")
+            confirmed: list[str] = []
+            selectable_counts = recognition_counts()
+            unique_options = sorted(selectable_counts)
+            ocr_by_crop = ocr_result_map()
+            for result in results:
+                idx = result["crop_index"]
+                cols = st.columns([1, 2, 3])
+                if result.get("crop_path"):
+                    cols[0].image(result["crop_path"], caption=f"Crop {idx + 1}")
+                labels = [candidate["card_name"] for candidate in result["candidates"]]
+                best = labels[0] if labels else unique_options[0]
+                ocr_result = ocr_by_crop.get(idx, {})
+                ocr_match, ocr_score = best_ocr_match(str(ocr_result.get("text", "")), unique_options)
+                if ocr_match and ocr_score >= 0.72:
+                    best = ocr_match
+                choice = cols[1].selectbox(
+                    f"Card {idx + 1}",
+                    unique_options,
+                    index=unique_options.index(best) if best in unique_options else 0,
+                    key=f"recognized_card_{idx}",
+                )
+                if ocr_result:
+                    ocr_text = clean_ocr_text(str(ocr_result.get("text", ""))) or "no title text read"
+                    cols[1].caption(f"OCR: {ocr_text} ({ocr_score:.0%} deck match)")
+                verification = result.get("verification_label", "Review")
+                notes = result.get("verification_notes", [])
+                if verification == "Likely":
+                    cols[1].success("Likely")
+                elif verification == "Double-check":
+                    cols[1].warning("Double-check: " + " ".join(notes[:2]))
+                else:
+                    cols[1].error("Needs review: " + " ".join(notes[:2]))
+                cols[2].dataframe(
+                    [
+                        {
+                            "candidate": candidate["card_name"],
+                            "score": round(candidate["score"], 3),
+                            "confidence": candidate["confidence_label"],
+                            "title": round(candidate.get("signals", {}).get("title_strip", 0), 3),
+                            "rendered title": round(candidate.get("signals", {}).get("rendered_title", 0), 3),
+                            "art": round(candidate.get("signals", {}).get("art_histogram", 0), 3),
+                        }
+                        for candidate in result["candidates"]
+                    ],
+                    hide_index=True,
+                    width="stretch",
+                )
+                confirmed.append(choice)
+            effective_counts, sideboard_seen = effective_counts_for_hand(confirmed)
+            errors = validate_hand_counts(effective_counts, confirmed)
+            if sideboard_seen:
+                st.info("Sideboard card observed in recognized hand: " + ", ".join(sideboard_seen) + ". Analysis will include the observed copy/copies so the hand can be evaluated.")
+            for error in errors:
+                st.error(error)
+            if st.button("Use recognized hand", disabled=bool(errors)):
+                st.session_state.confirmed_hand = confirmed
+                st.success("Recognized hand saved for analysis.")
+    with shot_spacer_col:
+        st.empty()
 
 with curve_tab:
     st.subheader("Deck Mana Curve")
-    section_panel("mana audit", "Refresh Scryfall data and inspect the curve, MDFC checks, and any cards that need another lookup.")
-    counts = main_counts()
-    if not counts:
-        st.warning("Paste a deck first.")
-    else:
-        st.write("Refresh card data, then use this tab to catch bad mana values before analyzing hands.")
-        if st.button("Refresh deck mana values from Scryfall", type="primary"):
-            with st.spinner("Refreshing Scryfall data and checking mana values..."):
-                refreshed_cards = resolve_cards(list(counts))
-                auto_retry_names = failed_lookup_names_from_cards(counts, refreshed_cards)
-                if auto_retry_names:
-                    st.info(
-                        "Retrying failed lookup"
-                        + ("s" if len(auto_retry_names) != 1 else "")
-                        + " automatically: "
-                        + ", ".join(auto_retry_names)
-                    )
-                    retried_cards = retry_card_lookups(auto_retry_names)
-                    refreshed_cards.update(retried_cards)
-                st.session_state.curve_cards = card_payloads(refreshed_cards)
-            st.success("Deck mana values refreshed.")
-
-        raw_curve_cards = st.session_state.get("curve_cards")
-        if not raw_curve_cards:
-            st.info("Click refresh to build the curve and mana value audit.")
+    curve_col, curve_spacer_col = content_rail()
+    with curve_col:
+        section_panel("mana audit", "Refresh Scryfall data and inspect the curve, MDFC checks, and any cards that need another lookup.")
+        counts = main_counts()
+        if not counts:
+            st.warning("Paste a deck first.")
         else:
-            cards = {name: CardData.model_validate(payload) for name, payload in raw_curve_cards.items()}
-            missing = [name for name in counts if name not in cards]
-            if missing:
-                st.warning("Some current deck cards have not been refreshed yet. Click refresh after deck edits.")
+            st.write("Refresh card data, then use this tab to catch bad mana values before analyzing hands.")
+            if st.button("Refresh deck mana values from Scryfall", type="primary"):
+                with st.spinner("Refreshing Scryfall data and checking mana values..."):
+                    refreshed_cards = resolve_cards(list(counts))
+                    auto_retry_names = failed_lookup_names_from_cards(counts, refreshed_cards)
+                    if auto_retry_names:
+                        st.info(
+                            "Retrying failed lookup"
+                            + ("s" if len(auto_retry_names) != 1 else "")
+                            + " automatically: "
+                            + ", ".join(auto_retry_names)
+                        )
+                        retried_cards = retry_card_lookups(auto_retry_names)
+                        refreshed_cards.update(retried_cards)
+                    st.session_state.curve_cards = card_payloads(refreshed_cards)
+                st.success("Deck mana values refreshed.")
 
-            land_total = sum(qty for name, qty in counts.items() if cards.get(name) and cards[name].is_land)
-            spell_total = sum(qty for name, qty in counts.items() if cards.get(name) and not cards[name].is_land)
-            avg_spell_mv_values = [
-                cards[name].mana_value
-                for name, qty in counts.items()
-                for _ in range(qty)
-                if cards.get(name) and not cards[name].is_land
-            ]
-            avg_spell_mv = sum(avg_spell_mv_values) / len(avg_spell_mv_values) if avg_spell_mv_values else 0.0
-
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Lands", land_total)
-            c2.metric("Spells", spell_total)
-            c3.metric("Avg spell mana value", f"{avg_spell_mv:.2f}")
-
-            st.write("**Spell Mana Curve**")
-            curve_rows = spell_curve_rows(counts, cards)
-            st.bar_chart(curve_rows, x="slot", y="cards")
-            st.dataframe(curve_rows, hide_index=True, width="stretch")
-
-            st.write("**Mana Value Verification**")
-            audit_rows = mana_value_audit_rows(counts, cards)
-            issue_count = sum(1 for row in audit_rows if row["status"] in {"Review", "Missing", "Lookup failed", "Scryfall only"})
-            failed_lookup_names = [
-                row["card"]
-                for row in audit_rows
-                if row["status"] in {"Missing", "Lookup failed"}
-            ]
-            if issue_count:
-                st.warning(f"{issue_count} card(s) need a closer look.")
+            raw_curve_cards = st.session_state.get("curve_cards")
+            if not raw_curve_cards:
+                st.info("Click refresh to build the curve and mana value audit.")
             else:
-                st.success("All deck mana values passed the symbol/face check.")
-            if failed_lookup_names:
-                st.caption("If Scryfall was briefly unavailable or rate-limited, retry only the failed cards instead of refreshing the full deck.")
-                if st.button(
-                    f"Retry failed lookup{'s' if len(failed_lookup_names) != 1 else ''} ({len(failed_lookup_names)})",
-                    key="retry_failed_scryfall_lookups",
-                ):
-                    with st.spinner("Retrying failed Scryfall lookup(s) with a short pause between cards..."):
-                        retried = retry_card_lookups(failed_lookup_names)
-                        updated_cards = dict(cards)
-                        updated_cards.update(retried)
-                        st.session_state.curve_cards = card_payloads(updated_cards)
-                    still_failed = [
-                        name
-                        for name, card in retried.items()
-                        if checked_card_mana_value(card)[1] in {"lookup failed", "missing card data"}
-                    ]
-                    if still_failed:
-                        st.warning("Still failed: " + ", ".join(still_failed))
-                    else:
-                        st.success("All failed lookups resolved on retry.")
-                    st.rerun()
-            st.dataframe(audit_rows, hide_index=True, width="stretch")
-            st.caption("MDFCs and other multiface cards are checked against the castable nonland face when possible; lands are counted as 0. Lookup failed means Scryfall did not return usable card data during refresh.")
+                cards = {name: CardData.model_validate(payload) for name, payload in raw_curve_cards.items()}
+                missing = [name for name in counts if name not in cards]
+                if missing:
+                    st.warning("Some current deck cards have not been refreshed yet. Click refresh after deck edits.")
+
+                land_total = sum(qty for name, qty in counts.items() if cards.get(name) and cards[name].is_land)
+                spell_total = sum(qty for name, qty in counts.items() if cards.get(name) and not cards[name].is_land)
+                avg_spell_mv_values = [
+                    cards[name].mana_value
+                    for name, qty in counts.items()
+                    for _ in range(qty)
+                    if cards.get(name) and not cards[name].is_land
+                ]
+                avg_spell_mv = sum(avg_spell_mv_values) / len(avg_spell_mv_values) if avg_spell_mv_values else 0.0
+
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Lands", land_total)
+                c2.metric("Spells", spell_total)
+                c3.metric("Avg spell mana value", f"{avg_spell_mv:.2f}")
+
+                st.write("**Spell Mana Curve**")
+                curve_rows = spell_curve_rows(counts, cards)
+                st.bar_chart(curve_rows, x="slot", y="cards")
+                st.dataframe(curve_rows, hide_index=True, width="stretch")
+
+                st.write("**Mana Value Verification**")
+                audit_rows = mana_value_audit_rows(counts, cards)
+                issue_count = sum(1 for row in audit_rows if row["status"] in {"Review", "Missing", "Lookup failed", "Scryfall only"})
+                failed_lookup_names = [
+                    row["card"]
+                    for row in audit_rows
+                    if row["status"] in {"Missing", "Lookup failed"}
+                ]
+                if issue_count:
+                    st.warning(f"{issue_count} card(s) need a closer look.")
+                else:
+                    st.success("All deck mana values passed the symbol/face check.")
+                if failed_lookup_names:
+                    st.caption("If Scryfall was briefly unavailable or rate-limited, retry only the failed cards instead of refreshing the full deck.")
+                    if st.button(
+                        f"Retry failed lookup{'s' if len(failed_lookup_names) != 1 else ''} ({len(failed_lookup_names)})",
+                        key="retry_failed_scryfall_lookups",
+                    ):
+                        with st.spinner("Retrying failed Scryfall lookup(s) with a short pause between cards..."):
+                            retried = retry_card_lookups(failed_lookup_names)
+                            updated_cards = dict(cards)
+                            updated_cards.update(retried)
+                            st.session_state.curve_cards = card_payloads(updated_cards)
+                        still_failed = [
+                            name
+                            for name, card in retried.items()
+                            if checked_card_mana_value(card)[1] in {"lookup failed", "missing card data"}
+                        ]
+                        if still_failed:
+                            st.warning("Still failed: " + ", ".join(still_failed))
+                        else:
+                            st.success("All failed lookups resolved on retry.")
+                        st.rerun()
+                st.dataframe(audit_rows, hide_index=True, width="stretch")
+                st.caption("MDFCs and other multiface cards are checked against the castable nonland face when possible; lands are counted as 0. Lookup failed means Scryfall did not return usable card data during refresh.")
+    with curve_spacer_col:
+        st.empty()
 
 with results_tab:
     st.subheader("Results")
