@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mtg_hand_analyzer.card_data import card_from_scryfall
+from mtg_hand_analyzer.card_data import card_from_scryfall, scryfall_name_candidates, scryfall_query_name
 
 
 def test_scryfall_mana_value_uses_castable_face_for_multiface_cards() -> None:
@@ -40,3 +40,14 @@ def test_scryfall_mana_value_double_checks_planeswalker_cost() -> None:
         }
     )
     assert card.mana_value == 4
+
+
+def test_scryfall_query_name_strips_arena_set_annotations() -> None:
+    assert scryfall_query_name("1 Llanowar Wastes (DMU) 245") == "Llanowar Wastes"
+
+
+def test_scryfall_candidates_handle_split_card_separators() -> None:
+    candidates = scryfall_name_candidates("Wear / Tear")
+
+    assert "Wear // Tear" in candidates
+    assert "Wear" in candidates

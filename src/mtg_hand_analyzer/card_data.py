@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Protocol
 
@@ -91,9 +92,19 @@ class ScryfallProvider:
         }
 
     def get_card(self, name: str) -> CardData | None:
+        for candidate in scryfall_name_candidates(name):
+            card = self.get_card_by_param("exact", candidate)
+            if card:
+                return card
+        fuzzy_name = scryfall_query_name(name)
+        if fuzzy_name:
+            return self.get_card_by_param("fuzzy", fuzzy_name)
+        return None
+
+    def get_card_by_param(self, param_name: str, name: str) -> CardData | None:
         response = requests.get(
             "https://api.scryfall.com/cards/named",
-            params={"exact": name},
+            params={param_name: name},
             timeout=self.timeout,
             headers=self.headers,
         )
@@ -101,3 +112,35 @@ class ScryfallProvider:
             return None
         response.raise_for_status()
         return card_from_scryfall(response.json())
+
+
+SET_CODE_RE = re.compile(r"\s+\([A-Z0-9]{2,6}\)\s+\d+[a-z]?\s*$")
+COLLECTOR_SUFFIX_RE = re.compile(r"\s+\d+[a-z]?\s*$", re.IGNORECASE)
+ARENA_COUNT_PREFIX_RE = re.compile(r"^\s*\d+\s+")
+
+
+def scryfall_query_name(name: str) -> str:
+    cleaned = " ".join(name.replace("â€™", "'").replace("’", "'").split())
+    cleaned = SET_CODE_RE.sub("", cleaned)
+    cleaned = ARENA_COUNT_PREFIX_RE.sub("", cleaned)
+    cleaned = cleaned.replace(" / ", " // ")
+    cleaned = re.sub(r"\s*//\s*", " // ", cleaned)
+    return cleaned.strip()
+
+
+def scryfall_name_candidates(name: str) -> list[str]:
+    cleaned = scryfall_query_name(name)
+    candidates = [cleaned]
+    if " // " in cleaned:
+        candidates.append(cleaned.split(" // ", 1)[0].strip())
+        candidates.append(cleaned.replace(" // ", " / "))
+    without_collector = COLLECTOR_SUFFIX_RE.sub("", cleaned)
+    if without_collector != cleaned:
+        candidates.append(without_collector)
+    unique: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate and normalize_card_name(candidate) not in seen:
+            unique.append(candidate)
+            seen.add(normalize_card_name(candidate))
+    return unique
