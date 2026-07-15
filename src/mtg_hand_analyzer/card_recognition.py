@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from functools import lru_cache
 from urllib.parse import quote
 
 import cv2
@@ -13,6 +14,7 @@ from mtg_hand_analyzer.models import CardData, CropBox, RecognitionCandidate, Re
 from mtg_hand_analyzer.settings import ARTWORK_DIR
 
 REQUEST_HEADERS = {"User-Agent": "MTGOpeningHandAnalyzer/0.1 local-desktop-app"}
+TITLE_STRIP_SIZE = (180, 34)
 
 
 def label_for_score(score: float) -> str:
@@ -21,6 +23,15 @@ def label_for_score(score: float) -> str:
     if score >= 0.62:
         return "medium"
     return "low"
+
+
+def load_title_font(size: int) -> ImageFont.ImageFont:
+    for font_name in ("arial.ttf", "DejaVuSans.ttf", "LiberationSans-Regular.ttf"):
+        try:
+            return ImageFont.truetype(font_name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
 
 
 def create_placeholder_art(card: CardData, path: Path) -> Path:
@@ -137,7 +148,7 @@ def download_url_to_image(url: str, path: Path) -> bool:
     return True
 
 
-def image_features(path: Path) -> tuple[imagehash.ImageHash, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def image_features(path: Path) -> tuple[imagehash.ImageHash, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     pil = normalized_card_image(path)
     phash = imagehash.phash(pil)
     arr = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
@@ -146,10 +157,11 @@ def image_features(path: Path) -> tuple[imagehash.ImageHash, np.ndarray, np.ndar
     edges = cv2.Canny(cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY), 60, 160)
     gray = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY)
     title_strip = cv2.Canny(gray[0:32, :], 50, 140)
+    nameplate = nameplate_edges_from_normalized_image(pil)
     art = arr[35:132, 10:150]
     art_hist = cv2.calcHist([art], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
     cv2.normalize(art_hist, art_hist)
-    return phash, hist.flatten(), edges, title_strip, art_hist.flatten()
+    return phash, hist.flatten(), edges, title_strip, art_hist.flatten(), nameplate
 
 
 def normalized_card_image(path: Path) -> Image.Image:
@@ -163,6 +175,56 @@ def normalized_card_image(path: Path) -> Image.Image:
     y = (224 - pil.height) // 2
     canvas.paste(pil, (x, y))
     return canvas
+
+
+def nameplate_edges_from_normalized_image(image: Image.Image) -> np.ndarray:
+    gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
+    strip = gray[0:32, :]
+    strip = cv2.resize(strip, TITLE_STRIP_SIZE, interpolation=cv2.INTER_CUBIC)
+    strip = cv2.equalizeHist(strip)
+    return cv2.Canny(strip, 35, 125)
+
+
+@lru_cache(maxsize=512)
+def rendered_nameplate_edges(card_name: str) -> np.ndarray:
+    canvas = Image.new("L", TITLE_STRIP_SIZE, 210)
+    draw = ImageDraw.Draw(canvas)
+    text = card_name
+    font_size = 16
+    font = load_title_font(font_size)
+    while font_size > 8:
+        bbox = draw.textbbox((0, 0), text, font=font)
+        if bbox[2] - bbox[0] <= TITLE_STRIP_SIZE[0] - 10:
+            break
+        font_size -= 1
+        font = load_title_font(font_size)
+    draw.text((5, max(0, (TITLE_STRIP_SIZE[1] - font_size) // 2 - 1)), text, fill=20, font=font)
+    arr = np.array(canvas)
+    return cv2.Canny(arr, 35, 125)
+
+
+def shifted_edge_similarity(a: np.ndarray, b: np.ndarray, max_shift: int = 4) -> float:
+    best = 0.0
+    a_bool = a > 0
+    for dx in range(-max_shift, max_shift + 1):
+        shifted = np.zeros_like(b)
+        if dx < 0:
+            shifted[:, :dx] = b[:, -dx:]
+        elif dx > 0:
+            shifted[:, dx:] = b[:, :-dx]
+        else:
+            shifted = b
+        b_bool = shifted > 0
+        union = np.logical_or(a_bool, b_bool).sum()
+        score = 0.0 if union == 0 else float(np.logical_and(a_bool, b_bool).sum() / union)
+        best = max(best, score)
+    return min(1.0, best * 2.4)
+
+
+def rendered_title_match_score(crop_path: Path, card_name: str) -> float:
+    crop_plate = image_features(crop_path)[5]
+    rendered_plate = rendered_nameplate_edges(card_name)
+    return shifted_edge_similarity(crop_plate, rendered_plate)
 
 
 def trim_dark_border(arr: np.ndarray) -> np.ndarray:
@@ -188,8 +250,8 @@ def trim_dark_border(arr: np.ndarray) -> np.ndarray:
 
 
 def compare_images(crop_path: Path, candidate_path: Path) -> dict[str, float]:
-    crop_hash, crop_hist, crop_edges, crop_title, crop_art_hist = image_features(crop_path)
-    cand_hash, cand_hist, cand_edges, cand_title, cand_art_hist = image_features(candidate_path)
+    crop_hash, crop_hist, crop_edges, crop_title, crop_art_hist, _crop_nameplate = image_features(crop_path)
+    cand_hash, cand_hist, cand_edges, cand_title, cand_art_hist, _cand_nameplate = image_features(candidate_path)
     hash_score = max(0.0, 1.0 - (crop_hash - cand_hash) / 64.0)
     hist_score = float(cv2.compareHist(crop_hist.astype("float32"), cand_hist.astype("float32"), cv2.HISTCMP_CORREL))
     hist_score = max(0.0, min(1.0, (hist_score + 1.0) / 2.0))
@@ -208,6 +270,17 @@ def compare_images(crop_path: Path, candidate_path: Path) -> dict[str, float]:
         "art_histogram": art_hist_score,
         "weighted": score,
     }
+
+
+def compare_card_to_crop(crop_path: Path, candidate_path: Path, card_name: str) -> dict[str, float]:
+    signals = compare_images(crop_path, candidate_path)
+    nameplate_score = rendered_title_match_score(crop_path, card_name)
+    signals["rendered_title"] = nameplate_score
+    signals["weighted"] = min(
+        1.0,
+        signals["weighted"] * 0.82 + nameplate_score * 0.18,
+    )
+    return signals
 
 
 def candidate_limit_for_card(card_name: str, deck_cards: dict[str, CardData]) -> int:
@@ -303,9 +376,9 @@ def recognize_crops(
         candidates: list[RecognitionCandidate] = []
         for name, art_paths in artwork.items():
             best_path = art_paths[0]
-            best_signals = compare_images(crop_path, best_path)
+            best_signals = compare_card_to_crop(crop_path, best_path, name)
             for art_path in art_paths[1:]:
-                signals = compare_images(crop_path, art_path)
+                signals = compare_card_to_crop(crop_path, art_path, name)
                 if signals["weighted"] > best_signals["weighted"]:
                     best_signals = signals
                     best_path = art_path

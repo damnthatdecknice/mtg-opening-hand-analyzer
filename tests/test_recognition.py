@@ -10,6 +10,8 @@ from mtg_hand_analyzer.card_recognition import (
     apply_global_card_assignment,
     ensure_artwork,
     recognize_crops,
+    rendered_nameplate_edges,
+    shifted_edge_similarity,
     trim_dark_border,
     verification_for_candidates,
 )
@@ -118,3 +120,11 @@ def test_trim_dark_border_removes_preview_padding() -> None:
 
     assert trimmed.shape[0] < 140
     assert trimmed.shape[1] < 100
+
+
+def test_rendered_title_matching_prefers_same_name() -> None:
+    target = rendered_nameplate_edges("Lightning Strike")
+    same = rendered_nameplate_edges("Lightning Strike")
+    different = rendered_nameplate_edges("Mountain")
+
+    assert shifted_edge_similarity(target, same) > shifted_edge_similarity(target, different)

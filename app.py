@@ -617,6 +617,7 @@ with shot_tab:
                         "score": round(candidate["score"], 3),
                         "confidence": candidate["confidence_label"],
                         "title": round(candidate.get("signals", {}).get("title_strip", 0), 3),
+                        "rendered title": round(candidate.get("signals", {}).get("rendered_title", 0), 3),
                         "art": round(candidate.get("signals", {}).get("art_histogram", 0), 3),
                     }
                     for candidate in result["candidates"]
