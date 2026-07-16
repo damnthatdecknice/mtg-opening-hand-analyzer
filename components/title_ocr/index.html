@@ -43,6 +43,7 @@
 
       const status = document.getElementById("status");
       let crops = [];
+      let ocrMode = "title";
       let lastCropSignature = "";
       let isRunning = false;
 
@@ -73,9 +74,9 @@
 
       async function titleStripDataUrl(dataUrl) {
         const image = await loadImage(dataUrl);
-        const stripHeight = Math.max(18, Math.round(image.height * 0.17));
+        const stripHeight = ocrMode === "full" ? image.height : Math.max(18, Math.round(image.height * 0.17));
         const canvas = document.createElement("canvas");
-        const scale = 5;
+        const scale = ocrMode === "full" ? 4 : 5;
         canvas.width = image.width * scale;
         canvas.height = stripHeight * scale;
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -133,7 +134,8 @@
           return;
         }
         crops = Array.isArray(data.args?.crops) ? data.args.crops : [];
-        const cropSignature = crops.map((crop) => `${crop.id}:${crop.dataUrl?.length || 0}`).join("|");
+        ocrMode = data.args?.mode === "full" ? "full" : "title";
+        const cropSignature = `${ocrMode}:` + crops.map((crop) => `${crop.id}:${crop.dataUrl?.length || 0}`).join("|");
         setHeight();
         if (crops.length && cropSignature !== lastCropSignature) {
           lastCropSignature = cropSignature;

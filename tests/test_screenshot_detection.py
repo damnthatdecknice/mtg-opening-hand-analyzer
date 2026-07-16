@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 
 from mtg_hand_analyzer.screenshot_detection import (
+    detect_arena_opening_hand_title_boxes,
     detect_hand_region_boxes,
     normalized_fallback_boxes,
 )
@@ -67,6 +68,21 @@ def test_detector_handles_mtgo_bottom_hand_layout() -> None:
     assert 760 <= boxes[0].y <= 790
     assert 170 <= boxes[0].x <= 205
     assert 140 <= boxes[0].width <= 180
+
+
+def test_arena_opening_hand_title_boxes_follow_fan() -> None:
+    image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    image[:] = (20, 18, 24)
+
+    boxes = detect_arena_opening_hand_title_boxes(image)
+
+    assert len(boxes) == 7
+    assert boxes == sorted(boxes, key=lambda box: box.x)
+    assert boxes[3].y < boxes[0].y
+    assert boxes[3].y < boxes[-1].y
+    assert all(box.height < 100 for box in boxes)
+    assert boxes[0].x < 100
+    assert boxes[-1].x + boxes[-1].width > 1800
 
 
 def test_detector_handles_shifted_hand_row_without_fixed_bottom_assumption() -> None:

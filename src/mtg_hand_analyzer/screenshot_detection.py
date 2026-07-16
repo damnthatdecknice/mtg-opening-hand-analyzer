@@ -45,6 +45,40 @@ def detect_hand_region_boxes(image: np.ndarray, expected_cards: int = 7) -> list
     return normalized_bottom_hand_boxes(width, height, expected_cards)
 
 
+def detect_arena_opening_hand_title_boxes(image: np.ndarray, expected_cards: int = 7) -> list[CropBox]:
+    height, width = image.shape[:2]
+    if expected_cards != 7 or height < 400 or width < 700:
+        return []
+
+    # MTG Arena presents opening hands as a fixed seven-card fan. The visible card names
+    # are more reliable than art because the cards are tilted and overlap each other.
+    title_slots = [
+        (0.034, 0.325, 0.170, 0.073),
+        (0.163, 0.283, 0.170, 0.073),
+        (0.290, 0.235, 0.150, 0.066),
+        (0.415, 0.222, 0.160, 0.066),
+        (0.535, 0.227, 0.170, 0.073),
+        (0.657, 0.257, 0.170, 0.081),
+        (0.777, 0.292, 0.180, 0.084),
+    ]
+    boxes: list[CropBox] = []
+    for x_frac, y_frac, width_frac, height_frac in title_slots:
+        x = int(round(width * x_frac))
+        y = int(round(height * y_frac))
+        box_width = int(round(width * width_frac))
+        box_height = int(round(height * height_frac))
+        boxes.append(
+            CropBox(
+                x=max(0, min(x, width - 1)),
+                y=max(0, min(y, height - 1)),
+                width=max(8, min(box_width, width - x)),
+                height=max(8, min(box_height, height - y)),
+                confidence=0.74,
+            )
+        )
+    return boxes
+
+
 def detect_bottom_seven_card_slots(image: np.ndarray, expected_cards: int = 7) -> list[CropBox]:
     height, width = image.shape[:2]
     if expected_cards <= 0 or height < 160 or width < 320:

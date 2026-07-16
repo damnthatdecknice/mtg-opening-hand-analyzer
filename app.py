@@ -35,7 +35,12 @@ from mtg_hand_analyzer.deck_parser import (
 from mtg_hand_analyzer.land_inference import enrich_card_data
 from mtg_hand_analyzer.mana import mana_value_from_cost, parse_mana_cost
 from mtg_hand_analyzer.models import CardData, CropBox, PlayDraw
-from mtg_hand_analyzer.screenshot_detection import detect_hand_region_boxes, load_image, save_crops
+from mtg_hand_analyzer.screenshot_detection import (
+    detect_arena_opening_hand_title_boxes,
+    detect_hand_region_boxes,
+    load_image,
+    save_crops,
+)
 from mtg_hand_analyzer.settings import CARD_DB_PATH, CARD_FIXTURE_PATH, SAMPLE_DECK_PATH, ensure_data_dirs
 
 st.set_page_config(page_title="MTG Opening Hand Analyzer", layout="wide")
@@ -635,15 +640,22 @@ def crop_preview_strip(crop_paths: list[Path]) -> None:
     st.markdown(f'<div class="crop-preview-strip">{"".join(cards)}</div>', unsafe_allow_html=True)
 
 
-def process_screenshot(image_path: Path, prefix: str) -> None:
+def process_screenshot(image_path: Path, prefix: str, screenshot_source: str = "mtgo") -> None:
     st.image(Image.open(image_path), caption="Screenshot", width="stretch")
     image = load_image(image_path)
-    boxes = detect_hand_region_boxes(image)
-    if boxes and max(box.confidence for box in boxes) <= 0.36:
+    is_arena = screenshot_source == "arena"
+    if is_arena:
+        boxes = detect_arena_opening_hand_title_boxes(image)
+        if not boxes:
+            st.warning("Arena title positions could not be estimated. Try a full-window Arena screenshot with the opening hand visible.")
+            boxes = detect_hand_region_boxes(image)
+    else:
+        boxes = detect_hand_region_boxes(image)
+    if boxes and max(box.confidence for box in boxes) <= 0.36 and not is_arena:
         st.warning("Card positions were estimated instead of confidently detected. If the crops look wrong, use a tighter screenshot around the hand or upload a different screenshot size.")
     x_offset, y_offset, width_pct, height_pct = crop_adjustment_controls(prefix)
     boxes = adjusted_crop_boxes(boxes, image.shape[1], image.shape[0], x_offset, y_offset, width_pct, height_pct)
-    crop_signature = f"{image_path}:{x_offset}:{y_offset}:{width_pct}:{height_pct}"
+    crop_signature = f"{image_path}:{screenshot_source}:{x_offset}:{y_offset}:{width_pct}:{height_pct}"
     if st.session_state.get("crop_signature") != crop_signature:
         st.session_state.crop_signature = crop_signature
         st.session_state.ocr_results = []
@@ -655,7 +667,8 @@ def process_screenshot(image_path: Path, prefix: str) -> None:
     if crop_paths:
         ocr_payload = title_ocr_component(
             crops=[{"id": index, "dataUrl": image_data_url(path)} for index, path in enumerate(crop_paths)],
-            key=f"title_ocr_{prefix}",
+            mode="full" if is_arena else "title",
+            key=f"title_ocr_{prefix}_{screenshot_source}",
             default=None,
             height=54,
         )
@@ -1283,6 +1296,15 @@ with shot_tab:
     shot_col, shot_spacer_col = content_rail(0.92)
     with shot_col:
         section_panel("vision stack", "Paste, drag/drop, or browse for an MTGO/Arena screenshot. Recognition is a first pass; the final seven cards stay under your control.")
+        screenshot_source_label = st.radio(
+            "Screenshot source",
+            ["Magic Online", "MTG Arena"],
+            horizontal=True,
+            help="Magic Online uses full-card crops. MTG Arena uses the fanned opening-hand nameplates and OCR first.",
+        )
+        screenshot_source = "arena" if screenshot_source_label == "MTG Arena" else "mtgo"
+        if screenshot_source == "arena":
+            st.caption("Arena mode reads the visible card-name strips in the opening-hand fan, then matches those names against your decklist.")
         pasted_payload = paste_image_component(key="pasted_screenshot", default=None, height=275)
         pasted_timestamp = pasted_payload.get("timestamp", 0) if isinstance(pasted_payload, dict) else 0
         if pasted_timestamp and pasted_timestamp != st.session_state.last_pasted_image_timestamp:
@@ -1296,7 +1318,7 @@ with shot_tab:
                 st.error("The pasted clipboard data could not be read as an image.")
 
         if st.session_state.get("pasted_image_path"):
-            process_screenshot(Path(st.session_state.pasted_image_path), "pasted")
+            process_screenshot(Path(st.session_state.pasted_image_path), f"pasted_{screenshot_source}", screenshot_source)
 
         results = st.session_state.recognition_results
         if results and unique_options:
