@@ -67,6 +67,11 @@ def jace_background_data_uri() -> str:
 def inject_theme() -> None:
     css = (
         """
+        <meta property="og:title" content="MTG Opening Hand Analyzer" />
+        <meta property="og:description" content="Opening-hand math for Magic with MTGO and MTG Arena screenshot recognition." />
+        <meta property="og:image" content="https://mtg-opening-hand-analyzer-zs2rlezns76gpwivwj6iz3.streamlit.app/app/static/discord-preview.png" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:image" content="https://mtg-opening-hand-analyzer-zs2rlezns76gpwivwj6iz3.streamlit.app/app/static/discord-preview.png" />
         <style>
           :root {
             --jace-bg: #030711;
