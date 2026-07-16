@@ -56,6 +56,10 @@ title_ocr_component = components.declare_component(
     "title_ocr_component",
     path=str(ROOT / "components" / "title_ocr"),
 )
+rating_tracker_component = components.declare_component(
+    "rating_tracker_component",
+    path=str(ROOT / "components" / "rating_tracker"),
+)
 
 
 def jace_background_data_uri() -> str:
@@ -1498,7 +1502,9 @@ inject_theme()
 init_state()
 render_header()
 
-deck_tab, hand_tab, shot_tab, curve_tab, results_tab = st.tabs(["Deck", "Hand", "Screenshot", "Mana Curve", "Results"])
+deck_tab, hand_tab, shot_tab, curve_tab, results_tab, rating_tab = st.tabs(
+    ["Deck", "Hand", "Screenshot", "Mana Curve", "Results", "Rating"]
+)
 
 with deck_tab:
     st.subheader("Deck")
@@ -2118,3 +2124,16 @@ with results_tab:
                 st.write("**Hand Shape Flags**")
                 st.write("- Duplicate cards: " + (", ".join(duplicates) if duplicates else "none"))
                 st.caption("Limits: effective-source math counts MDFC land faces and cheap land-equivalent ramp, but castability still does not fully model treasures, cost reductions, alternate costs, or detailed sequencing.")
+
+with rating_tab:
+    st.subheader("Rating")
+    rating_col, rating_spacer_col = content_rail(0.82)
+    with rating_col:
+        section_panel(
+            "rating tracker",
+            "Track your ladder or event rating over time. This history is stored locally in this browser, not in the shared app server.",
+            wide=True,
+        )
+        rating_tracker_component(key="rating_tracker", default=None, height=680)
+    with rating_spacer_col:
+        st.empty()
