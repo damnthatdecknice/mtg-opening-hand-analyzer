@@ -379,6 +379,82 @@ def inject_theme() -> None:
           .section-card .mtg-subtitle {
             line-height: 1.55;
           }
+          .result-hero,
+          .result-card,
+          .watchout-panel {
+            background: linear-gradient(135deg, rgba(6, 13, 25, 0.96), rgba(10, 22, 40, 0.94));
+            border: 1px solid rgba(128, 205, 255, 0.32);
+            border-radius: 12px;
+            box-shadow: 0 18px 42px rgba(0,0,0,0.36), inset 0 1px 0 rgba(255,255,255,0.08);
+            backdrop-filter: blur(14px) saturate(120%);
+          }
+          .result-hero {
+            margin: 0.5rem 0 1rem;
+            padding: 1.15rem 1.3rem;
+          }
+          .result-hero.keep {
+            border-color: rgba(125, 224, 177, 0.56);
+          }
+          .result-hero.close {
+            border-color: rgba(226, 193, 116, 0.58);
+          }
+          .result-hero.mulligan {
+            border-color: rgba(255, 116, 100, 0.58);
+          }
+          .result-eyebrow {
+            color: var(--jace-gold);
+            font-size: 0.76rem;
+            font-weight: 900;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+          }
+          .result-title {
+            color: var(--jace-text);
+            font-size: clamp(1.75rem, 3.1vw, 3rem);
+            font-weight: 950;
+            line-height: 1.02;
+            margin-top: 0.2rem;
+          }
+          .result-summary {
+            color: var(--jace-muted);
+            font-size: 1.02rem;
+            line-height: 1.45;
+            margin-top: 0.55rem;
+          }
+          .result-card {
+            min-height: 8.1rem;
+            padding: 0.95rem 1rem;
+            margin-bottom: 0.75rem;
+          }
+          .result-card-label {
+            color: var(--jace-muted);
+            font-size: 0.78rem;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+          }
+          .result-card-value {
+            color: var(--jace-text);
+            font-size: 1.75rem;
+            font-weight: 950;
+            line-height: 1.08;
+            margin: 0.25rem 0;
+          }
+          .result-card-note {
+            color: var(--jace-muted);
+            font-size: 0.9rem;
+            line-height: 1.35;
+          }
+          .watchout-panel {
+            padding: 1rem 1.1rem;
+            margin: 0.35rem 0 1rem;
+          }
+          .watchout-panel ul {
+            margin-bottom: 0;
+          }
+          .watchout-panel li {
+            margin: 0.35rem 0;
+          }
           .crop-preview-strip {
             display: flex;
             gap: 18px;
@@ -453,6 +529,32 @@ def section_panel(title: str, body: str, *, wide: bool = False) -> None:
         <div class="{card_class}">
           <div class="mtg-kicker">{html.escape(title)}</div>
           <div class="mtg-subtitle">{html.escape(body)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def result_hero(title: str, summary: str, tone: str) -> None:
+    st.markdown(
+        f"""
+        <div class="result-hero {html.escape(tone)}">
+          <div class="result-eyebrow">Opening hand read</div>
+          <div class="result-title">{html.escape(title)}</div>
+          <div class="result-summary">{html.escape(summary)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def result_card(label: str, value: str, note: str) -> None:
+    st.markdown(
+        f"""
+        <div class="result-card">
+          <div class="result-card-label">{html.escape(label)}</div>
+          <div class="result-card-value">{html.escape(value)}</div>
+          <div class="result-card-note">{html.escape(note)}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -813,6 +915,78 @@ def opening_hand_tags(report: dict, hand: list[str], cards: dict[str, CardData],
     return tags
 
 
+def overview_recommendation(report: dict, score: int, land_turn_3: float, mulligan_summary: dict, castability: dict) -> tuple[str, str, str]:
+    lands = report["lands_in_hand"]
+    effective_lands = report.get("effective_lands_in_hand", lands)
+    mull_better = mulligan_summary.get("better", 0.0) if mulligan_summary.get("available") else 0.0
+    turn_two_castable = any(estimate.by_turn.get(2, 0.0) >= 0.75 for estimate in castability.values())
+    if lands == 0 or lands >= 6 or score < 42 or mull_better >= 0.62:
+        title = "Mulligan Pressure"
+        tone = "mulligan"
+    elif score >= 72 and effective_lands in {2, 3, 4} and (land_turn_3 >= 0.58 or lands >= 3) and (turn_two_castable or not castability):
+        title = "Keep Lean"
+        tone = "keep"
+    else:
+        title = "Close Decision"
+        tone = "close"
+    reasons = [
+        f"{lands} actual land{'s' if lands != 1 else ''}",
+        f"{effective_lands} effective source{'s' if effective_lands != 1 else ''}",
+        f"{fmt_pct(land_turn_3)} to the third land by turn 3",
+        f"texture {score}/100",
+    ]
+    if mulligan_summary.get("available"):
+        reasons.append(f"mull-to-six averages {mulligan_summary['average']:.1f}/100")
+    return title, tone, "; ".join(reasons) + "."
+
+
+def overview_watchouts(
+    report: dict,
+    hand: list[str],
+    cards: dict[str, CardData],
+    castability: dict,
+    land_turn_3: float,
+    mulligan_summary: dict,
+) -> list[str]:
+    lands = [name for name in hand if cards.get(name) and cards[name].is_land]
+    spells = [name for name in hand if cards.get(name) and not cards[name].is_land]
+    available_colors = sorted({color for name in lands for color in cards[name].produced_mana})
+    needed_colors = required_colors(spells, cards)
+    missing_colors = [color for color in needed_colors if color not in available_colors]
+    notes: list[str] = []
+    if report["lands_in_hand"] <= 1:
+        notes.append(f"Low-land opener: third-land odds are {fmt_pct(land_turn_3)} before considering matchup pressure.")
+    if report["lands_in_hand"] >= 5:
+        notes.append("High land count: watch flood risk unless the spells are unusually powerful or mana-hungry.")
+    if missing_colors:
+        notes.append("Color bottleneck: missing " + ", ".join(missing_colors) + " from lands currently in hand.")
+    awkward_cheap = [
+        name
+        for name, estimate in castability.items()
+        if cards.get(name) and cards[name].mana_value <= 2 and estimate.by_turn.get(2, 0.0) < 0.55
+    ]
+    if awkward_cheap:
+        notes.append("Cheap spell castability concern by turn 2: " + ", ".join(awkward_cheap[:4]) + ".")
+    if report.get("hand_draw_sources"):
+        best_delta = max(
+            (
+                impact["next_land_with_hand_draw"] - impact["next_land_natural"]
+                for impact in report.get("card_draw_impact", {}).values()
+            ),
+            default=0.0,
+        )
+        if best_delta > 0.03:
+            notes.append(f"Draw/selection improves next-land odds by up to {fmt_pct(best_delta)}.")
+    if report.get("hand_land_equivalent_sources"):
+        names = ", ".join(source.card_name for source in report["hand_land_equivalent_sources"][:4])
+        notes.append("Land-equivalent source counted: " + names + ".")
+    if mulligan_summary.get("available") and mulligan_summary.get("better", 0.0) >= 0.45:
+        notes.append(f"A fresh seven then bottom one scores better about {mulligan_summary['better']:.1%} of the time.")
+    if not notes:
+        notes.append("No major structural warning from land count, color access, castability, or mulligan comparison.")
+    return notes
+
+
 def land_sentence(lands_in_hand: int, third_land: float, fourth_land: float) -> str:
     if lands_in_hand >= 4:
         return "You already have several lands; the main risk to watch is drawing too many more lands."
@@ -1102,6 +1276,20 @@ def draw_impact_chart_rows(report: dict) -> list[dict]:
                 "turn": turn,
                 "chance": round(impact["next_land_with_hand_draw"] * 100, 1),
                 "series": "With draw/look spells",
+            }
+        )
+    return rows
+
+
+def castability_chart_rows(report: dict) -> list[dict]:
+    rows: list[dict] = []
+    for estimate in report.get("castability", []):
+        rows.append(
+            {
+                "card": estimate.card_name,
+                "T1": round(min(1.0, estimate.by_turn.get(1, 0.0)) * 100, 1),
+                "T2": round(min(1.0, estimate.by_turn.get(2, 0.0)) * 100, 1),
+                "T3": round(min(1.0, estimate.by_turn.get(3, 0.0)) * 100, 1),
             }
         )
     return rows
@@ -1531,80 +1719,99 @@ with results_tab:
 
             overview, deep, curve, mulligan, other = st.tabs(["Overview", "Deep Data", "Mana Curve", "Mulligan", "OTHER"])
             with overview:
-                m1, m2, m3, m4, m5 = st.columns(5)
-                m1.metric("Hand texture", f"{score}/100")
-                m2.metric("Lands in hand", report["lands_in_hand"])
-                m3.metric("3rd land by T3", fmt_pct(land_turn_3))
-                if mulligan_summary.get("available"):
-                    m4.metric("Mull to 6 avg", f"{mulligan_summary['average']:.1f}/100")
-                    m5.metric("Mull to 6 median", f"{mulligan_summary['median']}/100")
-                else:
-                    m4.metric("Mull to 6 avg", "n/a")
-                    m5.metric("Mull to 6 median", "n/a")
-                st.write("**Opening Hand Tags**")
-                st.write(" ".join(f"`{tag}`" for tag in opening_hand_tags(report, hand, cards, castability)))
-                st.write("**Keep or Mulligan Signals**")
-                st.write("- " + land_sentence(report["lands_in_hand"], land_turn_3, land_turn_4))
-                st.write("- " + effective_source_sentence(report))
-                st.write("- " + card_draw_sentence(draw_sources, library_draw_sources))
-                st.write("**Land Drop Plan**")
-                chart_col, _chart_space = st.columns([0.68, 0.32])
-                with chart_col:
-                    st.line_chart(land_plan_chart_rows(report), x="turn", y="chance", color="series", height=220)
-                st.info(f"Third-land check: {fmt_pct(land_turn_3)} by turn 3.")
-                st.write("**Key Chances**")
-                st.write(f"- Find the 3rd land by turn 3: {fmt_pct(land_turn_3)}")
-                st.write(f"- Find the 4th land by turn 4: {fmt_pct(land_turn_4)}")
-                effective_turn_3 = report.get("effective_land_drop_probabilities", {}).get("Hit source 3 by turn 3")
-                effective_turn_4 = report.get("effective_land_drop_probabilities", {}).get("Hit source 4 by turn 4")
-                if effective_turn_3 is not None:
-                    st.write(f"- Find the 3rd land or land-equivalent by turn 3: {fmt_pct(effective_turn_3)}")
-                if effective_turn_4 is not None:
-                    st.write(f"- Find the 4th land or land-equivalent by turn 4: {fmt_pct(effective_turn_4)}")
-                for detail in ["Next land by turn 2", "Next land by turn 3"]:
-                    if detail in report["land_probabilities"]:
-                        st.write(f"- {detail}: {fmt_pct(report['land_probabilities'][detail].probability)}")
-                st.write("**Card Draw and Looks**")
-                if draw_sources:
-                    chart_col, _chart_space = st.columns([0.68, 0.32])
-                    with chart_col:
-                        st.line_chart(draw_impact_chart_rows(report), x="turn", y="chance", color="series", height=210)
-                    for source in draw_sources:
-                        st.write(f"- {source.card_name}: sees {source.cards_seen} card(s) deep and draws {source.cards_drawn}.")
-                    for turn, impact in report["card_draw_impact"].items():
-                        extra = impact["expected_extra_looks"]
-                        if extra > 0.01:
-                            st.write(
-                                f"- By turn {turn}: next-land chance changes from "
-                                f"{fmt_pct(impact['next_land_natural'])} to about {fmt_pct(impact['next_land_with_hand_draw'])}."
-                            )
-                else:
-                    st.write("- No clear draw/look spell in the confirmed hand.")
-                st.write("**Mulligan Comparison**")
-                for line in mulligan_comparison_lines(main_counts(), cards, score, summary=mulligan_summary)[:5]:
-                    st.write("- " + line)
-                st.caption("Full mulligan details remain in the Mulligan tab.")
-                st.write("**Ramp Check**")
-                if report.get("hand_land_equivalent_sources"):
-                    for source in report["hand_land_equivalent_sources"]:
-                        st.write(f"- {source.card_name}: counts as {source.equivalent_type}; {source.timing}.")
-                if report["hand_ramp_sources"]:
-                    for source in report["hand_ramp_sources"]:
-                        st.write(f"- {source.card_name}: {source.ramp_type}, {source.timing}.")
-                if not report.get("hand_land_equivalent_sources") and not report["hand_ramp_sources"]:
-                    st.write("- No ramp source detected in the confirmed hand.")
-                st.write("**Spell Castability**")
-                cast_rows = []
-                for estimate in report["castability"]:
-                    cast_rows.append(
-                        {
-                            "card": estimate.card_name,
-                            "T1": fmt_pct(estimate.by_turn.get(1, 0.0)),
-                            "T2": fmt_pct(estimate.by_turn.get(2, 0.0)),
-                            "T3": fmt_pct(estimate.by_turn.get(3, 0.0)),
-                        }
+                recommendation, tone, recommendation_summary = overview_recommendation(
+                    report, score, land_turn_3, mulligan_summary, castability
+                )
+                result_hero(recommendation, recommendation_summary, tone)
+
+                stat_cols = st.columns(5)
+                with stat_cols[0]:
+                    result_card("Hand Texture", f"{score}/100", score_label(score))
+                with stat_cols[1]:
+                    result_card(
+                        "Mana Sources",
+                        f"{report['lands_in_hand']} / {report.get('effective_lands_in_hand', report['lands_in_hand'])}",
+                        "actual lands / land-equivalent sources",
                     )
-                st.dataframe(cast_rows, hide_index=True, width="stretch")
+                with stat_cols[2]:
+                    result_card("Third Land", fmt_pct(land_turn_3), "chance by turn 3")
+                with stat_cols[3]:
+                    result_card(
+                        "Mull to 6 Avg",
+                        f"{mulligan_summary['average']:.1f}/100" if mulligan_summary.get("available") else "n/a",
+                        f"median {mulligan_summary['median']}/100" if mulligan_summary.get("available") else "not enough deck data",
+                    )
+                with stat_cols[4]:
+                    result_card("Early Plays", f"{report['early_plays'][1]} / {report['early_plays'][2]}", "likely T1 / T2 actions")
+
+                st.markdown("**Opening Hand Tags**")
+                st.write(" ".join(f"`{tag}`" for tag in opening_hand_tags(report, hand, cards, castability)))
+
+                st.markdown("**Watch-outs**")
+                watchouts = overview_watchouts(report, hand, cards, castability, land_turn_3, mulligan_summary)
+                st.markdown(
+                    "<div class='watchout-panel'><ul>"
+                    + "".join(f"<li>{html.escape(note)}</li>" for note in watchouts)
+                    + "</ul></div>",
+                    unsafe_allow_html=True,
+                )
+
+                chart_col, side_col = st.columns([0.68, 0.32])
+                with chart_col:
+                    st.write("**Will I hit land drops?**")
+                    st.line_chart(land_plan_chart_rows(report), x="turn", y="chance", color="series", height=250)
+                with side_col:
+                    st.write("**Plain-English Read**")
+                    st.write("- " + land_sentence(report["lands_in_hand"], land_turn_3, land_turn_4))
+                    st.write("- " + effective_source_sentence(report))
+                    st.write("- " + card_draw_sentence(draw_sources, library_draw_sources))
+
+                cast_rows_for_chart = castability_chart_rows(report)
+                if cast_rows_for_chart:
+                    st.write("**Can I cast the hand?**")
+                    cast_chart_col, cast_side_col = st.columns([0.68, 0.32])
+                    with cast_chart_col:
+                        st.bar_chart(cast_rows_for_chart, x="card", y=["T1", "T2", "T3"], height=260)
+                    with cast_side_col:
+                        st.caption("Bars are seeded castability estimates. Values are percentages, capped at 100%.")
+                        with st.expander("Card-level castability table"):
+                            st.dataframe(
+                                [
+                                    {
+                                        "card": row["card"],
+                                        "T1": f"{row['T1']:.1f}%",
+                                        "T2": f"{row['T2']:.1f}%",
+                                        "T3": f"{row['T3']:.1f}%",
+                                    }
+                                    for row in cast_rows_for_chart
+                                ],
+                                hide_index=True,
+                                width="stretch",
+                            )
+
+                with st.expander("Card draw / selection impact"):
+                    if draw_sources:
+                        st.line_chart(draw_impact_chart_rows(report), x="turn", y="chance", color="series", height=220)
+                        for source in draw_sources:
+                            st.write(f"- {source.card_name}: sees {source.cards_seen} card(s) deep and draws {source.cards_drawn}.")
+                    else:
+                        st.write("No clear draw/look spell in the confirmed hand.")
+
+                with st.expander("Mulligan comparison details"):
+                    for line in mulligan_comparison_lines(main_counts(), cards, score, summary=mulligan_summary)[:5]:
+                        st.write("- " + line)
+
+                with st.expander("Ramp and land-equivalent details"):
+                    if report.get("hand_land_equivalent_sources"):
+                        for source in report["hand_land_equivalent_sources"]:
+                            st.write(f"- {source.card_name}: counts as {source.equivalent_type}; {source.timing}.")
+                    if report["hand_ramp_sources"]:
+                        for source in report["hand_ramp_sources"]:
+                            st.write(f"- {source.card_name}: {source.ramp_type}, {source.timing}.")
+                    if not report.get("hand_land_equivalent_sources") and not report["hand_ramp_sources"]:
+                        st.write("No ramp source detected in the confirmed hand.")
+
+                st.caption("Exact land math and the CSV-style probability tables remain in Deep Data.")
 
             with deep:
                 st.write("**Land Details**")
