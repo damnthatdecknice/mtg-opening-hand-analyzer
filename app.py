@@ -24,7 +24,7 @@ from mtg_hand_analyzer.analysis import analyze_hand
 from mtg_hand_analyzer.card_cache import CardCache
 from mtg_hand_analyzer.card_data import FixtureCardDataProvider, ScryfallProvider
 from mtg_hand_analyzer.card_draw import draw_look_depth
-from mtg_hand_analyzer.card_recognition import recognize_crops
+from mtg_hand_analyzer.card_recognition import image_features, recognize_crops, reference_images_for_card
 from mtg_hand_analyzer.deck_parser import (
     analysis_counts_for_hand,
     parse_decklist,
@@ -802,7 +802,12 @@ def crop_preview_strip(crop_paths: list[Path]) -> None:
     st.markdown(f'<div class="crop-preview-strip">{"".join(cards)}</div>', unsafe_allow_html=True)
 
 
-def process_screenshot(image_path: Path, prefix: str, screenshot_source: str = "mtgo") -> None:
+def process_screenshot(
+    image_path: Path,
+    prefix: str,
+    screenshot_source: str = "mtgo",
+    recognition_mode: str = "fast",
+) -> None:
     st.image(Image.open(image_path), caption="Screenshot", width="stretch")
     image = load_image(image_path)
     is_arena = screenshot_source == "arena"
@@ -817,7 +822,7 @@ def process_screenshot(image_path: Path, prefix: str, screenshot_source: str = "
         st.warning("Card positions were estimated instead of confidently detected. If the crops look wrong, use a tighter screenshot around the hand or upload a different screenshot size.")
     x_offset, y_offset, width_pct, height_pct = crop_adjustment_controls(prefix)
     boxes = adjusted_crop_boxes(boxes, image.shape[1], image.shape[0], x_offset, y_offset, width_pct, height_pct)
-    crop_signature = f"{image_path}:{screenshot_source}:{x_offset}:{y_offset}:{width_pct}:{height_pct}"
+    crop_signature = f"{image_path}:{screenshot_source}:{recognition_mode}:{x_offset}:{y_offset}:{width_pct}:{height_pct}"
     if st.session_state.get("crop_signature") != crop_signature:
         st.session_state.crop_signature = crop_signature
         st.session_state.ocr_results = []
@@ -841,7 +846,14 @@ def process_screenshot(image_path: Path, prefix: str, screenshot_source: str = "
     if crop_paths and counts and st.session_state.get("recognition_signature") != recognition_signature:
         with st.spinner("Reading crops and matching cards..."):
             cards = resolve_cards(list(counts), force_refresh=False)
-            results = recognize_crops(crop_paths, boxes, cards)
+            accurate = recognition_mode == "accurate"
+            results = recognize_crops(
+                crop_paths,
+                boxes,
+                cards,
+                max_prints=60 if accurate else 4,
+                download_missing_prints=False,
+            )
         st.session_state.recognition_signature = recognition_signature
         st.session_state.recognition_results = [result.model_dump(mode="json") for result in results]
         st.success("Card candidates generated. Confirm or correct the seven cards below.")
@@ -876,6 +888,34 @@ def failed_lookup_names_from_cards(counts: dict[str, int], cards: dict[str, Card
         for row in mana_value_audit_rows(counts, cards)
         if row["status"] in {"Missing", "Lookup failed"}
     ]
+
+
+def recognition_print_limit(card: CardData) -> int:
+    if "Basic Land" in card.type_line:
+        return 12
+    if card.is_land:
+        return 36
+    return 60
+
+
+def prepare_recognition_cache(cards: dict[str, CardData]) -> tuple[int, int]:
+    prepared_images = 0
+    prepared_cards = 0
+    progress = st.progress(0, text="Preparing recognition cache...")
+    total = max(1, len(cards))
+    for index, card in enumerate(cards.values(), start=1):
+        paths = reference_images_for_card(
+            card,
+            max_prints=recognition_print_limit(card),
+            download_missing_prints=True,
+        )
+        for path in paths:
+            image_features(path)
+        prepared_images += len(paths)
+        prepared_cards += 1
+        progress.progress(index / total, text=f"Cached {prepared_images} image(s) across {prepared_cards} card name(s)...")
+    progress.empty()
+    return prepared_cards, prepared_images
 
 
 def card_payloads(cards: dict[str, CardData]) -> dict[str, dict]:
@@ -1553,6 +1593,38 @@ with shot_tab:
         screenshot_source = "arena" if screenshot_source_label == "MTG Arena" else "mtgo"
         if screenshot_source == "arena":
             st.caption("Arena mode reads the visible card-name strips in the opening-hand fan, then matches those names against your decklist.")
+        recognition_mode_label = st.radio(
+            "Recognition mode",
+            ["Fast", "Accurate"],
+            horizontal=True,
+            help="Fast uses a small set of images. Accurate compares against cached print variants for cards in your deck.",
+        )
+        recognition_mode = recognition_mode_label.casefold()
+        cache_cols = st.columns([0.34, 0.66])
+        with cache_cols[0]:
+            if st.button("Prepare recognition cache"):
+                counts = recognition_counts()
+                if not counts:
+                    st.warning("Paste and parse a deck first.")
+                else:
+                    with st.spinner("Refreshing card data and downloading deck-only print variants..."):
+                        cards = resolve_cards(list(counts), force_refresh=False)
+                        prepared_cards, prepared_images = prepare_recognition_cache(cards)
+                    st.session_state.recognition_cache_summary = {
+                        "cards": prepared_cards,
+                        "images": prepared_images,
+                        "timestamp": int(time.time()),
+                    }
+                    st.success(f"Recognition cache ready: {prepared_images} image(s) across {prepared_cards} card name(s).")
+        with cache_cols[1]:
+            summary = st.session_state.get("recognition_cache_summary")
+            if recognition_mode == "accurate":
+                if summary:
+                    st.caption(f"Accurate mode will use cached print variants: {summary['images']} image(s) across {summary['cards']} card name(s).")
+                else:
+                    st.caption("Accurate mode works best after preparing the recognition cache once for this deck.")
+            else:
+                st.caption("Fast mode uses fewer image comparisons and is best for quick checks.")
         pasted_payload = paste_image_component(
             key="pasted_screenshot",
             default=None,
@@ -1572,7 +1644,12 @@ with shot_tab:
                 st.error("The pasted clipboard data could not be read as an image.")
 
         if st.session_state.get("pasted_image_path"):
-            process_screenshot(Path(st.session_state.pasted_image_path), f"pasted_{screenshot_source}", screenshot_source)
+            process_screenshot(
+                Path(st.session_state.pasted_image_path),
+                f"pasted_{screenshot_source}_{recognition_mode}",
+                screenshot_source,
+                recognition_mode,
+            )
 
         results = st.session_state.recognition_results
         if results and unique_options:
