@@ -1769,27 +1769,22 @@ with results_tab:
                 cast_rows_for_chart = castability_chart_rows(report)
                 if cast_rows_for_chart:
                     st.write("**Can I cast the hand?**")
-                    cast_chart_col, cast_side_col = st.columns([0.68, 0.32])
-                    with cast_chart_col:
-                        st.bar_chart(cast_rows_for_chart, x="card", y=["T1", "T2", "T3"], height=260)
-                    with cast_side_col:
-                        st.caption("Bars are seeded castability estimates. Values are percentages, capped at 100%.")
-                        with st.expander("Card-level castability table"):
-                            st.dataframe(
-                                [
-                                    {
-                                        "card": row["card"],
-                                        "T1": f"{row['T1']:.1f}%",
-                                        "T2": f"{row['T2']:.1f}%",
-                                        "T3": f"{row['T3']:.1f}%",
-                                    }
-                                    for row in cast_rows_for_chart
-                                ],
-                                hide_index=True,
-                                width="stretch",
-                            )
+                    st.caption("Seeded castability estimates. Values are percentages, capped at 100%.")
+                    st.dataframe(
+                        [
+                            {
+                                "card": row["card"],
+                                "T1": f"{row['T1']:.1f}%",
+                                "T2": f"{row['T2']:.1f}%",
+                                "T3": f"{row['T3']:.1f}%",
+                            }
+                            for row in cast_rows_for_chart
+                        ],
+                        hide_index=True,
+                        width="stretch",
+                    )
 
-                with st.expander("Card draw / selection impact"):
+                with st.expander("Card draw / selection impact", expanded=True):
                     if draw_sources:
                         st.line_chart(draw_impact_chart_rows(report), x="turn", y="chance", color="series", height=220)
                         for source in draw_sources:
@@ -1797,11 +1792,11 @@ with results_tab:
                     else:
                         st.write("No clear draw/look spell in the confirmed hand.")
 
-                with st.expander("Mulligan comparison details"):
+                with st.expander("Mulligan comparison details", expanded=True):
                     for line in mulligan_comparison_lines(main_counts(), cards, score, summary=mulligan_summary)[:5]:
                         st.write("- " + line)
 
-                with st.expander("Ramp and land-equivalent details"):
+                with st.expander("Ramp and land-equivalent details", expanded=True):
                     if report.get("hand_land_equivalent_sources"):
                         for source in report["hand_land_equivalent_sources"]:
                             st.write(f"- {source.card_name}: counts as {source.equivalent_type}; {source.timing}.")
