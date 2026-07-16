@@ -455,6 +455,35 @@ def inject_theme() -> None:
           .watchout-panel li {
             margin: 0.35rem 0;
           }
+          .tag-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            margin: 0.25rem 0 0.9rem;
+          }
+          .hand-tag {
+            border-radius: 6px;
+            border: 1px solid rgba(128, 205, 255, 0.22);
+            font-size: 0.86rem;
+            font-weight: 850;
+            line-height: 1;
+            padding: 0.42rem 0.55rem;
+          }
+          .hand-tag.good {
+            background: rgba(39, 122, 86, 0.34);
+            border-color: rgba(125, 224, 177, 0.56);
+            color: #a9f0cc;
+          }
+          .hand-tag.neutral {
+            background: rgba(105, 119, 138, 0.28);
+            border-color: rgba(173, 195, 221, 0.34);
+            color: #d1d9e5;
+          }
+          .hand-tag.bad {
+            background: rgba(148, 48, 48, 0.34);
+            border-color: rgba(255, 116, 100, 0.58);
+            color: #ffb0a7;
+          }
           .crop-preview-strip {
             display: flex;
             gap: 18px;
@@ -559,6 +588,37 @@ def result_card(label: str, value: str, note: str) -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def tag_tone(tag: str) -> str:
+    bad_tags = {
+        "mana light",
+        "flood risk",
+        "slow start",
+        "top-heavy for its lands",
+        "castability concern",
+        "sideboard card seen",
+    }
+    good_tags = {
+        "normal land count",
+        "has land-equivalent ramp",
+        "early play available",
+        "has card selection",
+        "has ramp",
+    }
+    if tag in bad_tags:
+        return "bad"
+    if tag in good_tags:
+        return "good"
+    return "neutral"
+
+
+def render_hand_tags(tags: list[str]) -> None:
+    chips = "".join(
+        f'<span class="hand-tag {tag_tone(tag)}">{html.escape(tag)}</span>'
+        for tag in tags
+    )
+    st.markdown(f'<div class="tag-row">{chips}</div>', unsafe_allow_html=True)
 
 
 def content_rail(main_ratio: float = 0.68):
@@ -1745,7 +1805,7 @@ with results_tab:
                     result_card("Early Plays", f"{report['early_plays'][1]} / {report['early_plays'][2]}", "likely T1 / T2 actions")
 
                 st.markdown("**Opening Hand Tags**")
-                st.write(" ".join(f"`{tag}`" for tag in opening_hand_tags(report, hand, cards, castability)))
+                render_hand_tags(opening_hand_tags(report, hand, cards, castability))
 
                 st.markdown("**Watch-outs**")
                 watchouts = overview_watchouts(report, hand, cards, castability, land_turn_3, mulligan_summary)
