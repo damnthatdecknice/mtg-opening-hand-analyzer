@@ -779,6 +779,10 @@ def best_ocr_match(text: str, options: list[str]) -> tuple[str | None, float]:
     return best_name, best_score
 
 
+def set_recognized_card(index: int, card_name: str) -> None:
+    st.session_state[f"recognized_card_{index}"] = card_name
+
+
 def ocr_result_map() -> dict[int, dict]:
     results = st.session_state.get("ocr_results", [])
     if not isinstance(results, list):
@@ -1665,11 +1669,29 @@ with shot_tab:
                 if result.get("crop_path"):
                     cols[0].image(result["crop_path"], caption=f"Crop {idx + 1}")
                 labels = [candidate["card_name"] for candidate in result["candidates"]]
-                best = labels[0] if labels else unique_options[0]
+                image_match = labels[0] if labels else unique_options[0]
+                best = image_match
                 ocr_result = ocr_by_crop.get(idx, {})
                 ocr_match, ocr_score = best_ocr_match(str(ocr_result.get("text", "")), unique_options)
                 if ocr_match and ocr_score >= 0.72:
                     best = ocr_match
+                if ocr_match and ocr_score >= 0.55 and ocr_match != image_match:
+                    cols[1].markdown(f"**Is this {ocr_match} or {image_match}?**")
+                    quick_cols = cols[1].columns(2)
+                    quick_cols[0].button(
+                        ocr_match,
+                        key=f"quick_ocr_{idx}",
+                        on_click=set_recognized_card,
+                        args=(idx, ocr_match),
+                        use_container_width=True,
+                    )
+                    quick_cols[1].button(
+                        image_match,
+                        key=f"quick_image_{idx}",
+                        on_click=set_recognized_card,
+                        args=(idx, image_match),
+                        use_container_width=True,
+                    )
                 choice = cols[1].selectbox(
                     f"Card {idx + 1}",
                     unique_options,
