@@ -95,7 +95,7 @@
     </div>
     <div id="capture-zone">
       <button id="capture-button" type="button">Capture MTGO Window</button>
-      <div class="capture-copy">
+      <div id="capture-copy" class="capture-copy">
         Your browser will ask what to share. Choose the MTGO match window; this captures one still frame and stops sharing.
       </div>
     </div>
@@ -142,6 +142,7 @@
       const pasteButton = document.getElementById("paste-button");
       const chooseButton = document.getElementById("choose-button");
       const captureButton = document.getElementById("capture-button");
+      const captureCopy = document.getElementById("capture-copy");
       const COMPONENT_HEIGHT = 265;
 
       function sendHeight() {
@@ -155,6 +156,14 @@
 
       function setStatus(message) {
         status.textContent = message;
+        sendHeight();
+      }
+
+      function setCaptureText(label, target) {
+        const cleanLabel = label || "Capture MTGO Window";
+        const cleanTarget = target || "MTGO";
+        captureButton.textContent = cleanLabel;
+        captureCopy.textContent = `Your browser will ask what to share. Choose the ${cleanTarget} window; this captures one still frame and stops sharing.`;
         sendHeight();
       }
 
@@ -275,6 +284,14 @@
         window.setTimeout(announceReady, 1000);
         window.setTimeout(announceReady, 2000);
         window.setTimeout(announceReady, 4000);
+      });
+
+      window.addEventListener("message", (event) => {
+        const data = event.data || {};
+        if (data.type !== "streamlit:render") {
+          return;
+        }
+        setCaptureText(data.args?.capture_label, data.args?.capture_target);
       });
 
       zone.addEventListener("click", () => {

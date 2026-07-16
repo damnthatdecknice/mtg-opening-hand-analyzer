@@ -1305,7 +1305,13 @@ with shot_tab:
         screenshot_source = "arena" if screenshot_source_label == "MTG Arena" else "mtgo"
         if screenshot_source == "arena":
             st.caption("Arena mode reads the visible card-name strips in the opening-hand fan, then matches those names against your decklist.")
-        pasted_payload = paste_image_component(key="pasted_screenshot", default=None, height=275)
+        pasted_payload = paste_image_component(
+            key="pasted_screenshot",
+            default=None,
+            height=275,
+            capture_label="Capture Arena Window" if screenshot_source == "arena" else "Capture MTGO Window",
+            capture_target="Arena" if screenshot_source == "arena" else "MTGO",
+        )
         pasted_timestamp = pasted_payload.get("timestamp", 0) if isinstance(pasted_payload, dict) else 0
         if pasted_timestamp and pasted_timestamp != st.session_state.last_pasted_image_timestamp:
             pasted_path = pasted_image_path(pasted_payload)
