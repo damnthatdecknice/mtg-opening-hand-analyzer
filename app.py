@@ -37,7 +37,6 @@ from mtg_hand_analyzer.mana import mana_value_from_cost, parse_mana_cost
 from mtg_hand_analyzer.models import CardData, CropBox, PlayDraw
 from mtg_hand_analyzer.screenshot_detection import detect_hand_region_boxes, load_image, save_crops
 from mtg_hand_analyzer.settings import CARD_DB_PATH, CARD_FIXTURE_PATH, SAMPLE_DECK_PATH, ensure_data_dirs
-from mtg_hand_analyzer.window_capture import capture_window_to_file, find_mtgo_window, is_supported_platform
 
 st.set_page_config(page_title="MTG Opening Hand Analyzer", layout="wide")
 ensure_data_dirs()
@@ -1284,32 +1283,15 @@ with shot_tab:
     shot_col, shot_spacer_col = content_rail(0.92)
     with shot_col:
         section_panel("vision stack", "Paste, drag/drop, or browse for an MTGO/Arena screenshot. Recognition is a first pass; the final seven cards stay under your control.")
-        capture_col, _capture_space = st.columns([0.32, 0.68])
-        with capture_col:
-            if st.button("Capture MTGO Window", type="primary", disabled=not is_supported_platform()):
-                window = find_mtgo_window()
-                if window is None:
-                    st.error("Bring the Magic: The Gathering Online match window with your hand visible to the foreground, then try again. As a fallback, I look for an MTGO window title containing 1-on-1 or 3-4.")
-                else:
-                    capture_path = Path(tempfile.gettempdir()) / "mtg_hand_analyzer_mtgo_window.png"
-                    try:
-                        capture_window_to_file(window, capture_path)
-                    except Exception as exc:
-                        st.error(f"The MTGO window could not be captured: {exc}")
-                    else:
-                        st.session_state.pasted_image_path = str(capture_path)
-                        st.session_state.last_pasted_image_timestamp = int(time.time() * 1000)
-                        st.success("MTGO window captured locally.")
-        if not is_supported_platform():
-            st.caption("Automatic MTGO window capture is available in the local Windows EXE. The hosted web app still supports paste, drag/drop, and upload.")
-        pasted_payload = paste_image_component(key="pasted_screenshot", default=None, height=150)
+        pasted_payload = paste_image_component(key="pasted_screenshot", default=None, height=275)
         pasted_timestamp = pasted_payload.get("timestamp", 0) if isinstance(pasted_payload, dict) else 0
         if pasted_timestamp and pasted_timestamp != st.session_state.last_pasted_image_timestamp:
             pasted_path = pasted_image_path(pasted_payload)
             if pasted_path:
                 st.session_state.last_pasted_image_timestamp = pasted_timestamp
                 st.session_state.pasted_image_path = str(pasted_path)
-                st.success("Pasted screenshot received.")
+                source = str(pasted_payload.get("source", "pasted")).capitalize()
+                st.success(f"{source} screenshot received.")
             else:
                 st.error("The pasted clipboard data could not be read as an image.")
 

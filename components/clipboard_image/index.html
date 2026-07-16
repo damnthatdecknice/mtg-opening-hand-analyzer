@@ -21,6 +21,13 @@
         padding: 16px;
         text-align: center;
       }
+      #capture-zone {
+        border: 1px solid rgba(109, 169, 223, 0.55);
+        border-radius: 8px;
+        color: #f5f7fb;
+        margin-top: 10px;
+        padding: 12px 14px;
+      }
       #paste-zone:focus,
       #paste-zone.dragging {
         border-color: #4aa3ff;
@@ -30,7 +37,8 @@
         display: none;
       }
       #paste-button,
-      #choose-button {
+      #choose-button,
+      #capture-button {
         background: #243447;
         border: 1px solid #6da9df;
         border-radius: 6px;
@@ -41,9 +49,14 @@
         padding: 8px 12px;
       }
       #paste-button:focus,
-      #choose-button:focus {
+      #choose-button:focus,
+      #capture-button:focus {
         outline: 2px solid rgba(74, 163, 255, 0.5);
         outline-offset: 2px;
+      }
+      #capture-button {
+        background: linear-gradient(135deg, #2073b2, #17224a);
+        margin-bottom: 6px;
       }
       .actions {
         display: flex;
@@ -58,6 +71,11 @@
       .secondary {
         color: #b8c7d9;
         font-size: 13px;
+      }
+      .capture-copy {
+        color: #b8c7d9;
+        font-size: 12px;
+        line-height: 1.35;
       }
       #status {
         color: #b8c7d9;
@@ -74,6 +92,12 @@
         <button id="choose-button" type="button">Choose Image</button>
       </div>
       <div class="secondary">You can also click this box and press Ctrl+V, or drag/drop an image here.</div>
+    </div>
+    <div id="capture-zone">
+      <button id="capture-button" type="button">Capture MTGO Window</button>
+      <div class="capture-copy">
+        Your browser will ask what to share. Choose the MTGO match window; this captures one still frame and stops sharing.
+      </div>
     </div>
     <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
     <div id="status">No pasted screenshot yet.</div>
@@ -117,7 +141,8 @@
       const fileInput = document.getElementById("file-input");
       const pasteButton = document.getElementById("paste-button");
       const chooseButton = document.getElementById("choose-button");
-      const COMPONENT_HEIGHT = 170;
+      const captureButton = document.getElementById("capture-button");
+      const COMPONENT_HEIGHT = 265;
 
       function sendHeight() {
         Streamlit.setFrameHeight(COMPONENT_HEIGHT);
@@ -176,6 +201,60 @@
         }
       }
 
+      async function captureSharedWindow() {
+        if (!navigator.mediaDevices?.getDisplayMedia) {
+          setStatus("This browser does not support window capture. Try Chrome or Edge, or use Paste/Upload.");
+          return;
+        }
+        let stream;
+        try {
+          setStatus("Choose the MTGO match window in the browser prompt.");
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+              displaySurface: "window",
+            },
+            audio: false,
+            preferCurrentTab: false,
+            selfBrowserSurface: "exclude",
+            systemAudio: "exclude",
+          });
+          const video = document.createElement("video");
+          video.muted = true;
+          video.playsInline = true;
+          video.srcObject = stream;
+          await new Promise((resolve, reject) => {
+            video.onloadedmetadata = resolve;
+            video.onerror = reject;
+          });
+          await video.play();
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+
+          const track = stream.getVideoTracks()[0];
+          const settings = track?.getSettings?.() || {};
+          const width = video.videoWidth || settings.width || 1280;
+          const height = video.videoHeight || settings.height || 720;
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const context = canvas.getContext("2d");
+          context.drawImage(video, 0, 0, width, height);
+          stream.getTracks().forEach((candidate) => candidate.stop());
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              setStatus("The browser could not capture an image from that window.");
+              return;
+            }
+            const file = new File([blob], "mtgo-window-capture.png", { type: "image/png" });
+            sendFile(file, "captured");
+          }, "image/png");
+        } catch (error) {
+          if (stream) {
+            stream.getTracks().forEach((candidate) => candidate.stop());
+          }
+          setStatus("Window capture was cancelled or blocked by the browser.");
+        }
+      }
+
       function handlePaste(event) {
         const items = Array.from(event.clipboardData?.items || []);
         const imageItem = items.find((item) => item.type.startsWith("image/"));
@@ -214,6 +293,11 @@
       chooseButton.addEventListener("click", (event) => {
         event.stopPropagation();
         fileInput.click();
+      });
+
+      captureButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        captureSharedWindow();
       });
 
       document.addEventListener("paste", handlePaste);
