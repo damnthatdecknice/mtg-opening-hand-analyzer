@@ -29,6 +29,9 @@ export default function Home() {
           <Link className="primary-button" href="/dashboard">
             Open product shell
           </Link>
+          <Link className="secondary-button" href="/signup">
+            Create account
+          </Link>
           <a className="secondary-button" href="#plan">
             See build plan
           </a>
@@ -61,4 +64,3 @@ export default function Home() {
     </section>
   );
 }
-

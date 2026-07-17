@@ -9,3 +9,4 @@ export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl as string, supabaseAnonKey as string)
   : null;
 
+export type AuthMode = "sign-in" | "sign-up";
