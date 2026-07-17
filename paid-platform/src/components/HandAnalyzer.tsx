@@ -422,14 +422,20 @@ export function HandAnalyzer() {
 
       const decks = (data ?? []) as SavedDeck[];
       setSavedDecks(decks);
+      const requestedId =
+        typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("deck") : "";
       const rememberedId = window.localStorage.getItem(lastDeckStorageKey);
+      const requestedDeck = decks.find((deck) => deck.id === requestedId);
       const rememberedDeck = decks.find((deck) => deck.id === rememberedId);
-      const initialDeck = rememberedDeck ?? decks[0];
+      const initialDeck = requestedDeck ?? rememberedDeck ?? decks[0];
 
       if (initialDeck) {
         setSelectedDeckId(initialDeck.id);
         setDecklist(initialDeck.decklist);
         window.localStorage.setItem(lastDeckStorageKey, initialDeck.id);
+        if (requestedDeck) {
+          setMessage(`Loaded ${requestedDeck.name}.`);
+        }
       }
     }
 

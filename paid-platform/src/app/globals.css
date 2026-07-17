@@ -489,6 +489,21 @@ h2 {
   background: rgba(3, 10, 23, 0.78);
 }
 
+.clickable-list-row {
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.clickable-list-row:hover,
+.clickable-list-row:focus-visible {
+  border-color: rgba(89, 216, 255, 0.52);
+  background: rgba(8, 30, 56, 0.84);
+  outline: none;
+  transform: translateY(-1px);
+}
+
 .deck-row {
   display: flex;
   align-items: center;

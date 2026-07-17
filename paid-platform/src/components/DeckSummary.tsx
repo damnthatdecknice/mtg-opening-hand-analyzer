@@ -11,6 +11,10 @@ export function DeckSummary() {
   const [decks, setDecks] = useState<SavedDeck[]>([]);
   const [error, setError] = useState("");
 
+  function rememberAnalyzerDeck(deckId: string) {
+    window.localStorage.setItem("mtg-hand-pro:last-analyzer-deck-id", deckId);
+  }
+
   useEffect(() => {
     if (!supabase || !entitlements.canUseDeckVault) {
       return;
@@ -57,13 +61,18 @@ export function DeckSummary() {
           </div>
         ) : decks.length ? (
           decks.map((deck) => (
-            <div className="list-row" key={deck.id}>
+            <Link
+              className="list-row clickable-list-row"
+              href={`/analyzer?deck=${encodeURIComponent(deck.id)}`}
+              key={deck.id}
+              onClick={() => rememberAnalyzerDeck(deck.id)}
+            >
               <div>
                 <strong>{deck.name}</strong>
                 <span>{deck.format || "Unspecified"}</span>
               </div>
               <em>{deck.parsed_json?.mainCount ?? 0} cards</em>
-            </div>
+            </Link>
           ))
         ) : (
           <div className="empty-state">
