@@ -44,6 +44,17 @@ type RecognitionResult = {
   candidates: RecognitionCandidate[];
 };
 
+type ChartPoint = {
+  turn: number;
+  chance: number;
+};
+
+type ChartSeries = {
+  label: string;
+  color: string;
+  points: ChartPoint[];
+};
+
 const sampleDeck = `Deck
 4 Monastery Swiftspear
 4 Lightning Strike
@@ -83,6 +94,10 @@ function pct(value: number) {
 
 function number(value: number) {
   return value.toFixed(1).replace(/\.0$/, "");
+}
+
+function percentNumber(value: number) {
+  return Math.round(value * 1000) / 10;
 }
 
 function uniqueDeckOptions(decklist: string) {
@@ -1021,31 +1036,209 @@ function Overview({ result }: { result: AnalyzerResult }) {
           ))}
         </div>
       </section>
-      <section>
-        <h2>Land Drop Outlook</h2>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Turn</th>
-                <th>Natural land drop</th>
-                <th>With draw/look</th>
-                <th>Effective sources</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.turnProbabilities.map((row) => (
-                <tr key={row.turn}>
-                  <td>Turn {row.turn}</td>
-                  <td>{pct(row.landDropNatural)}</td>
-                  <td>{pct(row.landDropWithDraw)}</td>
-                  <td>{pct(row.effectiveLandDrop)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+      <section className="overview-chart-grid">
+        <div className="chart-card primary-chart">
+          <LineChart
+            description="Natural draws, draw/look spells, and effective land-equivalent sources through turn 8."
+            series={[
+              {
+                label: "Natural land drop",
+                color: "#59d8ff",
+                points: result.turnProbabilities.map((row) => ({
+                  turn: row.turn,
+                  chance: row.landDropNatural
+                }))
+              },
+              {
+                label: "With draw/look",
+                color: "#a68cff",
+                points: result.turnProbabilities.map((row) => ({
+                  turn: row.turn,
+                  chance: row.landDropWithDraw
+                }))
+              },
+              {
+                label: "Effective sources",
+                color: "#62e6a6",
+                points: result.turnProbabilities.map((row) => ({
+                  turn: row.turn,
+                  chance: row.effectiveLandDrop
+                }))
+              }
+            ]}
+            title="Will I hit land drops?"
+          />
+        </div>
+
+        <div className="plain-read-card">
+          <p className="eyebrow">Plain-English Read</p>
+          <p>
+            Turn 3 land drop is{" "}
+            <strong>{pct(result.turnProbabilities[1]?.landDropWithDraw ?? 0)}</strong>{" "}
+            with draw/look effects included.
+          </p>
+          <p>
+            Natural draws alone show{" "}
+            <strong>{pct(result.turnProbabilities[1]?.landDropNatural ?? 0)}</strong>{" "}
+            by turn 3.
+          </p>
+          <p>
+            Draw and selection add about{" "}
+            <strong>{number(result.turnProbabilities[1]?.extraLooks ?? 0)}</strong>{" "}
+            expected extra look(s) by turn 3.
+          </p>
         </div>
       </section>
+
+      {result.drawSources.length ? (
+        <section className="chart-card compact-chart">
+          <LineChart
+            description="How much the hand's draw/look spells improve the chance of finding the next land."
+            series={[
+              {
+                label: "Natural next land",
+                color: "#59d8ff",
+                points: result.turnProbabilities.map((row) => ({
+                  turn: row.turn,
+                  chance: row.nextLandNatural
+                }))
+              },
+              {
+                label: "With draw/look",
+                color: "#a68cff",
+                points: result.turnProbabilities.map((row) => ({
+                  turn: row.turn,
+                  chance: row.nextLandWithDraw
+                }))
+              }
+            ]}
+            title="Card draw / selection impact"
+          />
+          <div className="source-chip-row">
+            {result.drawSources.map((source) => (
+              <span key={source.cardName}>
+                {source.cardName}: {source.timing}
+              </span>
+            ))}
+          </div>
+        </section>
+      ) : (
+        <section className="watchout-panel">
+          <h2>Card draw / selection impact</h2>
+          <p>No clear draw/look spell in the confirmed hand.</p>
+        </section>
+      )}
+
+      {result.castability.length ? (
+        <section>
+          <h2>Can I cast the hand?</h2>
+          <p className="muted-copy">
+            Seeded castability estimates. Values are percentages, capped at 100%.
+          </p>
+          <div className="table-wrap compact-table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Card</th>
+                  <th>T1</th>
+                  <th>T2</th>
+                  <th>T3</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.castability.map((row) => (
+                  <tr key={row.cardName}>
+                    <td>{row.cardName}</td>
+                    <td>{pct(row.turn1)}</td>
+                    <td>{pct(row.turn2)}</td>
+                    <td>{pct(row.turn3)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function LineChart({
+  description,
+  series,
+  title
+}: {
+  description: string;
+  series: ChartSeries[];
+  title: string;
+}) {
+  const width = 640;
+  const height = 260;
+  const padding = { top: 18, right: 28, bottom: 38, left: 44 };
+  const allPoints = series.flatMap((item) => item.points);
+  const turns = allPoints.map((point) => point.turn);
+  const minTurn = Math.min(...turns);
+  const maxTurn = Math.max(...turns);
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const xForTurn = (turn: number) =>
+    padding.left + ((turn - minTurn) / Math.max(1, maxTurn - minTurn)) * plotWidth;
+  const yForChance = (chance: number) =>
+    padding.top + (1 - Math.max(0, Math.min(1, chance))) * plotHeight;
+
+  return (
+    <div>
+      <div className="chart-heading">
+        <div>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+        <div className="chart-legend">
+          {series.map((item) => (
+            <span key={item.label}>
+              <i style={{ background: item.color }} />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      </div>
+      <svg className="line-chart" role="img" viewBox={`0 0 ${width} ${height}`} aria-label={title}>
+        {[0, 0.25, 0.5, 0.75, 1].map((tick) => {
+          const y = yForChance(tick);
+          return (
+            <g key={tick}>
+              <line className="chart-grid-line" x1={padding.left} x2={width - padding.right} y1={y} y2={y} />
+              <text className="chart-axis-label" x={padding.left - 12} y={y + 4} textAnchor="end">
+                {Math.round(tick * 100)}
+              </text>
+            </g>
+          );
+        })}
+        {Array.from(new Set(turns)).map((turn) => (
+          <text className="chart-axis-label" key={turn} x={xForTurn(turn)} y={height - 12} textAnchor="middle">
+            T{turn}
+          </text>
+        ))}
+        {series.map((item) => {
+          const points = item.points
+            .map((point) => `${xForTurn(point.turn)},${yForChance(point.chance)}`)
+            .join(" ");
+          return (
+            <g key={item.label}>
+              <polyline className="chart-line" points={points} stroke={item.color} />
+              {item.points.map((point) => (
+                <g key={`${item.label}-${point.turn}`}>
+                  <circle className="chart-dot" cx={xForTurn(point.turn)} cy={yForChance(point.chance)} fill={item.color} r="4" />
+                  <title>
+                    {item.label} turn {point.turn}: {percentNumber(point.chance)}%
+                  </title>
+                </g>
+              ))}
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }

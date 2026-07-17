@@ -1134,6 +1134,121 @@ h2 {
   margin: 0;
 }
 
+.overview-chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.chart-card,
+.plain-read-card {
+  border: 1px solid rgba(103, 194, 255, 0.16);
+  border-radius: 16px;
+  background: rgba(1, 8, 18, 0.82);
+  padding: 18px;
+}
+
+.primary-chart,
+.compact-chart {
+  width: min(780px, 100%);
+}
+
+.chart-heading {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.chart-heading h2 {
+  margin-bottom: 4px;
+}
+
+.chart-heading p,
+.plain-read-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chart-legend span,
+.source-chip-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(103, 194, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(8, 22, 42, 0.72);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 6px 10px;
+}
+
+.chart-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.line-chart {
+  display: block;
+  width: 100%;
+  max-width: 720px;
+  height: auto;
+  min-height: 220px;
+}
+
+.chart-grid-line {
+  stroke: rgba(103, 194, 255, 0.14);
+  stroke-width: 1;
+}
+
+.chart-axis-label {
+  fill: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chart-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4;
+}
+
+.chart-dot {
+  stroke: rgba(1, 8, 18, 0.96);
+  stroke-width: 2;
+}
+
+.plain-read-card {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.plain-read-card strong {
+  color: var(--text);
+}
+
+.source-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.compact-table-wrap {
+  width: min(760px, 100%);
+}
+
 .curve-panel {
   width: min(760px, 100%);
 }
@@ -1182,6 +1297,7 @@ h2 {
   .dashboard-metrics,
   .dashboard-grid,
   .analyzer-grid,
+  .overview-chart-grid,
   .confirmed-hand-grid,
   .crop-adjust-grid,
   .source-grid,
