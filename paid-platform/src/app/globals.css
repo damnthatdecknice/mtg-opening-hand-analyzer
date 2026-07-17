@@ -1,6 +1,6 @@
 :root {
   --bg: #020713;
-  --panel: rgba(7, 18, 35, 0.9);
+  --panel: rgba(7, 18, 35, 0.88);
   --panel-strong: rgba(4, 12, 24, 0.96);
   --border: rgba(103, 194, 255, 0.28);
   --text: #f4f8ff;
@@ -38,11 +38,9 @@ a {
   position: fixed;
   inset: 0;
   z-index: -2;
-  background:
-    radial-gradient(circle at 78% 23%, rgba(89, 216, 255, 0.34), transparent 26%),
-    radial-gradient(circle at 30% 80%, rgba(166, 140, 255, 0.22), transparent 32%),
-    linear-gradient(130deg, rgba(5, 11, 26, 0.96), rgba(8, 20, 40, 0.82) 44%, rgba(2, 7, 19, 0.96)),
-    url("/mage-field.svg");
+  background-image: url("/jace-background.png");
+  background-position: center right;
+  background-repeat: no-repeat;
   background-size: cover;
 }
 
@@ -51,8 +49,9 @@ a {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg, rgba(2, 7, 19, 0.9), rgba(2, 7, 19, 0.54), rgba(2, 7, 19, 0.86)),
-    radial-gradient(circle at 50% 45%, transparent, rgba(2, 7, 19, 0.72));
+    linear-gradient(90deg, rgba(2, 7, 19, 0.9), rgba(2, 7, 19, 0.58) 48%, rgba(2, 7, 19, 0.42) 76%, rgba(2, 7, 19, 0.62)),
+    radial-gradient(circle at 76% 34%, rgba(89, 216, 255, 0.1), transparent 28%),
+    radial-gradient(circle at 50% 50%, transparent, rgba(2, 7, 19, 0.5));
 }
 
 .app-shell {
