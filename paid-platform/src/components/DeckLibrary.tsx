@@ -203,7 +203,7 @@ export function DeckLibrary() {
                 <div>
                   <strong>{deck.name}</strong>
                   <span>
-                    {deck.format || "Unspecified"} · {deck.parsed_json.mainCount ?? 0} main ·{" "}
+                    {deck.format || "Unspecified"} | {deck.parsed_json.mainCount ?? 0} main |{" "}
                     {deck.parsed_json.sideboardCount ?? 0} sideboard
                   </span>
                 </div>

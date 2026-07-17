@@ -61,6 +61,40 @@ a {
   padding: 42px 0 64px;
 }
 
+.app-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 24px;
+  padding: 12px;
+  border: 1px solid rgba(103, 194, 255, 0.22);
+  border-radius: 16px;
+  background: rgba(4, 12, 24, 0.74);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+}
+
+.app-nav-brand {
+  color: var(--text);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.app-nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.app-nav-link {
+  min-height: 38px;
+  padding: 0 14px;
+}
+
 .panel,
 .metric-card {
   background: var(--panel);
@@ -469,6 +503,15 @@ h2 {
 }
 
 @media (max-width: 900px) {
+  .app-nav {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .app-nav-links {
+    justify-content: flex-start;
+  }
+
   .hero-grid,
   .pillar-grid,
   .dashboard-metrics,
