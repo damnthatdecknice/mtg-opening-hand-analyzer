@@ -13,6 +13,7 @@ import { supabase } from "@/lib/supabase";
 type EntitlementState = {
   isLoading: boolean;
   error: string;
+  rank: "basic" | "pro" | "beta_premium";
   tierId: SubscriptionTierId;
   tierLabel: string;
   canUseDeckVault: boolean;
@@ -24,6 +25,7 @@ const freeTier = getTier("free");
 const initialState: EntitlementState = {
   isLoading: true,
   error: "",
+  rank: "basic",
   tierId: "free",
   tierLabel: freeTier.label,
   canUseDeckVault: false,
@@ -35,12 +37,37 @@ function stateForTier(tierId: SubscriptionTierId, overrides: Partial<Entitlement
   return {
     isLoading: false,
     error: "",
+    rank: "basic",
     tierId,
     tierLabel: tier.label,
     canUseDeckVault: canUseDeckVault(tierId),
     isPermanent: tierId === "permanent",
     ...overrides
   };
+}
+
+function stateForRank(rank: EntitlementState["rank"]): EntitlementState {
+  if (rank === "beta_premium") {
+    return stateForTier("permanent", {
+      rank,
+      tierLabel: "Beta Tester",
+      canUseDeckVault: true,
+      isPermanent: true
+    });
+  }
+
+  if (rank === "pro") {
+    return stateForTier("deck_pro", {
+      rank,
+      tierLabel: "Pro",
+      canUseDeckVault: true
+    });
+  }
+
+  return stateForTier("free", {
+    rank,
+    tierLabel: "Free"
+  });
 }
 
 export function useEntitlements() {
@@ -62,7 +89,7 @@ export function useEntitlements() {
 
       if (isPermanentSubscriberEmail(email)) {
         if (isActive) {
-          setState(stateForTier("permanent"));
+          setState(stateForRank("beta_premium"));
         }
         return;
       }
@@ -74,22 +101,34 @@ export function useEntitlements() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from("subscription_status")
-        .select("status, price_id")
-        .eq("user_id", userData.user.id)
-        .maybeSingle();
+      const [profileResponse, subscriptionResponse] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("rank")
+          .eq("id", userData.user.id)
+          .maybeSingle(),
+        supabase
+          .from("subscription_status")
+          .select("status, price_id")
+          .eq("user_id", userData.user.id)
+          .maybeSingle()
+      ]);
 
       if (!isActive) {
         return;
       }
 
-      if (error) {
-        setState(stateForTier("free", { error: error.message }));
+      if (profileResponse.data?.rank === "pro" || profileResponse.data?.rank === "beta_premium") {
+        setState(stateForRank(profileResponse.data.rank));
         return;
       }
 
-      setState(stateForTier(tierFromSubscription(data?.status, data?.price_id)));
+      if (subscriptionResponse.error) {
+        setState(stateForRank("basic"));
+        return;
+      }
+
+      setState(stateForTier(tierFromSubscription(subscriptionResponse.data?.status, subscriptionResponse.data?.price_id)));
     }
 
     void loadEntitlements();
