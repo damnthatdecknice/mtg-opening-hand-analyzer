@@ -876,11 +876,11 @@ function deckProfile(
     label = "Low-curve pressure";
     suggestedKeepLandRange = "2-3 lands";
     if (landsInHand >= 5) {
-      scoreAdjustment -= 14;
-      notes.push("This deck is low to the ground, so a 5-land opener is real flood pressure.");
+      scoreAdjustment -= landsInHand >= 6 ? 24 : 20;
+      notes.push("This deck is low to the ground, so a 5+ land opener is heavy flood pressure.");
     } else if (landsInHand === 4) {
-      scoreAdjustment -= 5;
-      notes.push("Four lands is playable sometimes, but this curve usually wants action over extra mana.");
+      scoreAdjustment -= 10;
+      notes.push("Four lands is already above this curve's preferred opener; this deck usually wants action over extra mana.");
     } else if (landsInHand >= 2 && landsInHand <= 3) {
       scoreAdjustment += 3;
       notes.push("The land count matches this deck's low curve.");
