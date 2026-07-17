@@ -11,6 +11,17 @@
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
 }
 
+:root[data-large-text="true"] {
+  font-size: 18px;
+}
+
+:root[data-high-contrast="true"] {
+  --panel: rgba(3, 9, 20, 0.97);
+  --border: rgba(155, 220, 255, 0.62);
+  --muted: #d7e6f7;
+  --shadow: 0 20px 70px rgba(0, 0, 0, 0.62);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -52,6 +63,18 @@ a {
     linear-gradient(90deg, rgba(2, 7, 19, 0.9), rgba(2, 7, 19, 0.58) 48%, rgba(2, 7, 19, 0.42) 76%, rgba(2, 7, 19, 0.62)),
     radial-gradient(circle at 76% 34%, rgba(89, 216, 255, 0.1), transparent 28%),
     radial-gradient(circle at 50% 50%, transparent, rgba(2, 7, 19, 0.5));
+}
+
+:root[data-high-contrast="true"] .app-background::after {
+  background: rgba(2, 7, 19, 0.86);
+}
+
+:root[data-reduced-motion="true"] *,
+:root[data-reduced-motion="true"] *::before,
+:root[data-reduced-motion="true"] *::after {
+  scroll-behavior: auto !important;
+  transition: none !important;
+  animation: none !important;
 }
 
 .app-shell {
@@ -230,6 +253,59 @@ h2 {
   gap: 20px;
 }
 
+.settings-page {
+  display: grid;
+  gap: 20px;
+}
+
+.settings-panel {
+  display: grid;
+  gap: 16px;
+  border-radius: 18px;
+  padding: 28px;
+  width: min(860px, 100%);
+}
+
+.settings-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid rgba(103, 194, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(1, 8, 18, 0.72);
+  padding: 16px;
+}
+
+.toggle-row span {
+  display: grid;
+  gap: 4px;
+}
+
+.toggle-row strong {
+  color: var(--text);
+}
+
+.toggle-row em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.toggle-row input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent);
+}
+
+.danger-panel {
+  border-color: rgba(255, 116, 100, 0.42);
+}
+
 .account-bar {
   display: flex;
   align-items: center;
@@ -249,6 +325,28 @@ h2 {
   font: inherit;
   font-weight: 800;
   padding: 8px 12px;
+}
+
+.danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(255, 116, 100, 0.62);
+  border-radius: 10px;
+  background: rgba(255, 116, 100, 0.14);
+  color: #ffd0ca;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+}
+
+.danger-button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.55);
+  opacity: 0.58;
 }
 
 .dashboard-header h1 {

@@ -5,6 +5,7 @@ const navItems = [
   { href: "/analyzer", label: "Analyzer" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/decks", label: "Save a Deck" },
+  { href: "/settings", label: "Settings" },
   { href: "/login", label: "Sign In" }
 ];
 

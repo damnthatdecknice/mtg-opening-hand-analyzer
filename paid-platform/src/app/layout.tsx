@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AppPreferences } from "@/components/AppPreferences";
 import { AppNav } from "@/components/AppNav";
 import "./globals.css";
 
@@ -15,6 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <AppPreferences />
         <div className="app-background" />
         <main className="app-shell">
           <AppNav />
