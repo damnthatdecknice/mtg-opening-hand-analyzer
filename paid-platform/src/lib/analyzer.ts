@@ -383,17 +383,20 @@ function landEquivalent(card: CardLookup): SourceNote | null {
   return null;
 }
 
-function castabilityEstimate(card: CardLookup, landsInHand: number, effectiveLandsInHand: number) {
+function castabilityEstimate(card: CardLookup, _landsInHand: number, effectiveLandsInHand: number) {
   if (card.isLand) {
     return null;
   }
   const mv = Math.max(0, Math.ceil(card.manaValue));
   const estimate = (turn: number) => {
-    const sources = Math.max(effectiveLandsInHand, Math.min(turn, landsInHand + turn - 1));
+    const naturalDrawsSeen = Math.max(0, turn - 1);
+    const possibleSources = Math.min(turn, effectiveLandsInHand + naturalDrawsSeen);
+    const guaranteedSources = Math.min(turn, effectiveLandsInHand);
+    const sources = Math.max(guaranteedSources, possibleSources);
     if (mv <= sources) {
       return 1;
     }
-    if (mv === sources + 1) {
+    if (turn > 1 && mv === sources + 1) {
       return 0.45;
     }
     return 0;
