@@ -21,6 +21,7 @@ type CropPreview = {
   index: number;
   src: string;
   textSrc?: string;
+  source?: ScreenshotSource;
 };
 
 type CropAdjustments = {
@@ -293,13 +294,18 @@ async function recognizeCropImages(
     crops.map(async (crop) => {
       const cropSignature = await imageSignature(crop.src);
       const ocrText = await readTextSignal(crop.textSrc ?? crop.src);
+      const isArenaCrop = crop.source === "arena";
       const scoredByCard = new Map<string, RecognitionCandidate>();
       for (const { card, signature } of cardSignatures) {
         const imageScore = Math.max(0, Math.min(1, 1 - signatureDistance(cropSignature, signature)));
         const textScore = fuzzyTextScore(ocrText, card.name);
+        const score =
+          isArenaCrop && textScore > 0
+            ? Math.max(0, Math.min(1, imageScore * 0.42 + textScore * 0.58))
+            : Math.max(0, Math.min(1, imageScore * 0.72 + textScore * 0.28));
         const candidate = {
           cardName: card.name,
-          score: Math.max(0, Math.min(1, imageScore * 0.72 + textScore * 0.28)),
+          score,
           imageScore,
           textScore,
           ocrText
@@ -363,7 +369,7 @@ async function makeCrops(src: string, source: ScreenshotSource, adjustments: Cro
       canvas.width,
       canvas.height
     );
-    crops.push({ index, src: canvas.toDataURL("image/png") });
+    crops.push({ index, src: canvas.toDataURL("image/png"), source: "mtgo" });
   }
 
   return crops;
@@ -378,11 +384,11 @@ function makeArenaCrops(image: HTMLImageElement, adjustments: CropAdjustments) {
     throw new Error("This browser could not prepare Arena card crops.");
   }
 
-  const centerXs = [0.107, 0.238, 0.366, 0.493, 0.622, 0.752, 0.872];
-  const centerYs = [0.535, 0.512, 0.492, 0.488, 0.497, 0.516, 0.542];
+  const centerXs = [0.102, 0.228, 0.361, 0.492, 0.619, 0.747, 0.87];
+  const centerYs = [0.548, 0.521, 0.497, 0.49, 0.503, 0.522, 0.548];
   const baseAngles = [-12, -7, -3, 0, 4, 8, 13];
-  const cropWidth = image.width * 0.18 * (1 + adjustments.width / 100);
-  const cropHeight = image.height * 0.56 * (1 + adjustments.height / 100);
+  const cropWidth = image.width * 0.128 * (1 + adjustments.width / 100);
+  const cropHeight = image.height * 0.52 * (1 + adjustments.height / 100);
   const xShift = image.width * (adjustments.x / 100);
   const yShift = image.height * (adjustments.y / 100);
   const spreadShift = image.width * (adjustments.spread / 100) * 0.04;
@@ -391,8 +397,8 @@ function makeArenaCrops(image: HTMLImageElement, adjustments: CropAdjustments) {
 
   fullCanvas.width = Math.round(cropWidth);
   fullCanvas.height = Math.round(cropHeight);
-  textCanvas.width = Math.round(cropWidth * 2.2);
-  textCanvas.height = Math.max(64, Math.round(cropHeight * 0.18));
+  textCanvas.width = Math.round(cropWidth * 2.8);
+  textCanvas.height = Math.max(76, Math.round(cropHeight * 0.2));
 
   for (let index = 0; index < 7; index += 1) {
     const distanceFromCenter = index - 3;
@@ -411,9 +417,9 @@ function makeArenaCrops(image: HTMLImageElement, adjustments: CropAdjustments) {
     textContext.drawImage(
       fullCanvas,
       0,
-      Math.round(fullCanvas.height * 0.02),
+      Math.round(fullCanvas.height * 0.025),
       fullCanvas.width,
-      Math.round(fullCanvas.height * 0.2),
+      Math.round(fullCanvas.height * 0.16),
       0,
       0,
       textCanvas.width,
@@ -436,7 +442,8 @@ function makeArenaCrops(image: HTMLImageElement, adjustments: CropAdjustments) {
     crops.push({
       index,
       src: fullCanvas.toDataURL("image/png"),
-      textSrc: textCanvas.toDataURL("image/png")
+      textSrc: textCanvas.toDataURL("image/png"),
+      source: "arena"
     });
   }
 
@@ -1056,7 +1063,7 @@ export function HandAnalyzer() {
                 <div className="crop-adjust-grid">
                   <RangeControl label="Move left/right" max={10} min={-10} onChange={(x) => setCropAdjustments((value) => ({ ...value, x }))} value={cropAdjustments.x} />
                   <RangeControl label="Move up/down" max={10} min={-10} onChange={(y) => setCropAdjustments((value) => ({ ...value, y }))} value={cropAdjustments.y} />
-                  <RangeControl label="Card width" max={35} min={-25} onChange={(width) => setCropAdjustments((value) => ({ ...value, width }))} value={cropAdjustments.width} />
+                  <RangeControl label="Card width" max={screenshotSource === "arena" ? 18 : 35} min={-25} onChange={(width) => setCropAdjustments((value) => ({ ...value, width }))} value={cropAdjustments.width} />
                   <RangeControl label="Card height" max={35} min={-25} onChange={(height) => setCropAdjustments((value) => ({ ...value, height }))} value={cropAdjustments.height} />
                   <RangeControl label="Spacing" max={25} min={-20} onChange={(spread) => setCropAdjustments((value) => ({ ...value, spread }))} value={cropAdjustments.spread} />
                   <RangeControl label="Arena fan arc" max={12} min={-12} onChange={(fan) => setCropAdjustments((value) => ({ ...value, fan }))} value={cropAdjustments.fan} />
