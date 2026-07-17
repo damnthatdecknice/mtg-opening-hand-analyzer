@@ -55,6 +55,9 @@ create table if not exists public.subscription_status (
   updated_at timestamptz not null default now()
 );
 
+comment on column public.subscription_status.status is
+  'Tier/status value. Supported app tiers include free, deck_pro ($5/month), grinder, active/trialing Stripe states, and app-level permanent overrides.';
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql

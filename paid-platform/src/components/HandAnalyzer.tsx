@@ -11,6 +11,7 @@ import {
 import { inferDeckName, parseDecklist } from "@/lib/deckParser";
 import type { SavedDeck } from "@/lib/decks";
 import { supabase } from "@/lib/supabase";
+import { useEntitlements } from "@/components/useEntitlements";
 
 type WorkflowTab = "deck" | "hand" | "screenshot" | "results";
 type ResultTab = "overview" | "deep" | "curve" | "mulligan" | "other";
@@ -342,6 +343,7 @@ async function makeCrops(src: string, source: ScreenshotSource, adjustments: Cro
 }
 
 export function HandAnalyzer() {
+  const entitlements = useEntitlements();
   const [workflowTab, setWorkflowTab] = useState<WorkflowTab>("deck");
   const [resultTab, setResultTab] = useState<ResultTab>("overview");
   const [decklist, setDecklist] = useState(sampleDeck);
@@ -371,7 +373,7 @@ export function HandAnalyzer() {
 
   useEffect(() => {
     async function loadSavedDecks() {
-      if (!supabase) {
+      if (!supabase || !entitlements.canUseDeckVault) {
         return;
       }
 
@@ -401,8 +403,14 @@ export function HandAnalyzer() {
       }
     }
 
-    void loadSavedDecks();
-  }, []);
+    if (entitlements.canUseDeckVault) {
+      void loadSavedDecks();
+    } else if (!entitlements.isLoading) {
+      setSavedDecks([]);
+      setSelectedDeckId("custom");
+      window.localStorage.removeItem(lastDeckStorageKey);
+    }
+  }, [entitlements.canUseDeckVault, entitlements.isLoading]);
 
   function chooseSavedDeck(deckId: string) {
     setSelectedDeckId(deckId);
@@ -666,24 +674,26 @@ export function HandAnalyzer() {
         <section className="panel analyzer-input-panel narrow-tool-panel">
           <div className="section-heading">
             <p className="eyebrow">Deck matrix</p>
-            <label className="field-stack deck-picker">
-              Saved deck
-              <select
-                className="card-select"
-                disabled={isLoadingDecks}
-                onChange={(event) => chooseSavedDeck(event.target.value)}
-                value={selectedDeckId}
-              >
-                <option value="custom">
-                  {isLoadingDecks ? "Loading saved decks..." : "Custom pasted deck"}
-                </option>
-                {savedDecks.map((deck) => (
-                  <option key={deck.id} value={deck.id}>
-                    {deck.name} {deck.format ? `(${deck.format})` : ""}
+            {entitlements.canUseDeckVault ? (
+              <label className="field-stack deck-picker">
+                Saved deck
+                <select
+                  className="card-select"
+                  disabled={isLoadingDecks}
+                  onChange={(event) => chooseSavedDeck(event.target.value)}
+                  value={selectedDeckId}
+                >
+                  <option value="custom">
+                    {isLoadingDecks ? "Loading saved decks..." : "Custom pasted deck"}
                   </option>
-                ))}
-              </select>
-            </label>
+                  {savedDecks.map((deck) => (
+                    <option key={deck.id} value={deck.id}>
+                      {deck.name} {deck.format ? `(${deck.format})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <p>
               Paste your main deck first. Put Sideboard on its own line, then list
               sideboard cards below it. Sideboard cards help screenshot
@@ -696,7 +706,15 @@ export function HandAnalyzer() {
             <span>{parsed.sideboardCount} sideboard</span>
             <span>{parsed.cards.length} unique rows</span>
           </div>
-          {!savedDecks.length ? (
+          {!entitlements.canUseDeckVault && !entitlements.isLoading ? (
+            <div className="onboarding-panel">
+              <strong>Saved decks unlock with Deck Pro</strong>
+              <span>
+                Free users can still paste a deck here and run the full analyzer.
+                The saved deck dropdown and deck vault are part of the $5/month tier.
+              </span>
+            </div>
+          ) : entitlements.canUseDeckVault && !savedDecks.length ? (
             <div className="onboarding-panel">
               <strong>No saved decks yet</strong>
               <span>

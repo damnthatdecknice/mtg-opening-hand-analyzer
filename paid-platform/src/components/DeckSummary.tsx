@@ -4,13 +4,15 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { SavedDeck } from "@/lib/decks";
 import { supabase } from "@/lib/supabase";
+import { useEntitlements } from "@/components/useEntitlements";
 
 export function DeckSummary() {
+  const entitlements = useEntitlements();
   const [decks, setDecks] = useState<SavedDeck[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!supabase) {
+    if (!supabase || !entitlements.canUseDeckVault) {
       return;
     }
 
@@ -27,7 +29,7 @@ export function DeckSummary() {
         }
         setDecks((data ?? []) as SavedDeck[]);
       });
-  }, []);
+  }, [entitlements.canUseDeckVault]);
 
   return (
     <section className="panel">
@@ -36,13 +38,24 @@ export function DeckSummary() {
           <p className="eyebrow">Deck vault</p>
           <h2>Saved Decks</h2>
         </div>
-        <Link className="text-link" href="/decks">
-          Manage
-        </Link>
+        {entitlements.canUseDeckVault ? (
+          <Link className="text-link" href="/decks">
+            Manage
+          </Link>
+        ) : (
+          <Link className="text-link" href="/pricing">
+            Unlock
+          </Link>
+        )}
       </div>
       <div className="list-stack">
         {error ? <p className="form-message">{error}</p> : null}
-        {decks.length ? (
+        {!entitlements.canUseDeckVault && !entitlements.isLoading ? (
+          <div className="empty-state">
+            <strong>Deck Pro feature</strong>
+            <span>Saved decks unlock with the $5/month tier.</span>
+          </div>
+        ) : decks.length ? (
           decks.map((deck) => (
             <div className="list-row" key={deck.id}>
               <div>

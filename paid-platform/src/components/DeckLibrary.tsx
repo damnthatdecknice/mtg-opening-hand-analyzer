@@ -1,9 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { inferDeckName, parseDecklist } from "@/lib/deckParser";
 import type { DeckInsert, SavedDeck } from "@/lib/decks";
 import { supabase } from "@/lib/supabase";
+import { useEntitlements } from "@/components/useEntitlements";
 
 const defaultDecklist = `Deck
 4 Monastery Swiftspear
@@ -24,6 +26,7 @@ Sideboard
 2 Lithomantic Barrage`;
 
 export function DeckLibrary() {
+  const entitlements = useEntitlements();
   const [decks, setDecks] = useState<SavedDeck[]>([]);
   const [name, setName] = useState("");
   const [format, setFormat] = useState("Standard");
@@ -37,8 +40,10 @@ export function DeckLibrary() {
   const visibleDecks = decks.filter((deck) => showArchived || !deck.is_archived);
 
   useEffect(() => {
-    loadDecks();
-  }, []);
+    if (entitlements.canUseDeckVault) {
+      loadDecks();
+    }
+  }, [entitlements.canUseDeckVault]);
 
   async function loadDecks() {
     if (!supabase) {
@@ -67,6 +72,11 @@ export function DeckLibrary() {
 
     if (!supabase) {
       setMessage("Supabase is not configured yet.");
+      return;
+    }
+
+    if (!entitlements.canUseDeckVault) {
+      setMessage("Saved decklists unlock with the $5/month Deck Pro tier.");
       return;
     }
 
@@ -128,6 +138,19 @@ export function DeckLibrary() {
   }
 
   return (
+    !entitlements.canUseDeckVault && !entitlements.isLoading ? (
+      <section className="panel locked-feature-panel">
+        <p className="eyebrow">Deck Pro</p>
+        <h1>Decklists unlock at $5/month</h1>
+        <p>
+          The analyzer stays available on Free. Saving decks, managing the deck
+          vault, and loading remembered decklists are Deck Pro features.
+        </p>
+        <Link className="primary-button" href="/pricing">
+          View tiers
+        </Link>
+      </section>
+    ) :
     <div className="deck-page-grid">
       <section className="panel deck-editor-panel">
         <div className="section-heading">

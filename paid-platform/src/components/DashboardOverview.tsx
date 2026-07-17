@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useEntitlements } from "@/components/useEntitlements";
 
 type DashboardState = {
   deckCount: number;
   handCount: number;
-  plan: string;
   error: string;
   isLoading: boolean;
 };
@@ -14,19 +14,12 @@ type DashboardState = {
 const initialState: DashboardState = {
   deckCount: 0,
   handCount: 0,
-  plan: "Free",
   error: "",
   isLoading: true
 };
 
-function titleCase(value: string | null) {
-  if (!value) {
-    return "Unknown";
-  }
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
 export function DashboardOverview() {
+  const entitlements = useEntitlements();
   const [state, setState] = useState<DashboardState>(initialState);
 
   useEffect(() => {
@@ -40,25 +33,20 @@ export function DashboardOverview() {
         return;
       }
 
-      const [decks, hands, plan] = await Promise.all([
+      const [decks, hands] = await Promise.all([
         supabase
           .from("decks")
           .select("id", { count: "exact", head: true })
           .eq("is_archived", false),
         supabase
           .from("hand_sessions")
-          .select("id", { count: "exact", head: true }),
-        supabase
-          .from("subscription_status")
-          .select("status")
-          .maybeSingle()
+          .select("id", { count: "exact", head: true })
       ]);
 
-      const firstError = decks.error ?? hands.error ?? plan.error;
+      const firstError = decks.error ?? hands.error;
       setState({
         deckCount: decks.count ?? 0,
         handCount: hands.count ?? 0,
-        plan: plan.data?.status ? titleCase(plan.data.status) : "Beta Pro",
         error: firstError?.message ?? "",
         isLoading: false
       });
@@ -81,7 +69,7 @@ export function DashboardOverview() {
         </div>
         <div className="metric-card">
           <span>Plan</span>
-          <strong>{state.isLoading ? "..." : state.plan}</strong>
+          <strong>{entitlements.isLoading ? "..." : entitlements.tierLabel}</strong>
         </div>
       </div>
     </>
