@@ -20,6 +20,7 @@ type ScreenshotSource = "mtgo" | "arena";
 type CropPreview = {
   index: number;
   src: string;
+  matchSrc?: string;
   textSrc?: string;
   source?: ScreenshotSource;
 };
@@ -277,31 +278,47 @@ async function recognizeCropImages(
   const cardImageVariants = uniqueCards.flatMap((card) =>
     (card.imageUrls.length ? card.imageUrls : [card.imageUrl]).map((imageUrl) => ({ card, imageUrl }))
   );
-  const cardSignatures = (
+  const artImageVariants = uniqueCards.flatMap((card) =>
+    (card.artCropUrl ? [card.artCropUrl] : card.imageUrls.length ? card.imageUrls : [card.imageUrl]).map(
+      (imageUrl) => ({ card, imageUrl })
+    )
+  );
+  const fullCardSignatures = (
     await Promise.all(
     cardImageVariants.map(async ({ card, imageUrl }) => ({
       card,
-      signature: await imageSignature(imageUrl, `${card.name}:${imageUrl}`).catch(() => null)
+      signature: await imageSignature(imageUrl, `${card.name}:full:${imageUrl}`).catch(() => null)
     }))
     )
   ).filter((item): item is { card: CardLookup; signature: number[] } => Boolean(item.signature));
+  const artCardSignatures = (
+    await Promise.all(
+      artImageVariants.map(async ({ card, imageUrl }) => ({
+        card,
+        signature: await imageSignature(imageUrl, `${card.name}:art:${imageUrl}`, 16, 16).catch(() => null)
+      }))
+    )
+  ).filter((item): item is { card: CardLookup; signature: number[] } => Boolean(item.signature));
 
-  if (!cardSignatures.length) {
+  if (!fullCardSignatures.length && !artCardSignatures.length) {
     throw new Error("Card images could not be loaded for recognition.");
   }
 
   return Promise.all(
     crops.map(async (crop) => {
-      const cropSignature = await imageSignature(crop.src);
       const ocrText = await readTextSignal(crop.textSrc ?? crop.src);
       const isArenaCrop = crop.source === "arena";
+      const signatures = isArenaCrop && artCardSignatures.length ? artCardSignatures : fullCardSignatures;
+      const cropSignature = await imageSignature(crop.matchSrc ?? crop.src, "", isArenaCrop ? 16 : 14, isArenaCrop ? 16 : 20);
       const scoredByCard = new Map<string, RecognitionCandidate>();
-      for (const { card, signature } of cardSignatures) {
+      for (const { card, signature } of signatures) {
         const imageScore = Math.max(0, Math.min(1, 1 - signatureDistance(cropSignature, signature)));
         const textScore = fuzzyTextScore(ocrText, card.name);
         const score =
-          isArenaCrop && textScore > 0
-            ? Math.max(0, Math.min(1, imageScore * 0.42 + textScore * 0.58))
+          isArenaCrop
+            ? textScore > 0
+              ? Math.max(0, Math.min(1, imageScore * 0.35 + textScore * 0.65))
+              : imageScore
             : Math.max(0, Math.min(1, imageScore * 0.72 + textScore * 0.28));
         const candidate = {
           cardName: card.name,
@@ -378,17 +395,19 @@ async function makeCrops(src: string, source: ScreenshotSource, adjustments: Cro
 function makeArenaCrops(image: HTMLImageElement, adjustments: CropAdjustments) {
   const fullCanvas = document.createElement("canvas");
   const fullContext = fullCanvas.getContext("2d");
+  const matchCanvas = document.createElement("canvas");
+  const matchContext = matchCanvas.getContext("2d");
   const textCanvas = document.createElement("canvas");
   const textContext = textCanvas.getContext("2d", { willReadFrequently: true });
-  if (!fullContext || !textContext) {
+  if (!fullContext || !matchContext || !textContext) {
     throw new Error("This browser could not prepare Arena card crops.");
   }
 
   const centerXs = [0.102, 0.228, 0.361, 0.492, 0.619, 0.747, 0.87];
   const centerYs = [0.548, 0.521, 0.497, 0.49, 0.503, 0.522, 0.548];
   const baseAngles = [-12, -7, -3, 0, 4, 8, 13];
-  const cropWidth = image.width * 0.128 * (1 + adjustments.width / 100);
-  const cropHeight = image.height * 0.52 * (1 + adjustments.height / 100);
+  const cropWidth = image.width * 0.112 * (1 + adjustments.width / 100);
+  const cropHeight = image.height * 0.5 * (1 + adjustments.height / 100);
   const xShift = image.width * (adjustments.x / 100);
   const yShift = image.height * (adjustments.y / 100);
   const spreadShift = image.width * (adjustments.spread / 100) * 0.04;
@@ -397,6 +416,8 @@ function makeArenaCrops(image: HTMLImageElement, adjustments: CropAdjustments) {
 
   fullCanvas.width = Math.round(cropWidth);
   fullCanvas.height = Math.round(cropHeight);
+  matchCanvas.width = 180;
+  matchCanvas.height = 120;
   textCanvas.width = Math.round(cropWidth * 2.8);
   textCanvas.height = Math.max(76, Math.round(cropHeight * 0.2));
 
@@ -413,12 +434,25 @@ function makeArenaCrops(image: HTMLImageElement, adjustments: CropAdjustments) {
     fullContext.drawImage(image, -centerX, -centerY);
     fullContext.restore();
 
+    matchContext.clearRect(0, 0, matchCanvas.width, matchCanvas.height);
+    matchContext.drawImage(
+      fullCanvas,
+      Math.round(fullCanvas.width * 0.18),
+      Math.round(fullCanvas.height * 0.13),
+      Math.round(fullCanvas.width * 0.64),
+      Math.round(fullCanvas.height * 0.42),
+      0,
+      0,
+      matchCanvas.width,
+      matchCanvas.height
+    );
+
     textContext.clearRect(0, 0, textCanvas.width, textCanvas.height);
     textContext.drawImage(
       fullCanvas,
-      0,
+      Math.round(fullCanvas.width * 0.05),
       Math.round(fullCanvas.height * 0.025),
-      fullCanvas.width,
+      Math.round(fullCanvas.width * 0.9),
       Math.round(fullCanvas.height * 0.16),
       0,
       0,
@@ -442,6 +476,7 @@ function makeArenaCrops(image: HTMLImageElement, adjustments: CropAdjustments) {
     crops.push({
       index,
       src: fullCanvas.toDataURL("image/png"),
+      matchSrc: matchCanvas.toDataURL("image/png"),
       textSrc: textCanvas.toDataURL("image/png"),
       source: "arena"
     });
