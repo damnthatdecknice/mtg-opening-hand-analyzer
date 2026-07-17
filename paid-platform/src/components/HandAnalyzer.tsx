@@ -20,6 +20,7 @@ type ScreenshotSource = "mtgo" | "arena";
 type CropPreview = {
   index: number;
   src: string;
+  textSrc?: string;
 };
 
 type CropAdjustments = {
@@ -291,7 +292,7 @@ async function recognizeCropImages(
   return Promise.all(
     crops.map(async (crop) => {
       const cropSignature = await imageSignature(crop.src);
-      const ocrText = await readTextSignal(crop.src);
+      const ocrText = await readTextSignal(crop.textSrc ?? crop.src);
       const scoredByCard = new Map<string, RecognitionCandidate>();
       for (const { card, signature } of cardSignatures) {
         const imageScore = Math.max(0, Math.min(1, 1 - signatureDistance(cropSignature, signature)));
@@ -330,30 +331,27 @@ async function makeCrops(src: string, source: ScreenshotSource, adjustments: Cro
     throw new Error("This browser could not prepare screenshot crops.");
   }
 
+  if (source === "arena") {
+    return makeArenaCrops(image, adjustments);
+  }
+
   const crops: CropPreview[] = [];
   const cropWidth =
-    (source === "arena" ? image.width * 0.2 : image.width * 0.112) * (1 + adjustments.width / 100);
+    image.width * 0.112 * (1 + adjustments.width / 100);
   const cropHeight =
-    (source === "arena" ? image.height * 0.54 : image.height * 0.25) * (1 + adjustments.height / 100);
-  const startX = (source === "arena" ? image.width * 0.035 : image.width * 0.071) + image.width * (adjustments.x / 100);
-  const startY = (source === "arena" ? image.height * 0.255 : image.height * 0.705) + image.height * (adjustments.y / 100);
+    image.height * 0.25 * (1 + adjustments.height / 100);
+  const startX = image.width * 0.071 + image.width * (adjustments.x / 100);
+  const startY = image.height * 0.705 + image.height * (adjustments.y / 100);
   const step =
-    (source === "arena" ? image.width * 0.133 : image.width * 0.115) * (1 + adjustments.spread / 100);
-  const arenaBaseAngles = [-13, -8, -4, 0, 4, 8, 13];
+    image.width * 0.115 * (1 + adjustments.spread / 100);
 
   canvas.width = Math.round(cropWidth);
   canvas.height = Math.round(cropHeight);
 
   for (let index = 0; index < 7; index += 1) {
-    const curveOffset =
-      source === "arena" ? image.height * 0.018 * Math.abs(index - 3) + image.height * (adjustments.fan / 100) * (Math.abs(index - 3) / 3) : 0;
     const sourceX = Math.round(startX + step * index);
-    const sourceY = Math.round(startY + curveOffset);
-    const angle = source === "arena" ? ((arenaBaseAngles[index] ?? 0) * Math.PI) / 180 : 0;
+    const sourceY = Math.round(startY);
     context.clearRect(0, 0, canvas.width, canvas.height);
-    context.save();
-    context.translate(canvas.width / 2, canvas.height / 2);
-    context.rotate(-angle);
     context.drawImage(
       image,
       sourceX,
@@ -365,8 +363,81 @@ async function makeCrops(src: string, source: ScreenshotSource, adjustments: Cro
       canvas.width,
       canvas.height
     );
-    context.restore();
     crops.push({ index, src: canvas.toDataURL("image/png") });
+  }
+
+  return crops;
+}
+
+function makeArenaCrops(image: HTMLImageElement, adjustments: CropAdjustments) {
+  const fullCanvas = document.createElement("canvas");
+  const fullContext = fullCanvas.getContext("2d");
+  const textCanvas = document.createElement("canvas");
+  const textContext = textCanvas.getContext("2d", { willReadFrequently: true });
+  if (!fullContext || !textContext) {
+    throw new Error("This browser could not prepare Arena card crops.");
+  }
+
+  const centerXs = [0.107, 0.238, 0.366, 0.493, 0.622, 0.752, 0.872];
+  const centerYs = [0.535, 0.512, 0.492, 0.488, 0.497, 0.516, 0.542];
+  const baseAngles = [-12, -7, -3, 0, 4, 8, 13];
+  const cropWidth = image.width * 0.18 * (1 + adjustments.width / 100);
+  const cropHeight = image.height * 0.56 * (1 + adjustments.height / 100);
+  const xShift = image.width * (adjustments.x / 100);
+  const yShift = image.height * (adjustments.y / 100);
+  const spreadShift = image.width * (adjustments.spread / 100) * 0.04;
+  const fanShift = image.height * (adjustments.fan / 100) * 0.04;
+  const crops: CropPreview[] = [];
+
+  fullCanvas.width = Math.round(cropWidth);
+  fullCanvas.height = Math.round(cropHeight);
+  textCanvas.width = Math.round(cropWidth * 2.2);
+  textCanvas.height = Math.max(64, Math.round(cropHeight * 0.18));
+
+  for (let index = 0; index < 7; index += 1) {
+    const distanceFromCenter = index - 3;
+    const centerX = image.width * (centerXs[index] ?? 0.5) + xShift + distanceFromCenter * spreadShift;
+    const centerY = image.height * (centerYs[index] ?? 0.5) + yShift + Math.abs(distanceFromCenter) * fanShift;
+    const angle = ((baseAngles[index] ?? 0) * Math.PI) / 180;
+
+    fullContext.clearRect(0, 0, fullCanvas.width, fullCanvas.height);
+    fullContext.save();
+    fullContext.translate(fullCanvas.width / 2, fullCanvas.height / 2);
+    fullContext.rotate(-angle);
+    fullContext.drawImage(image, -centerX, -centerY);
+    fullContext.restore();
+
+    textContext.clearRect(0, 0, textCanvas.width, textCanvas.height);
+    textContext.drawImage(
+      fullCanvas,
+      0,
+      Math.round(fullCanvas.height * 0.02),
+      fullCanvas.width,
+      Math.round(fullCanvas.height * 0.2),
+      0,
+      0,
+      textCanvas.width,
+      textCanvas.height
+    );
+
+    const pixels = textContext.getImageData(0, 0, textCanvas.width, textCanvas.height);
+    for (let pixel = 0; pixel < pixels.data.length; pixel += 4) {
+      const r = pixels.data[pixel] ?? 0;
+      const g = pixels.data[pixel + 1] ?? 0;
+      const b = pixels.data[pixel + 2] ?? 0;
+      const gray = (r + g + b) / 3;
+      const boosted = gray > 128 ? 245 : Math.max(0, gray - 35);
+      pixels.data[pixel] = boosted;
+      pixels.data[pixel + 1] = boosted;
+      pixels.data[pixel + 2] = boosted;
+    }
+    textContext.putImageData(pixels, 0, 0);
+
+    crops.push({
+      index,
+      src: fullCanvas.toDataURL("image/png"),
+      textSrc: textCanvas.toDataURL("image/png")
+    });
   }
 
   return crops;
@@ -1015,7 +1086,10 @@ export function HandAnalyzer() {
                   <figure className="crop-preview-card" key={crop.index}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img alt={`Detected crop ${crop.index + 1}`} src={crop.src} />
-                    <figcaption>Crop {crop.index + 1}</figcaption>
+                    <figcaption>
+                      Crop {crop.index + 1}
+                      {screenshotSource === "arena" ? " - title strip checked" : ""}
+                    </figcaption>
                     <CandidateList
                       cropIndex={crop.index}
                       onChoose={(name) => updateConfirmed(crop.index, name)}
