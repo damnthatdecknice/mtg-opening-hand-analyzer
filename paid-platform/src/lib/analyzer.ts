@@ -4,12 +4,15 @@ export type PlayDraw = "play" | "draw";
 
 export type CardLookup = {
   name: string;
+  manaCost: string;
   manaValue: number;
+  scryfallManaValue: number;
+  manaValueSource: string;
   typeLine: string;
   oracleText: string;
   colors: string[];
   producedMana: string[];
-  faces: Array<{ name: string; typeLine: string; oracleText: string }>;
+  faces: Array<{ name: string; manaCost: string; manaValue: number; typeLine: string; oracleText: string }>;
   imageUrl: string;
   artCropUrl: string;
   isLand: boolean;
@@ -47,6 +50,25 @@ export type CurveRow = {
   spells: number;
 };
 
+export type ManaAuditRow = {
+  status: "OK" | "Review" | "Missing" | "Scryfall only";
+  card: string;
+  qty: number;
+  appManaValue: number;
+  symbolCheck: number | null;
+  checkSource: string;
+  manaCostUsed: string;
+  typeLine: string;
+  multiface: boolean;
+};
+
+export type SourceAssumptionRow = {
+  cardName: string;
+  kind: "Land" | "Ramp" | "Land equivalent" | "Draw/look";
+  timing: string;
+  assumption: string;
+};
+
 export type MulliganSummary = {
   average: number;
   median: number;
@@ -70,6 +92,8 @@ export type AnalyzerResult = {
   turnProbabilities: TurnProbability[];
   castability: CastabilityRow[];
   curve: CurveRow[];
+  manaAudit: ManaAuditRow[];
+  sourceAssumptions: SourceAssumptionRow[];
   drawSources: SourceNote[];
   rampSources: SourceNote[];
   landEquivalentSources: SourceNote[];
@@ -151,16 +175,46 @@ function manaValueFromCost(cost = "") {
   }, 0);
 }
 
-function checkedManaValue(card: ScryfallCard, castableFace: NonNullable<ScryfallCard["card_faces"]>[number] | null) {
+function parsedManaRequirements(cost = "") {
+  const requiredColors: string[] = [];
+  let generic = 0;
+  for (const match of Array.from(cost.matchAll(/\{([^}]+)\}/g))) {
+    const symbol = (match[1] ?? "").toUpperCase();
+    if (/^\d+$/.test(symbol)) {
+      generic += Number(symbol);
+      continue;
+    }
+    if (symbol === "X") {
+      continue;
+    }
+    const colors = symbol.split("/").filter((part) => "WUBRGC".includes(part));
+    if (colors.length) {
+      requiredColors.push(colors[0] ?? "");
+    } else {
+      generic += 1;
+    }
+  }
+  return { requiredColors: requiredColors.filter(Boolean), generic };
+}
+
+function checkedManaValueDetails(
+  card: ScryfallCard,
+  castableFace: NonNullable<ScryfallCard["card_faces"]>[number] | null
+) {
   const cardCostValue = manaValueFromCost(card.mana_cost);
   if (cardCostValue) {
-    return cardCostValue;
+    return { value: cardCostValue, source: "mana cost", manaCost: card.mana_cost ?? "", symbolCheck: cardCostValue };
   }
 
   if (castableFace?.mana_cost) {
     const faceCostValue = manaValueFromCost(castableFace.mana_cost);
     if (faceCostValue) {
-      return faceCostValue;
+      return {
+        value: faceCostValue,
+        source: "face mana cost",
+        manaCost: castableFace.mana_cost,
+        symbolCheck: faceCostValue
+      };
     }
   }
 
@@ -168,16 +222,26 @@ function checkedManaValue(card: ScryfallCard, castableFace: NonNullable<Scryfall
   if (nonlandFace?.mana_cost) {
     const faceCostValue = manaValueFromCost(nonlandFace.mana_cost);
     if (faceCostValue) {
-      return faceCostValue;
+      return {
+        value: faceCostValue,
+        source: "nonland face mana cost",
+        manaCost: nonlandFace.mana_cost,
+        symbolCheck: faceCostValue
+      };
     }
   }
 
   const typeLine = castableFace?.type_line ?? card.type_line ?? "";
   if (typeLine.toLowerCase().includes("land")) {
-    return 0;
+    return { value: 0, source: "land", manaCost: "", symbolCheck: 0 };
   }
 
-  return card.cmc ?? castableFace?.cmc ?? 0;
+  return {
+    value: card.cmc ?? castableFace?.cmc ?? 0,
+    source: "Scryfall value only",
+    manaCost: card.mana_cost ?? castableFace?.mana_cost ?? "",
+    symbolCheck: null
+  };
 }
 
 function allText(card: CardLookup) {
@@ -191,9 +255,13 @@ function allTypeText(card: CardLookup) {
 function mapScryfallCard(card: ScryfallCard): CardLookup {
   const castableFace = chooseCastableFace(card);
   const typeLine = castableFace?.type_line ?? card.type_line ?? "";
+  const manaCheck = checkedManaValueDetails(card, castableFace);
   return {
     name: card.name,
-    manaValue: checkedManaValue(card, castableFace),
+    manaCost: manaCheck.manaCost,
+    manaValue: manaCheck.value,
+    scryfallManaValue: card.cmc ?? castableFace?.cmc ?? manaCheck.value,
+    manaValueSource: manaCheck.source,
     typeLine,
     oracleText: card.oracle_text ?? castableFace?.oracle_text ?? "",
     colors: card.colors ?? castableFace?.colors ?? [],
@@ -201,6 +269,8 @@ function mapScryfallCard(card: ScryfallCard): CardLookup {
     faces:
       card.card_faces?.map((face) => ({
         name: face.name ?? "",
+        manaCost: face.mana_cost ?? "",
+        manaValue: face.cmc ?? manaValueFromCost(face.mana_cost),
         typeLine: face.type_line ?? "",
         oracleText: face.oracle_text ?? ""
       })) ?? [],
@@ -383,31 +453,173 @@ function landEquivalent(card: CardLookup): SourceNote | null {
   return null;
 }
 
-function castabilityEstimate(card: CardLookup, _landsInHand: number, effectiveLandsInHand: number) {
-  if (card.isLand) {
-    return null;
+type ManaSource = {
+  name: string;
+  colors: string[];
+  availableTurn: number;
+  entersTapped: boolean;
+};
+
+function basicLandColors(name: string) {
+  const basics: Record<string, string[]> = {
+    plains: ["W"],
+    island: ["U"],
+    swamp: ["B"],
+    mountain: ["R"],
+    forest: ["G"],
+    wastes: ["C"]
+  };
+  return basics[normalizeName(name)] ?? [];
+}
+
+function colorsFromAddText(text: string) {
+  const colors = new Set<string>();
+  for (const match of Array.from(text.matchAll(/\{([WUBRGC])\}/gi))) {
+    colors.add((match[1] ?? "").toUpperCase());
   }
-  const mv = Math.max(0, Math.ceil(card.manaValue));
-  const estimate = (turn: number) => {
-    const naturalDrawsSeen = Math.max(0, turn - 1);
-    const possibleSources = Math.min(turn, effectiveLandsInHand + naturalDrawsSeen);
-    const guaranteedSources = Math.min(turn, effectiveLandsInHand);
-    const sources = Math.max(guaranteedSources, possibleSources);
-    if (mv <= sources) {
-      return 1;
+  for (const word of Array.from(text.matchAll(/\b(white|blue|black|red|green|colorless)\b/gi))) {
+    const map: Record<string, string> = { white: "W", blue: "U", black: "B", red: "R", green: "G", colorless: "C" };
+    colors.add(map[(word[1] ?? "").toLowerCase()] ?? "");
+  }
+  return Array.from(colors).filter(Boolean);
+}
+
+function sourceProfile(card: CardLookup): Omit<ManaSource, "availableTurn"> {
+  const text = allText(card);
+  const produced = card.producedMana.length
+    ? card.producedMana.map((color) => color.toUpperCase())
+    : [...basicLandColors(card.name), ...colorsFromAddText(text)];
+  const uniqueColors = Array.from(new Set(produced.length ? produced : ["C"]));
+  const conditionalTapped = text.includes("enters tapped unless") || text.includes("enters the battlefield tapped unless");
+  const entersTapped =
+    (text.includes("enters tapped") || text.includes("enters the battlefield tapped")) && !conditionalTapped;
+  return { name: card.name, colors: uniqueColors, entersTapped };
+}
+
+function canPay(cost: string, sources: ManaSource[]) {
+  const requirements = parsedManaRequirements(cost);
+  const sourceColors = sources.map((source) => source.colors);
+  const used = new Set<number>();
+
+  for (const color of requirements.requiredColors) {
+    const sourceIndex = sourceColors.findIndex((colors, index) => !used.has(index) && colors.includes(color));
+    if (sourceIndex < 0) {
+      return false;
     }
-    if (turn > 1 && mv === sources + 1) {
-      return 0.45;
+    used.add(sourceIndex);
+  }
+
+  const remainingSources = sourceColors.length - used.size;
+  return remainingSources >= requirements.generic;
+}
+
+function chooseBestLand(availableLands: Array<{ id: number; card: CardLookup }>, currentSources: ManaSource[], turn: number) {
+  let best = availableLands[0] ?? null;
+  let bestScore = -1;
+  for (const candidate of availableLands) {
+    const profile = sourceProfile(candidate.card);
+    const source: ManaSource = {
+      ...profile,
+      availableTurn: profile.entersTapped ? turn + 1 : turn
+    };
+    const colors = new Set(
+      [...currentSources, source]
+        .filter((item) => item.availableTurn <= turn + 1)
+        .flatMap((item) => item.colors)
+    );
+    const untappedNow = source.availableTurn <= turn ? 2 : 0;
+    const score = colors.size * 10 + untappedNow + source.colors.length;
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
     }
-    return 0;
+  }
+  return best;
+}
+
+function seededRandom(seedStart: number) {
+  let seed = seedStart;
+  return () => {
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    return seed / 4294967296;
   };
-  return {
-    cardName: card.name,
-    manaValue: card.manaValue,
-    turn1: estimate(1),
-    turn2: estimate(2),
-    turn3: estimate(3)
-  };
+}
+
+function shuffledSample(cards: string[], count: number, random: () => number) {
+  const shuffled = [...cards];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled.slice(0, count);
+}
+
+function castabilityMonteCarlo(
+  hand: string[],
+  library: Map<string, number>,
+  cardData: Map<string, CardLookup>,
+  playDraw: PlayDraw,
+  trials = 3000
+) {
+  const spells = Array.from(
+    new Map(
+      hand
+        .map((name) => cardData.get(normalizeName(name)))
+        .filter((card): card is CardLookup => Boolean(card && !card.isLand))
+        .map((card) => [card.name, card])
+    ).values()
+  );
+  const deckCards = Array.from(library.entries()).flatMap(([name, qty]) =>
+    Array.from({ length: Math.max(0, qty) }, () => name)
+  );
+  const successes = new Map(spells.map((spell) => [spell.name, [0, 0, 0]]));
+  const random = seededRandom(20260717);
+  const maxTurn = 3;
+  const drawsToSee = drawsByTurn(maxTurn, playDraw);
+
+  for (let trial = 0; trial < trials; trial += 1) {
+    const drawnNames = [...hand, ...shuffledSample(deckCards, drawsToSee, random)];
+    const drawn = drawnNames
+      .map((name, id) => ({ id, name, card: cardData.get(normalizeName(name)) }))
+      .filter((entry): entry is { id: number; name: string; card: CardLookup } => Boolean(entry.card));
+    const playedLandIds = new Set<number>();
+    const sources: ManaSource[] = [];
+
+    for (let turn = 1; turn <= maxTurn; turn += 1) {
+      const seenCount = hand.length + drawsByTurn(turn, playDraw);
+      const availableLands = drawn
+        .slice(0, seenCount)
+        .filter((entry) => entry.card.isLand && !playedLandIds.has(entry.id));
+      const land = chooseBestLand(availableLands, sources, turn);
+      if (land) {
+        playedLandIds.add(land.id);
+        const profile = sourceProfile(land.card);
+        sources.push({
+          ...profile,
+          availableTurn: profile.entersTapped ? turn + 1 : turn
+        });
+      }
+
+      const usableSources = sources.filter((source) => source.availableTurn <= turn);
+      for (const spell of spells) {
+        const cost = spell.manaCost || (spell.manaValue > 0 ? `{${Math.ceil(spell.manaValue)}}` : "");
+        if (canPay(cost, usableSources)) {
+          successes.get(spell.name)![turn - 1] += 1;
+        }
+      }
+    }
+  }
+
+  return spells.map((spell) => {
+    const row = successes.get(spell.name) ?? [0, 0, 0];
+    return {
+      cardName: spell.name,
+      manaValue: spell.manaValue,
+      turn1: Math.min(1, row[0] / trials),
+      turn2: Math.min(1, row[1] / trials),
+      turn3: Math.min(1, row[2] / trials)
+    };
+  });
 }
 
 function textureScore(landsInHand: number, effectiveLandsInHand: number, averageManaValue: number, earlySpellCount: number) {
@@ -483,6 +695,96 @@ function mulliganSummary(mainCounts: Map<string, number>, cardData: Map<string, 
   };
 }
 
+function manaValueAuditRows(mainCounts: Map<string, number>, cardData: Map<string, CardLookup>): ManaAuditRow[] {
+  return Array.from(mainCounts.entries()).map(([name, qty]) => {
+    const card = cardData.get(normalizeName(name));
+    if (!card) {
+      return {
+        status: "Missing",
+        card: name,
+        qty,
+        appManaValue: 0,
+        symbolCheck: null,
+        checkSource: "missing card data",
+        manaCostUsed: "(none)",
+        typeLine: "",
+        multiface: false
+      };
+    }
+
+    const symbolCheck = card.manaCost ? manaValueFromCost(card.manaCost) : card.isLand ? 0 : null;
+    const status =
+      card.manaValueSource === "Scryfall value only"
+        ? "Scryfall only"
+        : symbolCheck === null
+          ? "Review"
+          : Math.abs(symbolCheck - card.manaValue) < 0.01
+            ? "OK"
+            : "Review";
+
+    return {
+      status,
+      card: name,
+      qty,
+      appManaValue: card.manaValue,
+      symbolCheck,
+      checkSource: card.manaValueSource,
+      manaCostUsed: card.manaCost || "(none)",
+      typeLine: card.typeLine,
+      multiface: card.isMultiface
+    };
+  });
+}
+
+function sourceAssumptionRows(
+  mainCounts: Map<string, number>,
+  cardData: Map<string, CardLookup>,
+  drawSources: SourceNote[],
+  rampSources: SourceNote[],
+  landEquivalentSources: SourceNote[]
+): SourceAssumptionRow[] {
+  const rows: SourceAssumptionRow[] = [];
+  for (const [name] of Array.from(mainCounts.entries())) {
+    const card = cardData.get(normalizeName(name));
+    if (!card?.isLand) {
+      continue;
+    }
+    const profile = sourceProfile(card);
+    rows.push({
+      cardName: name,
+      kind: "Land",
+      timing: profile.entersTapped ? "available next turn" : "available immediately",
+      assumption: `Produces ${profile.colors.join("/") || "unknown"} mana${profile.entersTapped ? "; modeled as tapped" : ""}.`
+    });
+  }
+
+  for (const source of drawSources) {
+    rows.push({
+      cardName: source.cardName,
+      kind: "Draw/look",
+      timing: source.timing,
+      assumption: "Modeled as fractional extra looks when estimating future land drops."
+    });
+  }
+  for (const source of rampSources) {
+    rows.push({
+      cardName: source.cardName,
+      kind: "Ramp",
+      timing: source.timing,
+      assumption: `${source.sourceType} flagged from rules text for sequencing review.`
+    });
+  }
+  for (const source of landEquivalentSources) {
+    rows.push({
+      cardName: source.cardName,
+      kind: "Land equivalent",
+      timing: source.timing,
+      assumption: source.text
+    });
+  }
+  return rows;
+}
+
 export function analyzeOpeningHand(
   decklist: string,
   handNames: string[],
@@ -548,9 +850,7 @@ export function analyzeOpeningHand(
     : 0;
   const earlySpellCount = nonlands.filter((card) => card.manaValue <= 2).length;
   const handTextureScore = textureScore(landsInHand, effectiveLandsInHand, averageManaValue, earlySpellCount);
-  const castability = nonlands
-    .map((card) => castabilityEstimate(card, landsInHand, effectiveLandsInHand))
-    .filter((row): row is CastabilityRow => Boolean(row));
+  const castability = castabilityMonteCarlo(hand, library, cardData, playDraw);
   const drawSources = handCards
     .map((card) => ({ card, depth: drawDepth(card) }))
     .filter(({ depth }) => depth.drawn > 0 || depth.seen > 0)
@@ -561,6 +861,14 @@ export function analyzeOpeningHand(
       text: card.oracleText
     }));
   const rampSources = handCards.map(rampSource).filter((source): source is SourceNote => Boolean(source));
+  const manaAudit = manaValueAuditRows(mainCounts, cardData);
+  const sourceAssumptions = sourceAssumptionRows(
+    mainCounts,
+    cardData,
+    drawSources,
+    rampSources,
+    landEquivalentSources
+  );
 
   const extraLooksByTurn = (turn: number) =>
     drawSources.reduce((total, source) => {
@@ -654,6 +962,8 @@ export function analyzeOpeningHand(
     turnProbabilities,
     castability,
     curve,
+    manaAudit,
+    sourceAssumptions,
     drawSources,
     rampSources,
     landEquivalentSources,

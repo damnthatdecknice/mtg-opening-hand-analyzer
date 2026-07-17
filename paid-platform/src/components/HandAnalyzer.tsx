@@ -1164,7 +1164,7 @@ function Overview({ result }: { result: AnalyzerResult }) {
         <section>
           <h2>Can I cast the hand?</h2>
           <p className="muted-copy">
-            Seeded castability estimates. Values are percentages, capped at 100%.
+            Seeded Monte Carlo castability with colors, tapped lands, draws, and land sequencing. Values are capped at 100%.
           </p>
           <div className="table-wrap compact-table-wrap">
             <table className="data-table">
@@ -1330,6 +1330,91 @@ function DeepData({ result }: { result: AnalyzerResult }) {
           </tbody>
         </table>
       </div>
+      <h2>Mana Value Audit</h2>
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Card</th>
+              <th>Qty</th>
+              <th>App MV</th>
+              <th>Symbol check</th>
+              <th>Check source</th>
+              <th>Mana cost used</th>
+              <th>Type</th>
+              <th>Multiface</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.manaAudit.map((row) => (
+              <tr key={`audit-${row.card}`}>
+                <td>
+                  <span className={`status-pill ${row.status === "OK" ? "good" : row.status === "Review" ? "bad" : "neutral"}`}>
+                    {row.status}
+                  </span>
+                </td>
+                <td>{row.card}</td>
+                <td>{row.qty}</td>
+                <td>{number(row.appManaValue)}</td>
+                <td>{row.symbolCheck === null ? "n/a" : number(row.symbolCheck)}</td>
+                <td>{row.checkSource}</td>
+                <td>{row.manaCostUsed}</td>
+                <td>{row.typeLine}</td>
+                <td>{row.multiface ? "yes" : "no"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <h2>Card Draw / Selection Impact</h2>
+      <div className="table-wrap compact-table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Turn</th>
+              <th>Natural draws</th>
+              <th>Extra looks</th>
+              <th>Next land natural</th>
+              <th>Next land with draw/look</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.turnProbabilities.map((row) => (
+              <tr key={`draw-${row.turn}`}>
+                <td>{row.turn}</td>
+                <td>{row.naturalDraws}</td>
+                <td>{number(row.extraLooks)}</td>
+                <td>{pct(row.nextLandNatural)}</td>
+                <td>{pct(row.nextLandWithDraw)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <h2>Mana Source and Ramp Assumptions</h2>
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Card</th>
+              <th>Type</th>
+              <th>Timing</th>
+              <th>Assumption</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.sourceAssumptions.map((row, index) => (
+              <tr key={`source-${row.cardName}-${index}`}>
+                <td>{row.cardName}</td>
+                <td>{row.kind}</td>
+                <td>{row.timing}</td>
+                <td>{row.assumption}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {result.lookupFailures.length || result.missingCards.length || result.notes.length ? (
         <div className="analysis-notes">
           {result.lookupFailures.length ? <p>Scryfall lookup failures: {result.lookupFailures.join(", ")}</p> : null}
@@ -1358,6 +1443,37 @@ function ManaCurve({ result }: { result: AnalyzerResult }) {
       <p className="muted-copy">
         Mana values are pulled from Scryfall with MDFC castable-face handling.
       </p>
+      <h2>Mana Value Verification</h2>
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Card</th>
+              <th>Qty</th>
+              <th>App MV</th>
+              <th>Symbol check</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.manaAudit.map((row) => (
+              <tr key={`curve-audit-${row.card}`}>
+                <td>
+                  <span className={`status-pill ${row.status === "OK" ? "good" : row.status === "Review" ? "bad" : "neutral"}`}>
+                    {row.status}
+                  </span>
+                </td>
+                <td>{row.card}</td>
+                <td>{row.qty}</td>
+                <td>{number(row.appManaValue)}</td>
+                <td>{row.symbolCheck === null ? "n/a" : number(row.symbolCheck)}</td>
+                <td>{row.checkSource}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

@@ -1123,6 +1123,32 @@ h2 {
   text-transform: uppercase;
 }
 
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border: 1px solid rgba(170, 184, 204, 0.42);
+  border-radius: 999px;
+  background: rgba(170, 184, 204, 0.12);
+  color: #d8e2f0;
+  font-size: 0.78rem;
+  font-weight: 900;
+  padding: 0 9px;
+  white-space: nowrap;
+}
+
+.status-pill.good {
+  border-color: rgba(98, 230, 166, 0.46);
+  background: rgba(98, 230, 166, 0.12);
+  color: #95f7c4;
+}
+
+.status-pill.bad {
+  border-color: rgba(255, 116, 100, 0.46);
+  background: rgba(255, 116, 100, 0.12);
+  color: #ffb0a6;
+}
+
 .analysis-notes {
   display: grid;
   gap: 8px;
