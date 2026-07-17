@@ -10,7 +10,7 @@ import {
 } from "@/lib/analyzer";
 import { inferDeckName, parseDecklist } from "@/lib/deckParser";
 
-type WorkflowTab = "deck" | "hand" | "screenshot" | "results" | "rating";
+type WorkflowTab = "deck" | "hand" | "screenshot" | "results";
 type ResultTab = "overview" | "deep" | "curve" | "mulligan" | "other";
 type ScreenshotSource = "mtgo" | "arena";
 
@@ -72,6 +72,45 @@ function readFileAsDataUrl(file: File) {
     reader.onerror = () => reject(new Error("Could not read that image."));
     reader.readAsDataURL(file);
   });
+}
+
+async function captureScreenFrame() {
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    throw new Error("This browser does not support direct window capture.");
+  }
+
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: true,
+    audio: false
+  });
+
+  try {
+    const video = document.createElement("video");
+    video.srcObject = stream;
+    video.muted = true;
+    await video.play();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    const track = stream.getVideoTracks()[0];
+    const settings = track?.getSettings();
+    const width = settings?.width ?? video.videoWidth;
+    const height = settings?.height ?? video.videoHeight;
+    if (!width || !height) {
+      throw new Error("Could not read the selected window.");
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Could not capture the selected window.");
+    }
+    context.drawImage(video, 0, 0, width, height);
+    return canvas.toDataURL("image/png");
+  } finally {
+    stream.getTracks().forEach((track) => track.stop());
+  }
 }
 
 function loadImage(src: string) {
@@ -205,8 +244,6 @@ export function HandAnalyzer() {
   const [screenshotSrc, setScreenshotSrc] = useState("");
   const [crops, setCrops] = useState<CropPreview[]>([]);
   const [recognitionResults, setRecognitionResults] = useState<RecognitionResult[]>([]);
-  const [rating, setRating] = useState("");
-  const [ratingNotes, setRatingNotes] = useState("");
   const [result, setResult] = useState<AnalyzerResult | null>(null);
   const [message, setMessage] = useState("");
   const [isBusy, setIsBusy] = useState(false);
@@ -267,11 +304,10 @@ export function HandAnalyzer() {
     }
   }
 
-  async function handleScreenshotFile(file: File) {
+  async function processScreenshotSrc(src: string) {
     setMessage("");
     setIsCropping(true);
     try {
-      const src = await readFileAsDataUrl(file);
       const nextCrops = await makeCrops(src, screenshotSource);
       setScreenshotSrc(src);
       setCrops(nextCrops);
@@ -282,6 +318,32 @@ export function HandAnalyzer() {
       setMessage(error instanceof Error ? error.message : "Could not process that screenshot.");
     } finally {
       setIsCropping(false);
+    }
+  }
+
+  async function handleScreenshotFile(file: File) {
+    setMessage("");
+    try {
+      await processScreenshotSrc(await readFileAsDataUrl(file));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not process that screenshot.");
+    }
+  }
+
+  async function captureWindowScreenshot() {
+    setMessage("");
+    try {
+      setIsCropping(true);
+      const src = await captureScreenFrame();
+      setIsCropping(false);
+      await processScreenshotSrc(src);
+    } catch (error) {
+      setIsCropping(false);
+      setMessage(
+        error instanceof Error
+          ? `${error.message} You can still paste, drag/drop, or upload a screenshot.`
+          : "Window capture did not complete. You can still paste, drag/drop, or upload a screenshot."
+      );
     }
   }
 
@@ -356,8 +418,7 @@ export function HandAnalyzer() {
       { id: "deck", label: "Deck" },
       { id: "hand", label: "Hand" },
       { id: "screenshot", label: "Screenshot" },
-      { id: "results", label: "Results" },
-      { id: "rating", label: "Rating" }
+      { id: "results", label: "Results" }
     ];
     return (
       <div className="tool-tabs">
@@ -407,7 +468,7 @@ export function HandAnalyzer() {
         <p>
           Paid-version port of the beta workflow: deck matrix, confirmed hand,
           screenshot intake, land math, draw/ramp context, mulligan comparison,
-          mana curve, and rating notes.
+          and mana curve.
         </p>
       </header>
 
@@ -501,9 +562,10 @@ export function HandAnalyzer() {
             <p className="eyebrow">Vision stack</p>
             <h2>Screenshot Recognition</h2>
             <p>
-              Paste, drag/drop, or browse for an MTGO or Arena screenshot. The paid
-              app compares the seven crops against the cards in your deck, fills
-              the confirmed hand, and keeps every dropdown editable.
+              Capture the MTGO/Arena window with browser permission, or paste,
+              drag/drop, or browse for a screenshot. The app compares the seven
+              crops against the cards in your deck, fills the confirmed hand, and
+              keeps every dropdown editable.
             </p>
           </div>
           <div className="segmented-control" aria-label="Screenshot source">
@@ -523,6 +585,13 @@ export function HandAnalyzer() {
           >
             <strong>Add a screenshot from your clipboard</strong>
             <div className="action-row compact-actions">
+              <button className="primary-button" disabled={isCropping || isRecognizing} onClick={captureWindowScreenshot} type="button">
+                {isCropping || isRecognizing
+                  ? "Reading..."
+                  : screenshotSource === "arena"
+                    ? "Capture Arena Window"
+                    : "Capture MTGO Window"}
+              </button>
               <button className="secondary-button" disabled={isCropping} onClick={pasteClipboardImage} type="button">
                 {isCropping || isRecognizing ? "Reading..." : "Paste Clipboard"}
               </button>
@@ -538,7 +607,7 @@ export function HandAnalyzer() {
                 />
               </label>
             </div>
-            <span>You can also click this box and press Ctrl+V, or drag/drop an image here.</span>
+            <span>For capture, choose the game window in the browser picker. You can also click this box and press Ctrl+V, or drag/drop an image here.</span>
           </div>
           {screenshotSrc ? (
             <div className="screenshot-preview-wrap">
@@ -620,33 +689,6 @@ export function HandAnalyzer() {
         </section>
       ) : null}
 
-      {workflowTab === "rating" ? (
-        <section className="panel analyzer-input-panel narrow-tool-panel">
-          <div className="section-heading">
-            <p className="eyebrow">Rating tracker</p>
-            <h2>Session Note</h2>
-            <p>Track your current rating and notes while testing hands.</p>
-          </div>
-          <label className="field-stack">
-            Current rating
-            <input
-              className="text-input"
-              onChange={(event) => setRating(event.target.value)}
-              placeholder="Example: 1578"
-              value={rating}
-            />
-          </label>
-          <label className="field-stack">
-            Notes
-            <textarea
-              className="analyzer-textarea hand-textarea"
-              onChange={(event) => setRatingNotes(event.target.value)}
-              placeholder="Matchup, keep/mull decision, result, or lesson learned."
-              value={ratingNotes}
-            />
-          </label>
-        </section>
-      ) : null}
     </section>
   );
 }
