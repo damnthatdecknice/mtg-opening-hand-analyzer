@@ -610,9 +610,11 @@ export function HandAnalyzer() {
       const namesForLookup = parsed.cards.map((card) => card.name);
       const { lookups, failures } = await fetchCardData(namesForLookup);
       const analysis = analyzeOpeningHand(decklist, seven, lookups, playDraw);
-      setResult({ ...analysis, lookupFailures: failures });
+      const completedAnalysis = { ...analysis, lookupFailures: failures };
+      setResult(completedAnalysis);
       setWorkflowTab("results");
       setResultTab("overview");
+      await saveHandSession(seven, completedAnalysis);
       if (failures.length) {
         setMessage(`Analysis ran, but ${failures.length} Scryfall lookup(s) need review.`);
       }
@@ -620,6 +622,34 @@ export function HandAnalyzer() {
       setMessage(error instanceof Error ? error.message : "Could not analyze this hand.");
     } finally {
       setIsBusy(false);
+    }
+  }
+
+  async function saveHandSession(seven: string[], analysis: AnalyzerResult) {
+    if (!supabase) {
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
+      return;
+    }
+
+    const { error } = await supabase.from("hand_sessions").insert({
+      user_id: userData.user.id,
+      deck_id: selectedDeckId === "custom" ? null : selectedDeckId,
+      source: screenshotSrc ? "screenshot" : "manual",
+      confirmed_hand: seven,
+      analysis_json: analysis,
+      screenshot_metadata: {
+        source: screenshotSrc ? screenshotSource : "none",
+        crop_count: crops.length
+      },
+      decision: analysis.recommendationTone === "good" ? "keep" : analysis.recommendationTone === "bad" ? "mulligan" : "close"
+    });
+
+    if (error) {
+      setMessage(`Analysis complete. Session count could not be saved: ${error.message}`);
     }
   }
 

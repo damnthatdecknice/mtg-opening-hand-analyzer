@@ -64,7 +64,7 @@ export function DashboardOverview() {
           <strong>{state.isLoading ? "..." : state.deckCount}</strong>
         </div>
         <div className="metric-card">
-          <span>Tracked hands</span>
+          <span>Hands analyzed</span>
           <strong>{state.isLoading ? "..." : state.handCount}</strong>
         </div>
         <div className="metric-card">
