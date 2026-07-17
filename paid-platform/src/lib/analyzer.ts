@@ -10,6 +10,8 @@ export type CardLookup = {
   colors: string[];
   producedMana: string[];
   faces: Array<{ name: string; typeLine: string; oracleText: string }>;
+  imageUrl: string;
+  artCropUrl: string;
   isLand: boolean;
   isMultiface: boolean;
 };
@@ -87,12 +89,22 @@ type ScryfallCard = {
   oracle_text?: string;
   colors?: string[];
   produced_mana?: string[];
+  image_uris?: {
+    small?: string;
+    normal?: string;
+    art_crop?: string;
+  };
   card_faces?: Array<{
     name?: string;
     mana_value?: number;
     type_line?: string;
     oracle_text?: string;
     colors?: string[];
+    image_uris?: {
+      small?: string;
+      normal?: string;
+      art_crop?: string;
+    };
   }>;
 };
 
@@ -145,6 +157,8 @@ function mapScryfallCard(card: ScryfallCard): CardLookup {
         typeLine: face.type_line ?? "",
         oracleText: face.oracle_text ?? ""
       })) ?? [],
+    imageUrl: card.image_uris?.normal ?? castableFace?.image_uris?.normal ?? card.image_uris?.small ?? "",
+    artCropUrl: card.image_uris?.art_crop ?? castableFace?.image_uris?.art_crop ?? "",
     isLand: typeLine.toLowerCase().includes("land"),
     isMultiface: Boolean(card.card_faces?.length)
   };

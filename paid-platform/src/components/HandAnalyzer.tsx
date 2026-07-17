@@ -5,6 +5,7 @@ import {
   analyzeOpeningHand,
   fetchCardData,
   type AnalyzerResult,
+  type CardLookup,
   type PlayDraw
 } from "@/lib/analyzer";
 import { inferDeckName, parseDecklist } from "@/lib/deckParser";
@@ -16,6 +17,16 @@ type ScreenshotSource = "mtgo" | "arena";
 type CropPreview = {
   index: number;
   src: string;
+};
+
+type RecognitionCandidate = {
+  cardName: string;
+  score: number;
+};
+
+type RecognitionResult = {
+  cropIndex: number;
+  candidates: RecognitionCandidate[];
 };
 
 const sampleDeck = `Deck
@@ -66,10 +77,84 @@ function readFileAsDataUrl(file: File) {
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
+    image.crossOrigin = "anonymous";
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error("Could not load that screenshot."));
     image.src = src;
   });
+}
+
+function imageSignature(src: string, width = 24, height = 34) {
+  return loadImage(src).then((image) => {
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) {
+      throw new Error("This browser could not inspect card images.");
+    }
+    canvas.width = width;
+    canvas.height = height;
+    context.drawImage(image, 0, 0, width, height);
+    const pixels = context.getImageData(0, 0, width, height).data;
+    const values: number[] = [];
+    for (let index = 0; index < pixels.length; index += 4) {
+      const r = pixels[index] ?? 0;
+      const g = pixels[index + 1] ?? 0;
+      const b = pixels[index + 2] ?? 0;
+      values.push((r + g + b) / 3 / 255);
+      values.push((r - b + 255) / 510);
+      values.push((g - b + 255) / 510);
+    }
+    return values;
+  });
+}
+
+function signatureDistance(a: number[], b: number[]) {
+  const length = Math.min(a.length, b.length);
+  if (!length) {
+    return Number.POSITIVE_INFINITY;
+  }
+  let total = 0;
+  for (let index = 0; index < length; index += 1) {
+    const delta = (a[index] ?? 0) - (b[index] ?? 0);
+    total += delta * delta;
+  }
+  return Math.sqrt(total / length);
+}
+
+async function recognizeCropImages(
+  crops: CropPreview[],
+  cardData: Map<string, CardLookup>,
+  deckOptions: string[]
+): Promise<RecognitionResult[]> {
+  const uniqueCards = deckOptions
+    .map((name) => cardData.get(name.trim().toLowerCase()))
+    .filter((card): card is CardLookup => Boolean(card?.imageUrl));
+  const cardSignatures = (
+    await Promise.all(
+    uniqueCards.map(async (card) => ({
+      card,
+      signature: await imageSignature(card.imageUrl).catch(() => null)
+    }))
+    )
+  ).filter((item): item is { card: CardLookup; signature: number[] } => Boolean(item.signature));
+
+  if (!cardSignatures.length) {
+    throw new Error("Card images could not be loaded for recognition.");
+  }
+
+  return Promise.all(
+    crops.map(async (crop) => {
+      const cropSignature = await imageSignature(crop.src);
+      const candidates = cardSignatures
+        .map(({ card, signature }) => ({
+          cardName: card.name,
+          score: Math.max(0, Math.min(1, 1 - signatureDistance(cropSignature, signature)))
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3);
+      return { cropIndex: crop.index, candidates };
+    })
+  );
 }
 
 async function makeCrops(src: string, source: ScreenshotSource) {
@@ -119,12 +204,14 @@ export function HandAnalyzer() {
   const [screenshotSource, setScreenshotSource] = useState<ScreenshotSource>("mtgo");
   const [screenshotSrc, setScreenshotSrc] = useState("");
   const [crops, setCrops] = useState<CropPreview[]>([]);
+  const [recognitionResults, setRecognitionResults] = useState<RecognitionResult[]>([]);
   const [rating, setRating] = useState("");
   const [ratingNotes, setRatingNotes] = useState("");
   const [result, setResult] = useState<AnalyzerResult | null>(null);
   const [message, setMessage] = useState("");
   const [isBusy, setIsBusy] = useState(false);
   const [isCropping, setIsCropping] = useState(false);
+  const [isRecognizing, setIsRecognizing] = useState(false);
 
   const parsed = useMemo(() => parseDecklist(decklist), [decklist]);
   const options = useMemo(() => uniqueDeckOptions(decklist), [decklist]);
@@ -146,15 +233,51 @@ export function HandAnalyzer() {
     setConfirmedHand((current) => current.map((card, cardIndex) => (cardIndex === index ? value : card)));
   }
 
+  async function recognizeCrops(nextCrops: CropPreview[]) {
+    if (!nextCrops.length) {
+      return;
+    }
+    setIsRecognizing(true);
+    setRecognitionResults([]);
+    try {
+      const namesForLookup = parsed.cards.map((card) => card.name);
+      const { lookups, failures } = await fetchCardData(namesForLookup);
+      const recognized = await recognizeCropImages(nextCrops, lookups, options);
+      setRecognitionResults(recognized);
+      const nextHand = recognized.map((crop) => crop.candidates[0]?.cardName ?? "");
+      if (nextHand.filter(Boolean).length === 7) {
+        setConfirmedHand(nextHand);
+        setHandText(nextHand.join("\n"));
+        setMessage(
+          failures.length
+            ? `Recognition finished with ${failures.length} Scryfall lookup issue(s). Confirm the seven cards below.`
+            : "Recognition finished. Confirm the seven cards below, then analyze."
+        );
+      } else {
+        setMessage("Recognition ran, but some cards need manual confirmation.");
+      }
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? `${error.message} You can still choose the seven cards manually.`
+          : "Recognition failed. You can still choose the seven cards manually."
+      );
+    } finally {
+      setIsRecognizing(false);
+    }
+  }
+
   async function handleScreenshotFile(file: File) {
     setMessage("");
     setIsCropping(true);
     try {
       const src = await readFileAsDataUrl(file);
+      const nextCrops = await makeCrops(src, screenshotSource);
       setScreenshotSrc(src);
-      setCrops(await makeCrops(src, screenshotSource));
+      setCrops(nextCrops);
       setWorkflowTab("screenshot");
-      setMessage("Screenshot loaded. Confirm the seven cards, then analyze.");
+      setMessage("Screenshot loaded. Reading cards from deck images...");
+      await recognizeCrops(nextCrops);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not process that screenshot.");
     } finally {
@@ -379,8 +502,8 @@ export function HandAnalyzer() {
             <h2>Screenshot Recognition</h2>
             <p>
               Paste, drag/drop, or browse for an MTGO or Arena screenshot. The paid
-              port now rebuilds the intake and crop confirmation workflow; deck
-              restricted image/OCR matching is the next backend pass.
+              app compares the seven crops against the cards in your deck, fills
+              the confirmed hand, and keeps every dropdown editable.
             </p>
           </div>
           <div className="segmented-control" aria-label="Screenshot source">
@@ -401,7 +524,7 @@ export function HandAnalyzer() {
             <strong>Add a screenshot from your clipboard</strong>
             <div className="action-row compact-actions">
               <button className="secondary-button" disabled={isCropping} onClick={pasteClipboardImage} type="button">
-                Paste Clipboard
+                {isCropping || isRecognizing ? "Reading..." : "Paste Clipboard"}
               </button>
               <label className="secondary-button file-button">
                 Choose Image
@@ -425,12 +548,28 @@ export function HandAnalyzer() {
           ) : null}
           {crops.length ? (
             <>
+              <div className="recognition-status-row">
+                <strong>{isRecognizing ? "Reading cards..." : "Recognition candidates"}</strong>
+                <button
+                  className="secondary-button"
+                  disabled={isRecognizing}
+                  onClick={() => recognizeCrops(crops)}
+                  type="button"
+                >
+                  Retry Recognition
+                </button>
+              </div>
               <div className="crop-grid">
                 {crops.map((crop) => (
                   <figure className="crop-preview-card" key={crop.index}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img alt={`Detected crop ${crop.index + 1}`} src={crop.src} />
                     <figcaption>Crop {crop.index + 1}</figcaption>
+                    <CandidateList
+                      cropIndex={crop.index}
+                      onChoose={(name) => updateConfirmed(crop.index, name)}
+                      result={recognitionResults.find((item) => item.cropIndex === crop.index)}
+                    />
                   </figure>
                 ))}
               </div>
@@ -709,6 +848,36 @@ function OtherTools({ result }: { result: AnalyzerResult }) {
         <p>Draw/look spells are modeled as extra card depth, not perfect card selection.</p>
         <p>Ramp is flagged structurally; exact treasure/cost-reduction sequencing still needs the deeper simulation backend.</p>
       </div>
+    </div>
+  );
+}
+
+function CandidateList({
+  cropIndex,
+  onChoose,
+  result
+}: {
+  cropIndex: number;
+  onChoose: (name: string) => void;
+  result?: RecognitionResult;
+}) {
+  if (!result?.candidates.length) {
+    return <span className="candidate-empty">No candidates yet</span>;
+  }
+
+  return (
+    <div className="candidate-list">
+      {result.candidates.map((candidate, index) => (
+        <button
+          className={index === 0 ? "is-best" : ""}
+          key={`${cropIndex}-${candidate.cardName}`}
+          onClick={() => onChoose(candidate.cardName)}
+          type="button"
+        >
+          <span>{candidate.cardName}</span>
+          <em>{Math.round(candidate.score * 100)}%</em>
+        </button>
+      ))}
     </div>
   );
 }

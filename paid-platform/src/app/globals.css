@@ -708,6 +708,60 @@ h2 {
   font-weight: 800;
 }
 
+.recognition-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.recognition-status-row strong {
+  color: var(--text);
+}
+
+.candidate-list {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+}
+
+.candidate-list button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid rgba(103, 194, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(1, 8, 18, 0.76);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.candidate-list button.is-best {
+  border-color: rgba(98, 230, 166, 0.42);
+  background: rgba(98, 230, 166, 0.1);
+  color: var(--text);
+}
+
+.candidate-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.candidate-list em,
+.candidate-empty {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
 .result-stack {
   display: grid;
   gap: 18px;
