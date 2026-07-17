@@ -9,6 +9,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/decks", label: "Save a Deck", deckProOnly: true },
   { href: "/pricing", label: "Pricing" },
+  { href: "/help", label: "Help" },
   { href: "/settings", label: "Settings" },
   { href: "/login", label: "Sign In" }
 ];

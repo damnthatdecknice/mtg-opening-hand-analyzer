@@ -14,6 +14,7 @@ export type CardLookup = {
   producedMana: string[];
   faces: Array<{ name: string; manaCost: string; manaValue: number; typeLine: string; oracleText: string }>;
   imageUrl: string;
+  imageUrls: string[];
   artCropUrl: string;
   isLand: boolean;
   isMultiface: boolean;
@@ -114,6 +115,7 @@ type ScryfallCard = {
   oracle_text?: string;
   colors?: string[];
   produced_mana?: string[];
+  prints_search_uri?: string;
   image_uris?: {
     small?: string;
     normal?: string;
@@ -256,6 +258,17 @@ function mapScryfallCard(card: ScryfallCard): CardLookup {
   const castableFace = chooseCastableFace(card);
   const typeLine = castableFace?.type_line ?? card.type_line ?? "";
   const manaCheck = checkedManaValueDetails(card, castableFace);
+  const imageUrls = Array.from(
+    new Set(
+      [
+        card.image_uris?.normal,
+        card.image_uris?.small,
+        castableFace?.image_uris?.normal,
+        castableFace?.image_uris?.small,
+        ...(card.card_faces ?? []).flatMap((face) => [face.image_uris?.normal, face.image_uris?.small])
+      ].filter((url): url is string => Boolean(url))
+    )
+  );
   return {
     name: card.name,
     manaCost: manaCheck.manaCost,
@@ -274,14 +287,74 @@ function mapScryfallCard(card: ScryfallCard): CardLookup {
         typeLine: face.type_line ?? "",
         oracleText: face.oracle_text ?? ""
       })) ?? [],
-    imageUrl: card.image_uris?.normal ?? castableFace?.image_uris?.normal ?? card.image_uris?.small ?? "",
+    imageUrl: imageUrls[0] ?? "",
+    imageUrls,
     artCropUrl: card.image_uris?.art_crop ?? castableFace?.image_uris?.art_crop ?? "",
     isLand: typeLine.toLowerCase().includes("land"),
     isMultiface: Boolean(card.card_faces?.length)
   };
 }
 
-export async function fetchCardData(cardNames: string[]) {
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function scryfallErrorMessage(status: number) {
+  if (status === 404) {
+    return "Card name not found";
+  }
+  if (status === 429) {
+    return "Scryfall rate limit";
+  }
+  if (status >= 500) {
+    return "Scryfall is temporarily unavailable";
+  }
+  return `Scryfall returned ${status}`;
+}
+
+async function fetchWithRetries(url: string, init?: RequestInit, attempts = 4) {
+  let response: Response | null = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    response = await fetch(url, init);
+    if (response.ok || response.status === 404) {
+      return response;
+    }
+    const retryAfter = Number(response.headers.get("retry-after") ?? 0);
+    await sleep(retryAfter ? retryAfter * 1000 : 450 * (attempt + 1));
+  }
+  return response;
+}
+
+async function fetchSingleCard(name: string) {
+  const response = await fetchWithRetries(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`);
+  if (!response?.ok) {
+    return { card: null, failure: `${name}: ${response ? scryfallErrorMessage(response.status) : "Network error"}` };
+  }
+  return { card: (await response.json()) as ScryfallCard, failure: "" };
+}
+
+async function fetchPrintImageUrls(name: string) {
+  const response = await fetchWithRetries(
+    `https://api.scryfall.com/cards/search?unique=prints&order=released&q=${encodeURIComponent(`!"${name}"`)}`
+  );
+  if (!response?.ok) {
+    return [];
+  }
+  const payload = (await response.json()) as { data?: ScryfallCard[] };
+  return Array.from(
+    new Set(
+      (payload.data ?? [])
+        .flatMap((card) => [
+          card.image_uris?.normal,
+          card.image_uris?.small,
+          ...(card.card_faces ?? []).flatMap((face) => [face.image_uris?.normal, face.image_uris?.small])
+        ])
+        .filter((url): url is string => Boolean(url))
+    )
+  ).slice(0, 18);
+}
+
+export async function fetchCardData(cardNames: string[], options: { includePrintImages?: boolean } = {}) {
   const uniqueNames = Array.from(new Set(cardNames.map((name) => name.trim()).filter(Boolean)));
   const lookups = new Map<string, CardLookup>();
   const failures: string[] = [];
@@ -290,20 +363,28 @@ export async function fetchCardData(cardNames: string[]) {
     const batch = uniqueNames.slice(index, index + 75);
     let response: Response | null = null;
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      response = await fetch("https://api.scryfall.com/cards/collection", {
+    response = await fetchWithRetries("https://api.scryfall.com/cards/collection", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ identifiers: batch.map((name) => ({ name })) })
       });
-      if (response.ok) {
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
-    }
 
     if (!response?.ok) {
-      failures.push(...batch);
+      for (const name of batch) {
+        const fallback = await fetchSingleCard(name);
+        if (fallback.card) {
+          const mapped = mapScryfallCard(fallback.card);
+          lookups.set(normalizeName(name), mapped);
+          lookups.set(normalizeName(mapped.name), mapped);
+          for (const face of mapped.faces) {
+            if (face.name) {
+              lookups.set(normalizeName(face.name), mapped);
+            }
+          }
+        } else {
+          failures.push(fallback.failure || `${name}: ${scryfallErrorMessage(response?.status ?? 0)}`);
+        }
+      }
       continue;
     }
 
@@ -324,9 +405,31 @@ export async function fetchCardData(cardNames: string[]) {
 
     for (const missing of payload.not_found ?? []) {
       if (missing.name) {
-        failures.push(missing.name);
+        const fallback = await fetchSingleCard(missing.name);
+        if (fallback.card) {
+          const mapped = mapScryfallCard(fallback.card);
+          lookups.set(normalizeName(missing.name), mapped);
+          lookups.set(normalizeName(mapped.name), mapped);
+          for (const face of mapped.faces) {
+            if (face.name) {
+              lookups.set(normalizeName(face.name), mapped);
+            }
+          }
+        } else {
+          failures.push(fallback.failure || `${missing.name}: Card name not found`);
+        }
       }
     }
+  }
+
+  if (options.includePrintImages) {
+    const canonicalCards = Array.from(new Map(Array.from(lookups.values()).map((card) => [card.name, card])).values());
+    await Promise.all(
+      canonicalCards.map(async (card) => {
+        const printUrls = await fetchPrintImageUrls(card.name).catch(() => []);
+        card.imageUrls = Array.from(new Set([...card.imageUrls, ...printUrls]));
+      })
+    );
   }
 
   return { lookups, failures };
@@ -474,6 +577,9 @@ function basicLandColors(name: string) {
 
 function colorsFromAddText(text: string) {
   const colors = new Set<string>();
+  if (text.includes("any color")) {
+    ["W", "U", "B", "R", "G"].forEach((color) => colors.add(color));
+  }
   for (const match of Array.from(text.matchAll(/\{([WUBRGC])\}/gi))) {
     colors.add((match[1] ?? "").toUpperCase());
   }
@@ -537,6 +643,29 @@ function chooseBestLand(availableLands: Array<{ id: number; card: CardLookup }>,
   return best;
 }
 
+function rampManaSource(card: CardLookup, turn: number): ManaSource | null {
+  const ramp = rampSource(card);
+  if (!ramp) {
+    return null;
+  }
+  if (ramp.sourceType === "Cost reduction") {
+    return null;
+  }
+  const text = allText(card);
+  const colors = text.includes("treasure token")
+    ? ["W", "U", "B", "R", "G"]
+    : Array.from(new Set([...card.producedMana.map((color) => color.toUpperCase()), ...colorsFromAddText(text)]));
+  if (!colors.length) {
+    return null;
+  }
+  return {
+    name: card.name,
+    colors,
+    availableTurn: ramp.sourceType === "Mana permanent" ? turn + 1 : turn,
+    entersTapped: false
+  };
+}
+
 function seededRandom(seedStart: number) {
   let seed = seedStart;
   return () => {
@@ -575,7 +704,7 @@ function castabilityMonteCarlo(
   const successes = new Map(spells.map((spell) => [spell.name, [0, 0, 0]]));
   const random = seededRandom(20260717);
   const maxTurn = 3;
-  const drawsToSee = drawsByTurn(maxTurn, playDraw);
+  const drawsToSee = drawsByTurn(maxTurn, playDraw) + 6;
 
   for (let trial = 0; trial < trials; trial += 1) {
     const drawnNames = [...hand, ...shuffledSample(deckCards, drawsToSee, random)];
@@ -583,10 +712,12 @@ function castabilityMonteCarlo(
       .map((name, id) => ({ id, name, card: cardData.get(normalizeName(name)) }))
       .filter((entry): entry is { id: number; name: string; card: CardLookup } => Boolean(entry.card));
     const playedLandIds = new Set<number>();
+    const usedValueSpellIds = new Set<number>();
     const sources: ManaSource[] = [];
+    let extraSeen = 0;
 
     for (let turn = 1; turn <= maxTurn; turn += 1) {
-      const seenCount = hand.length + drawsByTurn(turn, playDraw);
+      let seenCount = Math.min(drawn.length, hand.length + drawsByTurn(turn, playDraw) + extraSeen);
       const availableLands = drawn
         .slice(0, seenCount)
         .filter((entry) => entry.card.isLand && !playedLandIds.has(entry.id));
@@ -600,7 +731,31 @@ function castabilityMonteCarlo(
         });
       }
 
-      const usableSources = sources.filter((source) => source.availableTurn <= turn);
+      let usableSources = sources.filter((source) => source.availableTurn <= turn);
+      for (const entry of drawn.slice(0, seenCount)) {
+        if (entry.card.isLand || usedValueSpellIds.has(entry.id)) {
+          continue;
+        }
+        const cost = entry.card.manaCost || (entry.card.manaValue > 0 ? `{${Math.ceil(entry.card.manaValue)}}` : "");
+        if (!canPay(cost, usableSources)) {
+          continue;
+        }
+        const depth = drawDepth(entry.card);
+        const rampSourceProfile = rampManaSource(entry.card, turn);
+        if (depth.drawn > 0 || depth.seen > 0 || rampSourceProfile) {
+          usedValueSpellIds.add(entry.id);
+        }
+        if (depth.drawn > 0 || depth.seen > 0) {
+          extraSeen += Math.max(depth.drawn, depth.seen);
+          seenCount = Math.min(drawn.length, hand.length + drawsByTurn(turn, playDraw) + extraSeen);
+        }
+        if (rampSourceProfile && !sources.some((source) => source.name === rampSourceProfile.name)) {
+          sources.push(rampSourceProfile);
+          usableSources = sources.filter((source) => source.availableTurn <= turn);
+        }
+      }
+
+      usableSources = sources.filter((source) => source.availableTurn <= turn);
       for (const spell of spells) {
         const cost = spell.manaCost || (spell.manaValue > 0 ? `{${Math.ceil(spell.manaValue)}}` : "");
         if (canPay(cost, usableSources)) {
@@ -771,7 +926,7 @@ function sourceAssumptionRows(
       cardName: source.cardName,
       kind: "Ramp",
       timing: source.timing,
-      assumption: `${source.sourceType} flagged from rules text for sequencing review.`
+      assumption: `${source.sourceType} is included in the castability sequencing model when it can be cast from available sources.`
     });
   }
   for (const source of landEquivalentSources) {

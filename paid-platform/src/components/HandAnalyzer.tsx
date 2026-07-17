@@ -37,6 +37,7 @@ type RecognitionCandidate = {
   imageScore: number;
   textScore: number;
   ocrText: string;
+  isConflict?: boolean;
 };
 
 type RecognitionResult = {
@@ -271,11 +272,14 @@ async function recognizeCropImages(
   const uniqueCards = deckOptions
     .map((name) => cardData.get(name.trim().toLowerCase()))
     .filter((card): card is CardLookup => Boolean(card?.imageUrl));
+  const cardImageVariants = uniqueCards.flatMap((card) =>
+    (card.imageUrls.length ? card.imageUrls : [card.imageUrl]).map((imageUrl) => ({ card, imageUrl }))
+  );
   const cardSignatures = (
     await Promise.all(
-    uniqueCards.map(async (card) => ({
+    cardImageVariants.map(async ({ card, imageUrl }) => ({
       card,
-      signature: await imageSignature(card.imageUrl, `${card.name}:${card.imageUrl}`).catch(() => null)
+      signature: await imageSignature(imageUrl, `${card.name}:${imageUrl}`).catch(() => null)
     }))
     )
   ).filter((item): item is { card: CardLookup; signature: number[] } => Boolean(item.signature));
@@ -288,20 +292,31 @@ async function recognizeCropImages(
     crops.map(async (crop) => {
       const cropSignature = await imageSignature(crop.src);
       const ocrText = await readTextSignal(crop.src);
-      const candidates = cardSignatures
-        .map(({ card, signature }) => {
-          const imageScore = Math.max(0, Math.min(1, 1 - signatureDistance(cropSignature, signature)));
-          const textScore = fuzzyTextScore(ocrText, card.name);
-          return {
-            cardName: card.name,
-            score: Math.max(0, Math.min(1, imageScore * 0.78 + textScore * 0.22)),
-            imageScore,
-            textScore,
-            ocrText
-          };
-        })
+      const scoredByCard = new Map<string, RecognitionCandidate>();
+      for (const { card, signature } of cardSignatures) {
+        const imageScore = Math.max(0, Math.min(1, 1 - signatureDistance(cropSignature, signature)));
+        const textScore = fuzzyTextScore(ocrText, card.name);
+        const candidate = {
+          cardName: card.name,
+          score: Math.max(0, Math.min(1, imageScore * 0.72 + textScore * 0.28)),
+          imageScore,
+          textScore,
+          ocrText
+        };
+        const current = scoredByCard.get(card.name);
+        if (!current || candidate.score > current.score) {
+          scoredByCard.set(card.name, candidate);
+        }
+      }
+      const candidates = Array.from(scoredByCard.values())
         .sort((a, b) => b.score - a.score)
         .slice(0, 3);
+      const top = candidates[0];
+      const second = candidates[1];
+      if (top && second && (Math.abs(top.score - second.score) < 0.08 || (top.textScore > 0.55 && second.imageScore > top.imageScore + 0.08))) {
+        top.isConflict = true;
+        second.isConflict = true;
+      }
       return { cropIndex: crop.index, candidates };
     })
   );
@@ -465,7 +480,7 @@ export function HandAnalyzer() {
     setRecognitionResults([]);
     try {
       const namesForLookup = parsed.cards.map((card) => card.name);
-      const { lookups, failures } = await fetchCardData(namesForLookup);
+      const { lookups, failures } = await fetchCardData(namesForLookup, { includePrintImages: true });
       const recognized = await recognizeCropImages(nextCrops, lookups, options);
       setRecognitionResults(recognized);
       const nextHand = recognized.map((crop) => crop.candidates[0]?.cardName ?? "");
@@ -474,7 +489,7 @@ export function HandAnalyzer() {
         setHandText(nextHand.join("\n"));
         setMessage(
           failures.length
-            ? `Recognition finished with ${failures.length} Scryfall lookup issue(s). Confirm the seven cards below.`
+            ? `Recognition finished, but ${failures.length} card lookup(s) need review. Confirm the seven cards below; dropdowns still work for loaded cards.`
             : "Recognition finished. Confirm the seven cards below, then analyze."
         );
       } else {
@@ -616,7 +631,7 @@ export function HandAnalyzer() {
       setResultTab("overview");
       await saveHandSession(seven, completedAnalysis);
       if (failures.length) {
-        setMessage(`Analysis ran, but ${failures.length} Scryfall lookup(s) need review.`);
+        setMessage(`Analysis ran, but ${failures.length} Scryfall lookup(s) need review: ${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "..." : ""}`);
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not analyze this hand.");
@@ -1509,8 +1524,8 @@ function OtherTools({ result }: { result: AnalyzerResult }) {
       <h2>Sequencing Prompts</h2>
       <div className="watchout-panel">
         <p>Prioritize untapped sources if cheap spells show low turn-two castability.</p>
-        <p>Draw/look spells are modeled as extra card depth, not perfect card selection.</p>
-        <p>Ramp is flagged structurally; exact treasure/cost-reduction sequencing still needs the deeper simulation backend.</p>
+        <p>Draw/look spells add simulated card depth once the hand can cast them.</p>
+        <p>Cheap mana permanents, treasures, and land-ramp text are included as sequencing assumptions in castability.</p>
       </div>
     </div>
   );
@@ -1529,8 +1544,25 @@ function CandidateList({
     return <span className="candidate-empty">No candidates yet</span>;
   }
 
+  const first = result.candidates[0];
+  const second = result.candidates[1];
+  const showConflictPrompt = Boolean(first?.isConflict && second?.isConflict);
+
   return (
     <div className="candidate-list">
+      {showConflictPrompt && first && second ? (
+        <div className="candidate-conflict">
+          <strong>Which card?</strong>
+          <div>
+            <button onClick={() => onChoose(first.cardName)} type="button">
+              {first.cardName}
+            </button>
+            <button onClick={() => onChoose(second.cardName)} type="button">
+              {second.cardName}
+            </button>
+          </div>
+        </div>
+      ) : null}
       {result.candidates.map((candidate, index) => (
         <button
           className={index === 0 ? "is-best" : ""}
