@@ -84,7 +84,8 @@ export type AnalyzerResult = {
 
 type ScryfallCard = {
   name: string;
-  mana_value?: number;
+  cmc?: number;
+  mana_cost?: string;
   type_line?: string;
   oracle_text?: string;
   colors?: string[];
@@ -96,7 +97,8 @@ type ScryfallCard = {
   };
   card_faces?: Array<{
     name?: string;
-    mana_value?: number;
+    cmc?: number;
+    mana_cost?: string;
     type_line?: string;
     oracle_text?: string;
     colors?: string[];
@@ -133,6 +135,51 @@ function chooseCastableFace(card: ScryfallCard) {
   );
 }
 
+function manaValueFromCost(cost = "") {
+  const symbols = Array.from(cost.matchAll(/\{([^}]+)\}/g)).map((match) => match[1] ?? "");
+  return symbols.reduce((total, symbol) => {
+    if (/^\d+$/.test(symbol)) {
+      return total + Number(symbol);
+    }
+    if (symbol === "X") {
+      return total;
+    }
+    if (symbol.includes("/")) {
+      return total + 1;
+    }
+    return total + 1;
+  }, 0);
+}
+
+function checkedManaValue(card: ScryfallCard, castableFace: NonNullable<ScryfallCard["card_faces"]>[number] | null) {
+  const cardCostValue = manaValueFromCost(card.mana_cost);
+  if (cardCostValue) {
+    return cardCostValue;
+  }
+
+  if (castableFace?.mana_cost) {
+    const faceCostValue = manaValueFromCost(castableFace.mana_cost);
+    if (faceCostValue) {
+      return faceCostValue;
+    }
+  }
+
+  const nonlandFace = card.card_faces?.find((face) => !face.type_line?.toLowerCase().includes("land") && face.mana_cost);
+  if (nonlandFace?.mana_cost) {
+    const faceCostValue = manaValueFromCost(nonlandFace.mana_cost);
+    if (faceCostValue) {
+      return faceCostValue;
+    }
+  }
+
+  const typeLine = castableFace?.type_line ?? card.type_line ?? "";
+  if (typeLine.toLowerCase().includes("land")) {
+    return 0;
+  }
+
+  return card.cmc ?? castableFace?.cmc ?? 0;
+}
+
 function allText(card: CardLookup) {
   return [card.oracleText, ...card.faces.map((face) => face.oracleText)].join(" ").toLowerCase();
 }
@@ -143,10 +190,10 @@ function allTypeText(card: CardLookup) {
 
 function mapScryfallCard(card: ScryfallCard): CardLookup {
   const castableFace = chooseCastableFace(card);
-  const typeLine = card.type_line ?? castableFace?.type_line ?? "";
+  const typeLine = castableFace?.type_line ?? card.type_line ?? "";
   return {
     name: card.name,
-    manaValue: castableFace?.mana_value ?? card.mana_value ?? 0,
+    manaValue: checkedManaValue(card, castableFace),
     typeLine,
     oracleText: card.oracle_text ?? castableFace?.oracle_text ?? "",
     colors: card.colors ?? castableFace?.colors ?? [],
