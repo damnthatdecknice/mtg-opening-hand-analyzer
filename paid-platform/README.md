@@ -35,9 +35,13 @@ The first account flow is in place:
 - `/login` signs in with email and password.
 - `/dashboard` is guarded and shows a setup message until Supabase keys exist.
 - The dashboard includes sign-out once a user is authenticated.
+- `/decks` lets signed-in users save, view, archive, and restore decklists.
 
 To enable it, create a free Supabase project, copy the project URL and anon key
 into `.env.local`, then run the SQL in `supabase/schema.sql`.
+
+The schema creates private per-user tables and row-level security policies.
+Decklists are readable and writable only by the signed-in owner.
 
 ## Product Boundary
 

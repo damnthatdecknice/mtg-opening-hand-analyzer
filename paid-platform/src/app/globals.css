@@ -260,6 +260,31 @@ h2 {
   background: rgba(3, 10, 23, 0.78);
 }
 
+.deck-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid rgba(103, 194, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(3, 10, 23, 0.78);
+}
+
+.deck-row span,
+.empty-state span {
+  display: block;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.empty-state {
+  border: 1px dashed rgba(103, 194, 255, 0.24);
+  border-radius: 12px;
+  background: rgba(3, 10, 23, 0.58);
+  padding: 18px;
+}
+
 .list-row em {
   color: var(--good);
   font-style: normal;
@@ -359,11 +384,97 @@ h2 {
   font-weight: 800;
 }
 
+.deck-page-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 20px;
+}
+
+.deck-editor-panel,
+.deck-list-panel {
+  border-radius: 18px;
+  padding: 28px;
+}
+
+.deck-editor-panel h1 {
+  font-size: clamp(2.6rem, 6vw, 5rem);
+}
+
+.deck-form {
+  display: grid;
+  gap: 16px;
+}
+
+.deck-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 14px;
+}
+
+.deck-form input,
+.deck-form textarea {
+  border: 1px solid rgba(103, 194, 255, 0.24);
+  border-radius: 10px;
+  background: rgba(1, 8, 18, 0.92);
+  color: var(--text);
+  font: inherit;
+  padding: 12px 14px;
+}
+
+.deck-form textarea {
+  min-height: 360px;
+  resize: vertical;
+}
+
+.deck-form input:focus,
+.deck-form textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(89, 216, 255, 0.18);
+  outline: none;
+}
+
+.deck-save-row,
+.split-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.mini-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.mini-metrics span {
+  border: 1px solid rgba(89, 216, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(89, 216, 255, 0.08);
+  color: #dff7ff;
+  font-weight: 800;
+  padding: 8px 10px;
+}
+
+.text-link {
+  color: var(--accent);
+  font-weight: 900;
+}
+
 @media (max-width: 900px) {
   .hero-grid,
   .pillar-grid,
   .dashboard-metrics,
-  .dashboard-grid {
+  .dashboard-grid,
+  .deck-page-grid,
+  .form-row {
     grid-template-columns: 1fr;
   }
 

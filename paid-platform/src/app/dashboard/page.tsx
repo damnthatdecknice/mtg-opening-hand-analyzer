@@ -1,10 +1,5 @@
 import { AuthGuard } from "@/components/AuthGuard";
-
-const savedDecks = [
-  { name: "Dimir Midrange", format: "Standard", sessions: 18 },
-  { name: "Boros Aggro", format: "Explorer", sessions: 11 },
-  { name: "Golgari Ramp", format: "Pioneer", sessions: 7 }
-];
+import { DeckSummary } from "@/components/DeckSummary";
 
 const sessions = [
   { hand: "2 land, card selection", score: "Keep", rating: "+18" },
@@ -46,23 +41,7 @@ export default function Dashboard() {
         </div>
 
         <div className="dashboard-grid">
-          <section className="panel">
-            <div className="section-heading">
-              <p className="eyebrow">Deck vault</p>
-              <h2>Saved Decks</h2>
-            </div>
-            <div className="list-stack">
-              {savedDecks.map((deck) => (
-                <div className="list-row" key={deck.name}>
-                  <div>
-                    <strong>{deck.name}</strong>
-                    <span>{deck.format}</span>
-                  </div>
-                  <em>{deck.sessions} sessions</em>
-                </div>
-              ))}
-            </div>
-          </section>
+          <DeckSummary />
 
           <section className="panel">
             <div className="section-heading">
@@ -89,7 +68,7 @@ export default function Dashboard() {
             </div>
             <div className="roadmap">
               <span>Accounts</span>
-              <span>Deck storage</span>
+              <span>Deck storage live</span>
               <span>Analyzer API</span>
               <span>Stripe test mode</span>
             </div>
