@@ -4,13 +4,13 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text,
   display_name text,
-  rank text not null default 'free',
+  rank text not null default 'basic',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 alter table public.profiles
-  add column if not exists rank text not null default 'free';
+  add column if not exists rank text not null default 'basic';
 
 create table if not exists public.decks (
   id uuid primary key default gen_random_uuid(),
@@ -60,7 +60,7 @@ create table if not exists public.subscription_status (
 );
 
 comment on column public.subscription_status.status is
-  'Tier/status value. Supported app tiers include free, deck_pro ($5/month), grinder, active/trialing Stripe states, and app-level permanent overrides.';
+  'Tier/status value. Rank integration maps free to basic, paid/active/pro states to pro, and preserves admin-set beta_premium.';
 
 create table if not exists public.rank_integration_checks (
   id uuid primary key default gen_random_uuid(),
@@ -83,20 +83,17 @@ declare
   email_handle text := split_part(normalized_email, '@', 1);
 begin
   if normalized_email = 'gotthisforsoi@gmail.com' or email_handle = 'gotthisforsoi' then
-    return 'permanent_pro';
+    return 'beta_premium';
   end if;
 
-  if normalized_status in ('grinder', 'premium', 'enterprise') or normalized_price like '%grinder%' then
-    return 'grinder';
-  end if;
-
-  if normalized_status in ('deck_pro', 'pro', 'active', 'trialing', 'paid')
+  if normalized_status in ('pro', 'deck_pro', 'active', 'trialing', 'paid')
+    or normalized_price like '%pro%'
     or normalized_price like '%deck%'
     or normalized_price like '%5%' then
-    return 'deck_pro';
+    return 'pro';
   end if;
 
-  return 'free';
+  return 'basic';
 end;
 $$;
 
@@ -108,8 +105,13 @@ set search_path = public
 as $$
 declare
   profile_email text;
+  current_rank text;
 begin
-  select email into profile_email from public.profiles where id = new.user_id;
+  select email, rank into profile_email, current_rank from public.profiles where id = new.user_id;
+
+  if current_rank = 'beta_premium' then
+    return new;
+  end if;
 
   update public.profiles
     set rank = public.rank_from_subscription(new.status, new.price_id, profile_email),
@@ -157,7 +159,7 @@ begin
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data ->> 'display_name', split_part(new.email, '@', 1)),
-    public.rank_from_subscription('free', null, new.email)
+    public.rank_from_subscription('basic', null, new.email)
   )
   on conflict (id) do nothing;
   return new;

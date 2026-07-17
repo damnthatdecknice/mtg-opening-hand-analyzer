@@ -1,14 +1,5 @@
 alter table public.profiles
-  add column if not exists rank text not null default 'basic';
-
-create table if not exists public.rank_integration_checks (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid references auth.users(id) on delete set null,
-  provider text not null default 'unknown',
-  external_user_id text,
-  resolved_rank text not null,
-  created_at timestamptz not null default now()
-);
+  alter column rank set default 'basic';
 
 create or replace function public.rank_from_subscription(status text, price_id text, email text default null)
 returns text
@@ -61,26 +52,19 @@ begin
 end;
 $$;
 
-drop trigger if exists sync_profile_rank_after_subscription_change on public.subscription_status;
-create trigger sync_profile_rank_after_subscription_change
-  after insert or update of status, price_id on public.subscription_status
-  for each row execute function public.sync_profile_rank_from_subscription();
+update public.profiles
+  set rank = case
+    when rank in ('permanent_pro') then 'beta_premium'
+    when rank in ('deck_pro', 'grinder') then 'pro'
+    when rank in ('free') then 'basic'
+    else rank
+  end,
+  updated_at = now()
+  where rank in ('free', 'deck_pro', 'grinder', 'permanent_pro');
 
 update public.profiles p
   set rank = public.rank_from_subscription(s.status, s.price_id, p.email),
       updated_at = now()
   from public.subscription_status s
-  where s.user_id = p.id;
-
-update public.profiles
-  set rank = public.rank_from_subscription('basic', null, email),
-      updated_at = now()
-  where rank in ('free', 'basic', 'deck_pro', 'grinder', 'permanent_pro');
-
-alter table public.rank_integration_checks enable row level security;
-
-drop policy if exists "rank integration checks are server only" on public.rank_integration_checks;
-create policy "rank integration checks are server only"
-  on public.rank_integration_checks for all
-  using (false)
-  with check (false);
+  where s.user_id = p.id
+    and p.rank <> 'beta_premium';

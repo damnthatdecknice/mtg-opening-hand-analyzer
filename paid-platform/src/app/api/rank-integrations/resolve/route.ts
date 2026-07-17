@@ -83,6 +83,7 @@ export async function POST(request: NextRequest) {
   }
 
   const rank = rankFromSubscription({
+    currentRank: profile.rank,
     email: profile.email,
     priceId: subscription?.price_id,
     status: subscription?.status

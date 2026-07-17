@@ -1,10 +1,6 @@
-import {
-  isPermanentSubscriberEmail,
-  tierFromSubscription,
-  type SubscriptionTierId
-} from "@/lib/subscriptions";
+import { isPermanentSubscriberEmail } from "@/lib/subscriptions";
 
-export type RankKey = "free" | "deck_pro" | "grinder" | "permanent_pro";
+export type RankKey = "basic" | "pro" | "beta_premium";
 
 export type RankDefinition = {
   key: RankKey;
@@ -13,50 +9,52 @@ export type RankDefinition = {
 };
 
 export const RANKS: Record<RankKey, RankDefinition> = {
-  free: {
-    key: "free",
-    label: "Free",
-    description: "Core hand analyzer access."
+  basic: {
+    key: "basic",
+    label: "Basic",
+    description: "Free automatic rank for every account."
   },
-  deck_pro: {
-    key: "deck_pro",
-    label: "Deck Pro",
-    description: "Paid deck vault and saved-deck workflow access."
+  pro: {
+    key: "pro",
+    label: "Pro",
+    description: "Paid subscription rank."
   },
-  grinder: {
-    key: "grinder",
-    label: "Grinder",
-    description: "Higher paid tier for future competitive tracking features."
-  },
-  permanent_pro: {
-    key: "permanent_pro",
-    label: "Permanent Pro",
-    description: "Lifetime paid access override."
+  beta_premium: {
+    key: "beta_premium",
+    label: "Beta Premium",
+    description: "Admin-granted premium beta rank."
   }
 };
 
-export function rankFromTier(tierId: SubscriptionTierId): RankKey {
-  if (tierId === "permanent") {
-    return "permanent_pro";
-  }
-  if (tierId === "deck_pro" || tierId === "grinder") {
-    return tierId;
-  }
-  return "free";
-}
-
 export function rankFromSubscription({
+  currentRank,
   email,
   priceId,
   status
 }: {
+  currentRank?: string | null;
   email?: string | null;
   priceId?: string | null;
   status?: string | null;
 }) {
-  if (isPermanentSubscriberEmail(email)) {
-    return RANKS.permanent_pro;
+  if (currentRank === "beta_premium") {
+    return RANKS.beta_premium;
   }
 
-  return RANKS[rankFromTier(tierFromSubscription(status, priceId))];
+  if (isPermanentSubscriberEmail(email)) {
+    return RANKS.beta_premium;
+  }
+
+  const normalizedStatus = status?.trim().toLowerCase() ?? "";
+  const normalizedPrice = priceId?.trim().toLowerCase() ?? "";
+  if (
+    ["pro", "deck_pro", "active", "trialing", "paid"].includes(normalizedStatus) ||
+    normalizedPrice.includes("pro") ||
+    normalizedPrice.includes("deck") ||
+    normalizedPrice.includes("5")
+  ) {
+    return RANKS.pro;
+  }
+
+  return RANKS.basic;
 }
