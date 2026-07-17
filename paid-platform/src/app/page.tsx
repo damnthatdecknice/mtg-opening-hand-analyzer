@@ -29,6 +29,9 @@ export default function Home() {
           <Link className="primary-button" href="/dashboard">
             Open product shell
           </Link>
+          <Link className="secondary-button" href="/analyzer">
+            Analyze a hand
+          </Link>
           <Link className="secondary-button" href="/decks">
             Save decks
           </Link>

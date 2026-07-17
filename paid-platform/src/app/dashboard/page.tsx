@@ -1,5 +1,6 @@
 import { AuthGuard } from "@/components/AuthGuard";
 import { DeckSummary } from "@/components/DeckSummary";
+import Link from "next/link";
 
 const sessions = [
   { hand: "2 land, card selection", score: "Keep", rating: "+18" },
@@ -19,6 +20,14 @@ export default function Dashboard() {
             rating tracking, and subscription surfaces can be built here without
             disturbing the beta app.
           </p>
+          <div className="action-row">
+            <Link className="primary-button" href="/analyzer">
+              Analyze a hand
+            </Link>
+            <Link className="secondary-button" href="/decks">
+              Save decks
+            </Link>
+          </div>
         </header>
 
         <div className="dashboard-metrics">

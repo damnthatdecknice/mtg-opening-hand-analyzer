@@ -502,6 +502,123 @@ h2 {
   font-weight: 900;
 }
 
+.analyzer-page {
+  display: grid;
+  gap: 20px;
+}
+
+.analyzer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: 20px;
+}
+
+.analyzer-input-panel,
+.analyzer-results {
+  border-radius: 18px;
+  padding: 28px;
+}
+
+.field-stack {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.analyzer-textarea {
+  width: 100%;
+  border: 1px solid rgba(103, 194, 255, 0.24);
+  border-radius: 10px;
+  background: rgba(1, 8, 18, 0.92);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  padding: 12px 14px;
+  resize: vertical;
+}
+
+.deck-textarea {
+  min-height: 420px;
+}
+
+.hand-textarea {
+  min-height: 220px;
+}
+
+.analyzer-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(89, 216, 255, 0.18);
+  outline: none;
+}
+
+.segmented-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.segmented-control button {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(8, 22, 42, 0.78);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 0 16px;
+}
+
+.segmented-control button.is-selected {
+  border-color: rgba(89, 216, 255, 0.8);
+  background: rgba(89, 216, 255, 0.18);
+  color: var(--text);
+}
+
+.analyzer-metrics {
+  margin-bottom: 18px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border: 1px solid rgba(103, 194, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(1, 8, 18, 0.84);
+}
+
+.data-table th,
+.data-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(103, 194, 255, 0.12);
+  text-align: left;
+}
+
+.data-table th {
+  color: #dff7ff;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.analysis-notes {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  color: var(--muted);
+}
+
+.analysis-notes p {
+  margin: 0;
+}
+
 @media (max-width: 900px) {
   .app-nav {
     align-items: flex-start;
@@ -516,6 +633,7 @@ h2 {
   .pillar-grid,
   .dashboard-metrics,
   .dashboard-grid,
+  .analyzer-grid,
   .deck-page-grid,
   .form-row {
     grid-template-columns: 1fr;
