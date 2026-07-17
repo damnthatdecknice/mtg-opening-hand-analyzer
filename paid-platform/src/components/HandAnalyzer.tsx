@@ -38,6 +38,7 @@ type RecognitionCandidate = {
   cardName: string;
   score: number;
   imageScore: number;
+  titleScore: number;
   textScore: number;
   ocrText: string;
   isConflict?: boolean;
@@ -208,6 +209,68 @@ async function imageSignature(src: string, cacheKey = "", width = 14, height = 2
     return values;
 }
 
+async function imageRegionSignature(
+  src: string,
+  cacheKey: string,
+  region: { x: number; y: number; width: number; height: number },
+  width = 32,
+  height = 8
+) {
+  const regionKey = `${cacheKey}:${region.x}:${region.y}:${region.width}:${region.height}:${width}x${height}`;
+  if (cacheKey) {
+    const cached = window.localStorage.getItem(signatureCachePrefix + regionKey);
+    if (cached) {
+      return cached.split(",").map((value) => Number(value) / 255);
+    }
+  }
+
+  const image = await loadImage(src);
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) {
+    throw new Error("This browser could not inspect title strips.");
+  }
+
+  canvas.width = width;
+  canvas.height = height;
+  context.drawImage(
+    image,
+    Math.round(image.width * region.x),
+    Math.round(image.height * region.y),
+    Math.round(image.width * region.width),
+    Math.round(image.height * region.height),
+    0,
+    0,
+    width,
+    height
+  );
+
+  const pixels = context.getImageData(0, 0, width, height).data;
+  const values: number[] = [];
+  for (let index = 0; index < pixels.length; index += 4) {
+    const r = pixels[index] ?? 0;
+    const g = pixels[index + 1] ?? 0;
+    const b = pixels[index + 2] ?? 0;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    values.push((r + g + b) / 3 / 255);
+    values.push((max - min) / 255);
+    values.push((r - b + 255) / 510);
+  }
+
+  if (cacheKey) {
+    try {
+      window.localStorage.setItem(
+        signatureCachePrefix + regionKey,
+        values.map((value) => Math.round(value * 255)).join(",")
+      );
+    } catch {
+      // Title-strip caching is only a recognition speed-up.
+    }
+  }
+  return values;
+}
+
 type BrowserTextDetector = {
   detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>>;
 };
@@ -299,6 +362,20 @@ async function recognizeCropImages(
       }))
     )
   ).filter((item): item is { card: CardLookup; signature: number[] } => Boolean(item.signature));
+  const titleCardSignatures = (
+    await Promise.all(
+      cardImageVariants.map(async ({ card, imageUrl }) => ({
+        card,
+        signature: await imageRegionSignature(
+          imageUrl,
+          `${card.name}:title:${imageUrl}`,
+          { x: 0.08, y: 0.045, width: 0.84, height: 0.065 },
+          36,
+          8
+        ).catch(() => null)
+      }))
+    )
+  ).filter((item): item is { card: CardLookup; signature: number[] } => Boolean(item.signature));
 
   if (!fullCardSignatures.length && !artCardSignatures.length) {
     throw new Error("Card images could not be loaded for recognition.");
@@ -310,20 +387,30 @@ async function recognizeCropImages(
       const isArenaCrop = crop.source === "arena";
       const signatures = isArenaCrop && artCardSignatures.length ? artCardSignatures : fullCardSignatures;
       const cropSignature = await imageSignature(crop.matchSrc ?? crop.src, "", isArenaCrop ? 16 : 14, isArenaCrop ? 16 : 20);
+      const cropTitleSignature =
+        isArenaCrop && crop.textSrc && titleCardSignatures.length
+          ? await imageSignature(crop.textSrc, "", 36, 8).catch(() => null)
+          : null;
       const scoredByCard = new Map<string, RecognitionCandidate>();
       for (const { card, signature } of signatures) {
         const imageScore = Math.max(0, Math.min(1, 1 - signatureDistance(cropSignature, signature)));
+        const cardTitleSignature = titleCardSignatures.find((item) => item.card.name === card.name)?.signature;
+        const titleScore =
+          cropTitleSignature && cardTitleSignature
+            ? Math.max(0, Math.min(1, 1 - signatureDistance(cropTitleSignature, cardTitleSignature)))
+            : 0;
         const textScore = fuzzyTextScore(ocrText, card.name);
         const score =
           isArenaCrop
             ? textScore > 0
-              ? Math.max(0, Math.min(1, imageScore * 0.35 + textScore * 0.65))
-              : imageScore
+              ? Math.max(0, Math.min(1, imageScore * 0.25 + titleScore * 0.25 + textScore * 0.5))
+              : Math.max(0, Math.min(1, imageScore * 0.45 + titleScore * 0.55))
             : Math.max(0, Math.min(1, imageScore * 0.72 + textScore * 0.28));
         const candidate = {
           cardName: card.name,
           score,
           imageScore,
+          titleScore,
           textScore,
           ocrText
         };
