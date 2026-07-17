@@ -1136,6 +1136,55 @@ h2 {
   padding: 16px;
 }
 
+.deck-context-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
+  gap: 18px;
+  align-items: start;
+  border: 1px solid rgba(170, 184, 204, 0.32);
+  border-radius: 16px;
+  background: rgba(1, 8, 18, 0.8);
+  padding: 18px;
+}
+
+.deck-context-card.good {
+  border-color: rgba(98, 230, 166, 0.42);
+}
+
+.deck-context-card.bad {
+  border-color: rgba(255, 116, 100, 0.46);
+}
+
+.deck-context-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.deck-context-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.deck-context-metrics span {
+  display: grid;
+  gap: 4px;
+  min-height: 74px;
+  border: 1px solid rgba(103, 194, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(8, 22, 42, 0.68);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 12px;
+}
+
+.deck-context-metrics strong {
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
 .watchout-panel p,
 .source-card p,
 .muted-copy {
@@ -1382,6 +1431,7 @@ h2 {
   .dashboard-grid,
   .analyzer-grid,
   .overview-chart-grid,
+  .deck-context-card,
   .confirmed-hand-grid,
   .crop-adjust-grid,
   .source-grid,

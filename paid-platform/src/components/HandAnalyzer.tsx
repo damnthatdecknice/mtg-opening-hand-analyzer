@@ -1079,6 +1079,31 @@ function Overview({ result }: { result: AnalyzerResult }) {
           </span>
         ))}
       </div>
+      <section className={`deck-context-card ${result.deckProfile.handLandTone}`}>
+        <div>
+          <p className="eyebrow">Deck Context</p>
+          <h2>{result.deckProfile.label}</h2>
+          <p>{result.deckProfile.handLandContext}</p>
+        </div>
+        <div className="deck-context-metrics">
+          <span>
+            Suggested opener
+            <strong>{result.deckProfile.suggestedKeepLandRange}</strong>
+          </span>
+          <span>
+            Curve top
+            <strong>{result.deckProfile.curveTop}</strong>
+          </span>
+          <span>
+            Deck avg MV
+            <strong>{number(result.deckProfile.averageManaValue)}</strong>
+          </span>
+          <span>
+            Score impact
+            <strong>{result.deckProfile.scoreAdjustment > 0 ? "+" : ""}{result.deckProfile.scoreAdjustment}</strong>
+          </span>
+        </div>
+      </section>
       <section>
         <h2>Watch-outs</h2>
         <div className="watchout-panel">

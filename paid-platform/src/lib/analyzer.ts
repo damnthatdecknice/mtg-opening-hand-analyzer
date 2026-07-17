@@ -78,6 +78,23 @@ export type MulliganSummary = {
   p75: number;
 };
 
+export type DeckProfile = {
+  label: string;
+  landCount: number;
+  spellCount: number;
+  averageManaValue: number;
+  curveTop: number;
+  cheapSpellCount: number;
+  expensiveSpellCount: number;
+  drawSpellCount: number;
+  rampSpellCount: number;
+  suggestedKeepLandRange: string;
+  handLandContext: string;
+  handLandTone: "good" | "neutral" | "bad";
+  scoreAdjustment: number;
+  notes: string[];
+};
+
 export type AnalyzerResult = {
   mainCount: number;
   librarySize: number;
@@ -87,6 +104,7 @@ export type AnalyzerResult = {
   effectiveLandsRemaining: number;
   averageManaValue: number;
   handTextureScore: number;
+  baseHandTextureScore: number;
   handTextureLabel: string;
   recommendation: string;
   recommendationTone: "good" | "neutral" | "bad";
@@ -101,6 +119,7 @@ export type AnalyzerResult = {
   tags: Array<{ label: string; tone: "good" | "neutral" | "bad" }>;
   watchouts: string[];
   mulligan: MulliganSummary | null;
+  deckProfile: DeckProfile;
   landNames: string[];
   missingCards: string[];
   lookupFailures: string[];
@@ -785,6 +804,162 @@ function textureScore(landsInHand: number, effectiveLandsInHand: number, average
   return Math.max(0, Math.min(100, Math.round(landScore + curveScore + earlyScore - floodPenalty)));
 }
 
+function deckCurveTop(spellManaValues: number[]) {
+  if (!spellManaValues.length) {
+    return 0;
+  }
+  const sorted = [...spellManaValues].sort((a, b) => a - b);
+  return Math.ceil(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.85))] ?? 0);
+}
+
+function deckProfile(
+  mainCounts: Map<string, number>,
+  cardData: Map<string, CardLookup>,
+  landsInHand: number,
+  effectiveLandsInHand: number
+): DeckProfile {
+  const spellManaValues: number[] = [];
+  let landCount = 0;
+  let spellCount = 0;
+  let cheapSpellCount = 0;
+  let expensiveSpellCount = 0;
+  let topEndCount = 0;
+  let drawSpellCount = 0;
+  let rampSpellCount = 0;
+
+  for (const [name, qty] of Array.from(mainCounts.entries())) {
+    const card = cardData.get(normalizeName(name));
+    if (!card) {
+      continue;
+    }
+    if (card.isLand) {
+      landCount += qty;
+      continue;
+    }
+
+    spellCount += qty;
+    for (let copy = 0; copy < qty; copy += 1) {
+      spellManaValues.push(card.manaValue);
+    }
+    if (card.manaValue <= 2) {
+      cheapSpellCount += qty;
+    }
+    if (card.manaValue >= 4) {
+      expensiveSpellCount += qty;
+    }
+    if (card.manaValue >= 5) {
+      topEndCount += qty;
+    }
+    const depth = drawDepth(card);
+    if (depth.drawn > 0 || depth.seen > 0) {
+      drawSpellCount += qty;
+    }
+    if (rampSource(card)) {
+      rampSpellCount += qty;
+    }
+  }
+
+  const averageManaValue = spellManaValues.length
+    ? spellManaValues.reduce((total, value) => total + value, 0) / spellManaValues.length
+    : 0;
+  const curveTop = deckCurveTop(spellManaValues);
+  const expensiveShare = spellCount ? expensiveSpellCount / spellCount : 0;
+  const topEndShare = spellCount ? topEndCount / spellCount : 0;
+  const cheapShare = spellCount ? cheapSpellCount / spellCount : 0;
+
+  let label = "Midrange curve";
+  let suggestedKeepLandRange = "2-4 lands";
+  let scoreAdjustment = 0;
+  const notes: string[] = [];
+
+  if (averageManaValue <= 2.25 && curveTop <= 3 && expensiveShare < 0.18) {
+    label = "Low-curve pressure";
+    suggestedKeepLandRange = "2-3 lands";
+    if (landsInHand >= 5) {
+      scoreAdjustment -= 14;
+      notes.push("This deck is low to the ground, so a 5-land opener is real flood pressure.");
+    } else if (landsInHand === 4) {
+      scoreAdjustment -= 5;
+      notes.push("Four lands is playable sometimes, but this curve usually wants action over extra mana.");
+    } else if (landsInHand >= 2 && landsInHand <= 3) {
+      scoreAdjustment += 3;
+      notes.push("The land count matches this deck's low curve.");
+    }
+  } else if (rampSpellCount >= 6 || topEndShare >= 0.22 || curveTop >= 5) {
+    label = "Ramp or big-mana curve";
+    suggestedKeepLandRange = "3-4 lands, or 2 with ramp";
+    if (effectiveLandsInHand < 3) {
+      scoreAdjustment -= 10;
+      notes.push("This deck has meaningful top-end, so missing early mana development is more punishing.");
+    } else if (effectiveLandsInHand <= 4) {
+      scoreAdjustment += 4;
+      notes.push("The hand has enough mana to support the deck's higher curve.");
+    } else if (landsInHand >= 6) {
+      scoreAdjustment -= 8;
+      notes.push("Even a big-mana deck can flood on six lands without card velocity.");
+    }
+  } else if (drawSpellCount >= 8 && averageManaValue >= 2.55) {
+    label = "Control/value curve";
+    suggestedKeepLandRange = "3-4 lands";
+    if (landsInHand < 3) {
+      scoreAdjustment -= 7;
+      notes.push("This deck has value/card draw, but it still wants stable land drops.");
+    } else if (landsInHand <= 4) {
+      scoreAdjustment += 3;
+      notes.push("The hand's land count lines up with a value deck's early needs.");
+    } else if (landsInHand >= 6) {
+      scoreAdjustment -= 8;
+      notes.push("Six lands is still too many unless the hand has strong card draw.");
+    }
+  } else {
+    if (landsInHand < 2) {
+      scoreAdjustment -= 10;
+      notes.push("This curve usually wants at least two lands to function.");
+    } else if (landsInHand >= 5) {
+      scoreAdjustment -= 8;
+      notes.push("Five lands is above this deck's normal opener range.");
+    } else {
+      scoreAdjustment += 2;
+      notes.push("The land count is within the normal range for this deck's curve.");
+    }
+  }
+
+  if (cheapShare >= 0.55 && landsInHand === 2) {
+    scoreAdjustment += 2;
+    notes.push("The deck has a high cheap-spell density, which makes two-land starts more functional.");
+  }
+  if (drawSpellCount >= 8 && landsInHand <= 2) {
+    scoreAdjustment += 2;
+    notes.push("Card selection in the deck slightly improves lean keeps.");
+  }
+
+  const handLandTone =
+    scoreAdjustment <= -7 ? "bad" : scoreAdjustment >= 3 ? "good" : "neutral";
+  const handLandContext =
+    scoreAdjustment <= -7
+      ? `${landsInHand} land(s) is awkward for a ${label.toLowerCase()} deck.`
+      : scoreAdjustment >= 3
+        ? `${landsInHand} land(s) fits a ${label.toLowerCase()} deck well.`
+        : `${landsInHand} land(s) is defensible for a ${label.toLowerCase()} deck, but context matters.`;
+
+  return {
+    label,
+    landCount,
+    spellCount,
+    averageManaValue,
+    curveTop,
+    cheapSpellCount,
+    expensiveSpellCount,
+    drawSpellCount,
+    rampSpellCount,
+    suggestedKeepLandRange,
+    handLandContext,
+    handLandTone,
+    scoreAdjustment,
+    notes
+  };
+}
+
 function textureLabel(score: number) {
   if (score >= 78) {
     return "Smooth";
@@ -1004,7 +1179,9 @@ export function analyzeOpeningHand(
     ? nonlands.reduce((total, card) => total + card.manaValue, 0) / nonlands.length
     : 0;
   const earlySpellCount = nonlands.filter((card) => card.manaValue <= 2).length;
-  const handTextureScore = textureScore(landsInHand, effectiveLandsInHand, averageManaValue, earlySpellCount);
+  const baseHandTextureScore = textureScore(landsInHand, effectiveLandsInHand, averageManaValue, earlySpellCount);
+  const profile = deckProfile(mainCounts, cardData, landsInHand, effectiveLandsInHand);
+  const handTextureScore = Math.max(0, Math.min(100, baseHandTextureScore + profile.scoreAdjustment));
   const castability = castabilityMonteCarlo(hand, library, cardData, playDraw);
   const drawSources = handCards
     .map((card) => ({ card, depth: drawDepth(card) }))
@@ -1067,8 +1244,12 @@ export function analyzeOpeningHand(
 
   const turn3 = turnProbabilities.find((row) => row.turn === 3)?.landDropWithDraw ?? 0;
   const rec = recommendation(handTextureScore, landsInHand, turn3);
-  const mulligan = mulliganSummary(mainCounts, cardData, handTextureScore);
+  const mulligan = mulliganSummary(mainCounts, cardData, baseHandTextureScore);
   const tags: AnalyzerResult["tags"] = [
+    {
+      label: profile.label.toLowerCase(),
+      tone: "neutral"
+    },
     {
       label: landsInHand >= 2 && landsInHand <= 4 ? "normal land count" : "land count concern",
       tone: landsInHand >= 2 && landsInHand <= 4 ? "good" : "bad"
@@ -1084,9 +1265,15 @@ export function analyzeOpeningHand(
     {
       label: castability.some((row) => row.manaValue <= 2 && row.turn2 < 0.55) ? "castability concern" : "early spells castable",
       tone: castability.some((row) => row.manaValue <= 2 && row.turn2 < 0.55) ? "bad" : "good"
+    },
+    {
+      label: profile.scoreAdjustment > 0 ? "curve likes this mana" : profile.scoreAdjustment < 0 ? "curve dislikes this mana" : "curve-neutral mana",
+      tone: profile.handLandTone
     }
   ];
   const watchouts = [
+    profile.handLandContext,
+    ...profile.notes,
     landsInHand < 2 ? "Low land count: this hand needs help quickly." : "",
     landsInHand > 4 ? "High land count: this hand may flood without card velocity." : "",
     turn3 < 0.55 && landsInHand < 3 ? "Third land by turn 3 is not especially reliable." : "",
@@ -1111,6 +1298,7 @@ export function analyzeOpeningHand(
     effectiveLandsRemaining,
     averageManaValue,
     handTextureScore,
+    baseHandTextureScore,
     handTextureLabel: textureLabel(handTextureScore),
     recommendation: rec.label,
     recommendationTone: rec.tone,
@@ -1125,6 +1313,7 @@ export function analyzeOpeningHand(
     tags,
     watchouts,
     mulligan,
+    deckProfile: profile,
     landNames,
     missingCards,
     lookupFailures: [],
