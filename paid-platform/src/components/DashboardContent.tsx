@@ -19,19 +19,6 @@ export function DashboardContent() {
 
       <div className="dashboard-grid">
         <DeckSummary />
-
-        <section className="panel wide-panel">
-          <div className="section-heading">
-            <p className="eyebrow">Next build targets</p>
-            <h2>What Comes First</h2>
-          </div>
-          <div className="roadmap">
-            <span>Save hand sessions</span>
-            <span>Deck storage live</span>
-            <span>Analyzer history</span>
-            <span>Stripe test mode</span>
-          </div>
-        </section>
       </div>
     </section>
   );
