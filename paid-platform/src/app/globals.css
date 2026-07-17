@@ -318,6 +318,25 @@ h2 {
   padding: 18px;
 }
 
+.onboarding-panel {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  border: 1px solid rgba(103, 194, 255, 0.18);
+  border-radius: 14px;
+  background: rgba(3, 10, 23, 0.66);
+  color: var(--muted);
+  padding: 16px;
+}
+
+.onboarding-panel strong {
+  color: var(--text);
+}
+
+.onboarding-panel .secondary-button {
+  justify-self: start;
+}
+
 .list-row em {
   color: var(--good);
   font-style: normal;
@@ -712,6 +731,50 @@ h2 {
   font-weight: 800;
 }
 
+.crop-adjust-panel {
+  margin: 18px 0;
+  border: 1px solid rgba(103, 194, 255, 0.18);
+  border-radius: 14px;
+  background: rgba(3, 10, 23, 0.7);
+  padding: 14px;
+}
+
+.crop-adjust-panel summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 900;
+}
+
+.crop-adjust-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.range-control {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.range-control span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.range-control em {
+  color: var(--accent);
+  font-style: normal;
+}
+
+.range-control input {
+  accent-color: var(--accent);
+}
+
 .recognition-status-row {
   display: flex;
   align-items: center;
@@ -764,6 +827,12 @@ h2 {
   font-size: 0.78rem;
   font-style: normal;
   font-weight: 800;
+}
+
+.ocr-note {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
 }
 
 .result-stack {
@@ -941,6 +1010,7 @@ h2 {
   .dashboard-grid,
   .analyzer-grid,
   .confirmed-hand-grid,
+  .crop-adjust-grid,
   .source-grid,
   .deck-page-grid,
   .form-row {
@@ -950,5 +1020,24 @@ h2 {
   .hero-panel {
     min-height: auto;
     padding: 30px;
+  }
+
+  .app-shell {
+    width: min(100% - 24px, 1180px);
+    padding-top: 24px;
+  }
+
+  h1 {
+    font-size: clamp(2.4rem, 16vw, 4rem);
+  }
+
+  .dashboard-header,
+  .analyzer-input-panel,
+  .analyzer-results {
+    padding: 20px;
+  }
+
+  .crop-grid {
+    grid-template-columns: repeat(7, minmax(180px, 1fr));
   }
 }

@@ -21,9 +21,21 @@ type CropPreview = {
   src: string;
 };
 
+type CropAdjustments = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  spread: number;
+  fan: number;
+};
+
 type RecognitionCandidate = {
   cardName: string;
   score: number;
+  imageScore: number;
+  textScore: number;
+  ocrText: string;
 };
 
 type RecognitionResult = {
@@ -54,6 +66,15 @@ Battlefield Forge
 Inspiring Vantage`;
 
 const lastDeckStorageKey = "mtg-hand-pro:last-analyzer-deck-id";
+const signatureCachePrefix = "mtg-hand-pro:image-signature:";
+const defaultCropAdjustments: CropAdjustments = {
+  x: 0,
+  y: 0,
+  width: 0,
+  height: 0,
+  spread: 0,
+  fan: 0
+};
 
 function pct(value: number) {
   return `${Math.round(value * 100)}%`;
@@ -127,8 +148,15 @@ function loadImage(src: string) {
   });
 }
 
-function imageSignature(src: string, width = 24, height = 34) {
-  return loadImage(src).then((image) => {
+async function imageSignature(src: string, cacheKey = "", width = 14, height = 20) {
+  if (cacheKey) {
+    const cached = window.localStorage.getItem(signatureCachePrefix + cacheKey);
+    if (cached) {
+      return cached.split(",").map((value) => Number(value) / 255);
+    }
+  }
+
+  const image = await loadImage(src);
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) {
@@ -147,8 +175,63 @@ function imageSignature(src: string, width = 24, height = 34) {
       values.push((r - b + 255) / 510);
       values.push((g - b + 255) / 510);
     }
+    if (cacheKey) {
+      try {
+        window.localStorage.setItem(
+          signatureCachePrefix + cacheKey,
+          values.map((value) => Math.round(value * 255)).join(",")
+        );
+      } catch {
+        // Local storage is a speed-up only; recognition still works without it.
+      }
+    }
     return values;
-  });
+}
+
+type BrowserTextDetector = {
+  detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>>;
+};
+
+async function readTextSignal(src: string) {
+  const textDetectorConstructor = (window as unknown as {
+    TextDetector?: new () => BrowserTextDetector;
+  }).TextDetector;
+  if (!textDetectorConstructor) {
+    return "";
+  }
+
+  try {
+    const image = await loadImage(src);
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return "";
+    }
+    canvas.width = image.width;
+    canvas.height = Math.max(24, Math.round(image.height * 0.22));
+    context.drawImage(image, 0, 0, image.width, canvas.height, 0, 0, canvas.width, canvas.height);
+    const detector = new textDetectorConstructor();
+    const detections = await detector.detect(canvas);
+    return detections.map((item) => item.rawValue ?? "").join(" ").trim();
+  } catch {
+    return "";
+  }
+}
+
+function fuzzyTextScore(text: string, cardName: string) {
+  const cleanText = text.toLowerCase().replace(/[^a-z0-9 ]/g, " ");
+  const cleanName = cardName.toLowerCase().replace(/[^a-z0-9 ]/g, " ");
+  if (!cleanText || !cleanName) {
+    return 0;
+  }
+  if (cleanText.includes(cleanName)) {
+    return 1;
+  }
+  const tokens = cleanName.split(/\s+/).filter((token) => token.length > 2);
+  if (!tokens.length) {
+    return 0;
+  }
+  return tokens.filter((token) => cleanText.includes(token)).length / tokens.length;
 }
 
 function signatureDistance(a: number[], b: number[]) {
@@ -176,7 +259,7 @@ async function recognizeCropImages(
     await Promise.all(
     uniqueCards.map(async (card) => ({
       card,
-      signature: await imageSignature(card.imageUrl).catch(() => null)
+      signature: await imageSignature(card.imageUrl, `${card.name}:${card.imageUrl}`).catch(() => null)
     }))
     )
   ).filter((item): item is { card: CardLookup; signature: number[] } => Boolean(item.signature));
@@ -188,11 +271,19 @@ async function recognizeCropImages(
   return Promise.all(
     crops.map(async (crop) => {
       const cropSignature = await imageSignature(crop.src);
+      const ocrText = await readTextSignal(crop.src);
       const candidates = cardSignatures
-        .map(({ card, signature }) => ({
-          cardName: card.name,
-          score: Math.max(0, Math.min(1, 1 - signatureDistance(cropSignature, signature)))
-        }))
+        .map(({ card, signature }) => {
+          const imageScore = Math.max(0, Math.min(1, 1 - signatureDistance(cropSignature, signature)));
+          const textScore = fuzzyTextScore(ocrText, card.name);
+          return {
+            cardName: card.name,
+            score: Math.max(0, Math.min(1, imageScore * 0.78 + textScore * 0.22)),
+            imageScore,
+            textScore,
+            ocrText
+          };
+        })
         .sort((a, b) => b.score - a.score)
         .slice(0, 3);
       return { cropIndex: crop.index, candidates };
@@ -200,7 +291,7 @@ async function recognizeCropImages(
   );
 }
 
-async function makeCrops(src: string, source: ScreenshotSource) {
+async function makeCrops(src: string, source: ScreenshotSource, adjustments: CropAdjustments) {
   const image = await loadImage(src);
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
@@ -209,28 +300,41 @@ async function makeCrops(src: string, source: ScreenshotSource) {
   }
 
   const crops: CropPreview[] = [];
-  const cropWidth = source === "arena" ? image.width * 0.19 : image.width * 0.105;
-  const cropHeight = source === "arena" ? image.height * 0.52 : image.height * 0.23;
-  const startX = source === "arena" ? image.width * 0.035 : image.width * 0.075;
-  const startY = source === "arena" ? image.height * 0.26 : image.height * 0.71;
-  const step = source === "arena" ? image.width * 0.132 : image.width * 0.115;
+  const cropWidth =
+    (source === "arena" ? image.width * 0.2 : image.width * 0.112) * (1 + adjustments.width / 100);
+  const cropHeight =
+    (source === "arena" ? image.height * 0.54 : image.height * 0.25) * (1 + adjustments.height / 100);
+  const startX = (source === "arena" ? image.width * 0.035 : image.width * 0.071) + image.width * (adjustments.x / 100);
+  const startY = (source === "arena" ? image.height * 0.255 : image.height * 0.705) + image.height * (adjustments.y / 100);
+  const step =
+    (source === "arena" ? image.width * 0.133 : image.width * 0.115) * (1 + adjustments.spread / 100);
+  const arenaBaseAngles = [-13, -8, -4, 0, 4, 8, 13];
 
   canvas.width = Math.round(cropWidth);
   canvas.height = Math.round(cropHeight);
 
   for (let index = 0; index < 7; index += 1) {
+    const curveOffset =
+      source === "arena" ? image.height * 0.018 * Math.abs(index - 3) + image.height * (adjustments.fan / 100) * (Math.abs(index - 3) / 3) : 0;
+    const sourceX = Math.round(startX + step * index);
+    const sourceY = Math.round(startY + curveOffset);
+    const angle = source === "arena" ? ((arenaBaseAngles[index] ?? 0) * Math.PI) / 180 : 0;
     context.clearRect(0, 0, canvas.width, canvas.height);
+    context.save();
+    context.translate(canvas.width / 2, canvas.height / 2);
+    context.rotate(-angle);
     context.drawImage(
       image,
-      Math.round(startX + step * index),
-      Math.round(startY),
+      sourceX,
+      sourceY,
       Math.round(cropWidth),
       Math.round(cropHeight),
-      0,
-      0,
+      -canvas.width / 2,
+      -canvas.height / 2,
       canvas.width,
       canvas.height
     );
+    context.restore();
     crops.push({ index, src: canvas.toDataURL("image/png") });
   }
 
@@ -249,6 +353,7 @@ export function HandAnalyzer() {
   const [playDraw, setPlayDraw] = useState<PlayDraw>("play");
   const [screenshotSource, setScreenshotSource] = useState<ScreenshotSource>("mtgo");
   const [screenshotSrc, setScreenshotSrc] = useState("");
+  const [cropAdjustments, setCropAdjustments] = useState(defaultCropAdjustments);
   const [crops, setCrops] = useState<CropPreview[]>([]);
   const [recognitionResults, setRecognitionResults] = useState<RecognitionResult[]>([]);
   const [result, setResult] = useState<AnalyzerResult | null>(null);
@@ -367,7 +472,7 @@ export function HandAnalyzer() {
     setMessage("");
     setIsCropping(true);
     try {
-      const nextCrops = await makeCrops(src, screenshotSource);
+      const nextCrops = await makeCrops(src, screenshotSource, cropAdjustments);
       setScreenshotSrc(src);
       setCrops(nextCrops);
       setWorkflowTab("screenshot");
@@ -378,6 +483,29 @@ export function HandAnalyzer() {
     } finally {
       setIsCropping(false);
     }
+  }
+
+  async function applyCropAdjustments() {
+    if (!screenshotSrc) {
+      setMessage("Add a screenshot before adjusting crops.");
+      return;
+    }
+    setMessage("");
+    setIsCropping(true);
+    try {
+      const nextCrops = await makeCrops(screenshotSrc, screenshotSource, cropAdjustments);
+      setCrops(nextCrops);
+      setMessage("Crops updated. Reading cards again...");
+      await recognizeCrops(nextCrops);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not update crop positions.");
+    } finally {
+      setIsCropping(false);
+    }
+  }
+
+  function resetCropAdjustments() {
+    setCropAdjustments(defaultCropAdjustments);
   }
 
   async function handleScreenshotFile(file: File) {
@@ -568,6 +696,24 @@ export function HandAnalyzer() {
             <span>{parsed.sideboardCount} sideboard</span>
             <span>{parsed.cards.length} unique rows</span>
           </div>
+          {!savedDecks.length ? (
+            <div className="onboarding-panel">
+              <strong>No saved decks yet</strong>
+              <span>
+                Paste a list here or use Save a Deck from the top navigation. Saved decks will appear in the dropdown automatically.
+              </span>
+              <button
+                className="secondary-button"
+                onClick={() => {
+                  setDecklist(sampleDeck);
+                  setSelectedDeckId("custom");
+                }}
+                type="button"
+              >
+                Load example deck
+              </button>
+            </div>
+          ) : null}
           <label className="field-stack">
             Decklist
             <textarea
@@ -649,12 +795,32 @@ export function HandAnalyzer() {
             </p>
           </div>
           <div className="segmented-control" aria-label="Screenshot source">
-            <button className={screenshotSource === "mtgo" ? "is-selected" : ""} onClick={() => setScreenshotSource("mtgo")} type="button">
+            <button
+              className={screenshotSource === "mtgo" ? "is-selected" : ""}
+              onClick={() => {
+                setScreenshotSource("mtgo");
+                setCropAdjustments(defaultCropAdjustments);
+              }}
+              type="button"
+            >
               Magic Online
             </button>
-            <button className={screenshotSource === "arena" ? "is-selected" : ""} onClick={() => setScreenshotSource("arena")} type="button">
+            <button
+              className={screenshotSource === "arena" ? "is-selected" : ""}
+              onClick={() => {
+                setScreenshotSource("arena");
+                setCropAdjustments(defaultCropAdjustments);
+              }}
+              type="button"
+            >
               MTG Arena
             </button>
+          </div>
+          <div className="onboarding-panel">
+            <strong>Best screenshots</strong>
+            <span>
+              Use a full game window with only the opening seven visible. Arena mode expects the fan across the center; Magic Online mode expects the seven cards along the bottom.
+            </span>
           </div>
           <div
             className="screenshot-dropzone"
@@ -697,6 +863,25 @@ export function HandAnalyzer() {
           ) : null}
           {crops.length ? (
             <>
+              <details className="crop-adjust-panel">
+                <summary>Adjust detected card row</summary>
+                <div className="crop-adjust-grid">
+                  <RangeControl label="Move left/right" max={10} min={-10} onChange={(x) => setCropAdjustments((value) => ({ ...value, x }))} value={cropAdjustments.x} />
+                  <RangeControl label="Move up/down" max={10} min={-10} onChange={(y) => setCropAdjustments((value) => ({ ...value, y }))} value={cropAdjustments.y} />
+                  <RangeControl label="Card width" max={35} min={-25} onChange={(width) => setCropAdjustments((value) => ({ ...value, width }))} value={cropAdjustments.width} />
+                  <RangeControl label="Card height" max={35} min={-25} onChange={(height) => setCropAdjustments((value) => ({ ...value, height }))} value={cropAdjustments.height} />
+                  <RangeControl label="Spacing" max={25} min={-20} onChange={(spread) => setCropAdjustments((value) => ({ ...value, spread }))} value={cropAdjustments.spread} />
+                  <RangeControl label="Arena fan arc" max={12} min={-12} onChange={(fan) => setCropAdjustments((value) => ({ ...value, fan }))} value={cropAdjustments.fan} />
+                </div>
+                <div className="action-row compact-actions">
+                  <button className="secondary-button" disabled={isCropping || isRecognizing} onClick={applyCropAdjustments} type="button">
+                    Apply and reread
+                  </button>
+                  <button className="text-button" onClick={resetCropAdjustments} type="button">
+                    Reset
+                  </button>
+                </div>
+              </details>
               <div className="recognition-status-row">
                 <strong>{isRecognizing ? "Reading cards..." : "Recognition candidates"}</strong>
                 <button
@@ -997,10 +1182,44 @@ function CandidateList({
           type="button"
         >
           <span>{candidate.cardName}</span>
-          <em>{Math.round(candidate.score * 100)}%</em>
+          <em title={`image ${Math.round(candidate.imageScore * 100)}%, text ${Math.round(candidate.textScore * 100)}%`}>
+            {Math.round(candidate.score * 100)}%
+          </em>
         </button>
       ))}
+      {result.candidates[0]?.ocrText ? (
+        <small className="ocr-note">Text read: {result.candidates[0].ocrText}</small>
+      ) : null}
     </div>
+  );
+}
+
+function RangeControl({
+  label,
+  max,
+  min,
+  onChange,
+  value
+}: {
+  label: string;
+  max: number;
+  min: number;
+  onChange: (value: number) => void;
+  value: number;
+}) {
+  return (
+    <label className="range-control">
+      <span>
+        {label} <em>{value}</em>
+      </span>
+      <input
+        max={max}
+        min={min}
+        onChange={(event) => onChange(Number(event.target.value))}
+        type="range"
+        value={value}
+      />
+    </label>
   );
 }
 
