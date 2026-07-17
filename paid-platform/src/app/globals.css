@@ -561,6 +561,11 @@ h2 {
   font-weight: 800;
 }
 
+.deck-picker {
+  max-width: 520px;
+  margin-bottom: 14px;
+}
+
 .text-input,
 .card-select,
 .analyzer-textarea {

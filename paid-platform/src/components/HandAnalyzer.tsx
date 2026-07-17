@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardEvent, DragEvent, useMemo, useState } from "react";
+import { ClipboardEvent, DragEvent, useEffect, useMemo, useState } from "react";
 import {
   analyzeOpeningHand,
   fetchCardData,
@@ -9,6 +9,8 @@ import {
   type PlayDraw
 } from "@/lib/analyzer";
 import { inferDeckName, parseDecklist } from "@/lib/deckParser";
+import type { SavedDeck } from "@/lib/decks";
+import { supabase } from "@/lib/supabase";
 
 type WorkflowTab = "deck" | "hand" | "screenshot" | "results";
 type ResultTab = "overview" | "deep" | "curve" | "mulligan" | "other";
@@ -50,6 +52,8 @@ Mountain
 Mountain
 Battlefield Forge
 Inspiring Vantage`;
+
+const lastDeckStorageKey = "mtg-hand-pro:last-analyzer-deck-id";
 
 function pct(value: number) {
   return `${Math.round(value * 100)}%`;
@@ -237,6 +241,9 @@ export function HandAnalyzer() {
   const [workflowTab, setWorkflowTab] = useState<WorkflowTab>("deck");
   const [resultTab, setResultTab] = useState<ResultTab>("overview");
   const [decklist, setDecklist] = useState(sampleDeck);
+  const [savedDecks, setSavedDecks] = useState<SavedDeck[]>([]);
+  const [selectedDeckId, setSelectedDeckId] = useState("custom");
+  const [isLoadingDecks, setIsLoadingDecks] = useState(false);
   const [handText, setHandText] = useState(sampleHand);
   const [confirmedHand, setConfirmedHand] = useState(sampleHand.split(/\r?\n/));
   const [playDraw, setPlayDraw] = useState<PlayDraw>("play");
@@ -256,6 +263,58 @@ export function HandAnalyzer() {
     () => handText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
     [handText]
   );
+
+  useEffect(() => {
+    async function loadSavedDecks() {
+      if (!supabase) {
+        return;
+      }
+
+      setIsLoadingDecks(true);
+      const { data, error } = await supabase
+        .from("decks")
+        .select("*")
+        .eq("is_archived", false)
+        .order("updated_at", { ascending: false });
+      setIsLoadingDecks(false);
+
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+
+      const decks = (data ?? []) as SavedDeck[];
+      setSavedDecks(decks);
+      const rememberedId = window.localStorage.getItem(lastDeckStorageKey);
+      const rememberedDeck = decks.find((deck) => deck.id === rememberedId);
+      const initialDeck = rememberedDeck ?? decks[0];
+
+      if (initialDeck) {
+        setSelectedDeckId(initialDeck.id);
+        setDecklist(initialDeck.decklist);
+        window.localStorage.setItem(lastDeckStorageKey, initialDeck.id);
+      }
+    }
+
+    void loadSavedDecks();
+  }, []);
+
+  function chooseSavedDeck(deckId: string) {
+    setSelectedDeckId(deckId);
+    if (deckId === "custom") {
+      window.localStorage.removeItem(lastDeckStorageKey);
+      return;
+    }
+
+    const deck = savedDecks.find((item) => item.id === deckId);
+    if (!deck) {
+      return;
+    }
+
+    setDecklist(deck.decklist);
+    window.localStorage.setItem(lastDeckStorageKey, deck.id);
+    setMessage(`Loaded ${deck.name}.`);
+  }
 
   function applyPastedHand() {
     const next = hand.slice(0, 7);
@@ -479,7 +538,24 @@ export function HandAnalyzer() {
         <section className="panel analyzer-input-panel narrow-tool-panel">
           <div className="section-heading">
             <p className="eyebrow">Deck matrix</p>
-            <h2>{inferDeckName(decklist)}</h2>
+            <label className="field-stack deck-picker">
+              Saved deck
+              <select
+                className="card-select"
+                disabled={isLoadingDecks}
+                onChange={(event) => chooseSavedDeck(event.target.value)}
+                value={selectedDeckId}
+              >
+                <option value="custom">
+                  {isLoadingDecks ? "Loading saved decks..." : "Custom pasted deck"}
+                </option>
+                {savedDecks.map((deck) => (
+                  <option key={deck.id} value={deck.id}>
+                    {deck.name} {deck.format ? `(${deck.format})` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
             <p>
               Paste your main deck first. Put Sideboard on its own line, then list
               sideboard cards below it. Sideboard cards help screenshot
@@ -496,7 +572,11 @@ export function HandAnalyzer() {
             Decklist
             <textarea
               className="analyzer-textarea deck-textarea"
-              onChange={(event) => setDecklist(event.target.value)}
+              onChange={(event) => {
+                setDecklist(event.target.value);
+                setSelectedDeckId("custom");
+                window.localStorage.removeItem(lastDeckStorageKey);
+              }}
               spellCheck={false}
               value={decklist}
             />
