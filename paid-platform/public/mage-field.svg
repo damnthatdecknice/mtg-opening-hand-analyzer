@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-label="Abstract blue mage battlefield">
+  <defs>
+    <radialGradient id="glow" cx="72%" cy="28%" r="35%">
+      <stop offset="0" stop-color="#50d8ff" stop-opacity=".85"/>
+      <stop offset=".42" stop-color="#1b77bd" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#020713" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mist" x1="0" x2="1">
+      <stop offset="0" stop-color="#050b16"/>
+      <stop offset=".5" stop-color="#153554"/>
+      <stop offset="1" stop-color="#050914"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#mist)"/>
+  <rect width="1600" height="900" fill="url(#glow)"/>
+  <g opacity=".45" fill="none" stroke="#59d8ff">
+    <circle cx="1160" cy="245" r="132" stroke-opacity=".35"/>
+    <circle cx="1160" cy="245" r="92" stroke-opacity=".42"/>
+    <path d="M1084 245h152M1160 169v152M1098 183l124 124M1222 183l-124 124" stroke-opacity=".28"/>
+  </g>
+  <g opacity=".5" stroke="#6bdcff" fill="none">
+    <path d="M1380 132l54-28 42 42-30 54-66-12z"/>
+    <path d="M280 704l82-42 64 62-52 78-88-18z"/>
+    <path d="M132 250l72 22 34 72-84 28-58-62z"/>
+    <path d="M760 120l70 12 38 68-74 42-74-46z"/>
+  </g>
+  <g opacity=".34" fill="#7fe7ff">
+    <circle cx="1320" cy="380" r="4"/>
+    <circle cx="1180" cy="110" r="3"/>
+    <circle cx="1034" cy="670" r="4"/>
+    <circle cx="412" cy="194" r="3"/>
+    <circle cx="230" cy="606" r="3"/>
+  </g>
+  <path d="M1050 690c34-78 50-144 44-196-4-34 18-73 66-73 50 0 74 40 68 76-8 48 5 115 46 193z" fill="#020713" opacity=".62"/>
+  <path d="M1110 438c20-54 76-58 102 0-28 22-70 24-102 0z" fill="#07172d" opacity=".86"/>
+  <path d="M966 760c126-26 266-30 420 0 44 8 92 34 120 74H844c22-42 62-64 122-74z" fill="#030916" opacity=".7"/>
+</svg>
+
