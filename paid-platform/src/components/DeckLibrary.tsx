@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { inferDeckName, parseDecklist } from "@/lib/deckParser";
+import { convertDekToDecklist, inferDeckName, parseDecklist } from "@/lib/deckParser";
 import type { DeckInsert, SavedDeck } from "@/lib/decks";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
@@ -137,6 +137,25 @@ export function DeckLibrary() {
     await loadDecks();
   }
 
+  async function handleDekUpload(file: File) {
+    setMessage("");
+    try {
+      const converted = convertDekToDecklist(await file.text());
+      const convertedParsed = parseDecklist(converted);
+      if (!convertedParsed.mainCount) {
+        setMessage("That .dek file did not contain any main-deck cards.");
+        return;
+      }
+      setDecklist(converted);
+      if (!name.trim()) {
+        setName(file.name.replace(/\.dek$/i, "").replace(/^Deck\s*-\s*/i, ""));
+      }
+      setMessage(`Imported .dek file: ${convertedParsed.mainCount} main, ${convertedParsed.sideboardCount} sideboard.`);
+    } catch {
+      setMessage("Could not import that .dek file.");
+    }
+  }
+
   return (
     !entitlements.canUseDeckVault && !entitlements.isLoading ? (
       <section className="panel locked-feature-panel">
@@ -189,6 +208,21 @@ export function DeckLibrary() {
               value={decklist}
             />
           </label>
+          <div className="import-row">
+            <span>MTGO .dek file</span>
+            <label className="secondary-button file-button">
+              Import .dek
+              <input
+                accept=".dek,text/xml,application/xml"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void handleDekUpload(file);
+                  event.currentTarget.value = "";
+                }}
+                type="file"
+              />
+            </label>
+          </div>
           <div className="deck-save-row">
             <div className="mini-metrics">
               <span>{parsed.mainCount} main</span>

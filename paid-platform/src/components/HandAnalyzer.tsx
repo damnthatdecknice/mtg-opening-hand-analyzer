@@ -8,7 +8,7 @@ import {
   type CardLookup,
   type PlayDraw
 } from "@/lib/analyzer";
-import { inferDeckName, parseDecklist } from "@/lib/deckParser";
+import { convertDekToDecklist, inferDeckName, parseDecklist } from "@/lib/deckParser";
 import type { SavedDeck } from "@/lib/decks";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
@@ -465,6 +465,24 @@ export function HandAnalyzer() {
     setMessage(`Loaded ${deck.name}.`);
   }
 
+  async function handleDeckDekUpload(file: File) {
+    setMessage("");
+    try {
+      const converted = convertDekToDecklist(await file.text());
+      const convertedParsed = parseDecklist(converted);
+      if (!convertedParsed.mainCount) {
+        setMessage("That .dek file did not contain any main-deck cards.");
+        return;
+      }
+      setDecklist(converted);
+      setSelectedDeckId("custom");
+      window.localStorage.removeItem(lastDeckStorageKey);
+      setMessage(`Imported .dek file: ${convertedParsed.mainCount} main, ${convertedParsed.sideboardCount} sideboard.`);
+    } catch {
+      setMessage("Could not import that .dek file.");
+    }
+  }
+
   function applyPastedHand() {
     const next = hand.slice(0, 7);
     while (next.length < 7) {
@@ -811,6 +829,21 @@ export function HandAnalyzer() {
               value={decklist}
             />
           </label>
+          <div className="import-row">
+            <span>MTGO .dek file</span>
+            <label className="secondary-button file-button">
+              Import .dek
+              <input
+                accept=".dek,text/xml,application/xml"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void handleDeckDekUpload(file);
+                  event.currentTarget.value = "";
+                }}
+                type="file"
+              />
+            </label>
+          </div>
         </section>
       ) : null}
 
