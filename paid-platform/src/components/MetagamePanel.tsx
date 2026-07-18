@@ -278,7 +278,7 @@ export function MetagamePanel() {
 
             <article className="panel compact-panel">
               <p className="eyebrow">Your saved decks</p>
-              <h2>Meta Notes</h2>
+              <h2>Suggested Sideboard Cards</h2>
               <div className="list-stack">
                 {savedDeckNotes.length ? (
                   savedDeckNotes.map((note) => (
@@ -290,7 +290,7 @@ export function MetagamePanel() {
                             .slice(0, 6)
                             .map((card) => (
                               <span className="suggestion-chip" key={card.name}>
-                                {card.name}
+                                <span>{card.name}</span>
                                 <small>{card.decks} lists</small>
                               </span>
                             ))}

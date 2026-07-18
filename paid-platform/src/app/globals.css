@@ -539,7 +539,7 @@ h2 {
 .suggestion-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   border: 1px solid rgba(89, 216, 255, 0.28);
   border-radius: 999px;
   background: rgba(12, 47, 82, 0.72);
@@ -550,9 +550,12 @@ h2 {
 }
 
 .suggestion-chip small {
+  border-left: 1px solid rgba(192, 221, 255, 0.22);
   color: var(--muted);
   font-size: 0.72rem;
   font-weight: 800;
+  padding-left: 10px;
+  white-space: nowrap;
 }
 
 .onboarding-panel {
