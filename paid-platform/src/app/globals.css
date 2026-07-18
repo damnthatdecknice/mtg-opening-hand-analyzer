@@ -1,18 +1,26 @@
 :root {
-  --bg: #020713;
-  --panel: rgba(7, 18, 35, 0.88);
-  --panel-strong: rgba(4, 12, 24, 0.96);
-  --border: rgba(103, 194, 255, 0.28);
+  --bg: #010511;
+  --panel: rgba(5, 15, 31, 0.9);
+  --panel-strong: rgba(2, 8, 19, 0.97);
+  --command-panel: rgba(219, 239, 255, 0.88);
+  --command-panel-strong: rgba(238, 248, 255, 0.94);
+  --command-text: #061528;
+  --command-muted: #27455f;
+  --data-card: rgba(4, 13, 30, 0.9);
+  --border: rgba(123, 211, 255, 0.34);
   --text: #f4f8ff;
   --muted: #b6c6dc;
-  --accent: #59d8ff;
-  --accent-2: #a68cff;
+  --accent: #4edcff;
+  --accent-2: #8f85ff;
   --good: #62e6a6;
   --warning: #ffd975;
+  --amber: #ffb84d;
   --bad: #ff7464;
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
   --glow: 0 0 34px rgba(89, 216, 255, 0.16);
   --inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --clip-sm: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  --clip-md: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
 }
 
 :root[data-large-text="true"] {
@@ -65,9 +73,10 @@ a {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg, rgba(2, 7, 19, 0.9), rgba(2, 7, 19, 0.58) 48%, rgba(2, 7, 19, 0.42) 76%, rgba(2, 7, 19, 0.62)),
-    radial-gradient(circle at 76% 34%, rgba(89, 216, 255, 0.1), transparent 28%),
-    radial-gradient(circle at 50% 50%, transparent, rgba(2, 7, 19, 0.5));
+    linear-gradient(90deg, rgba(1, 5, 17, 0.94), rgba(1, 5, 17, 0.64) 48%, rgba(1, 5, 17, 0.46) 76%, rgba(1, 5, 17, 0.68)),
+    radial-gradient(circle at 76% 34%, rgba(78, 220, 255, 0.14), transparent 28%),
+    radial-gradient(circle at 22% 24%, rgba(255, 184, 77, 0.08), transparent 24%),
+    radial-gradient(circle at 50% 50%, transparent, rgba(1, 5, 17, 0.62));
 }
 
 .app-background::before {
@@ -76,8 +85,8 @@ a {
   inset: 0;
   opacity: 0.28;
   background-image:
-    linear-gradient(rgba(89, 216, 255, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(89, 216, 255, 0.08) 1px, transparent 1px);
+    linear-gradient(rgba(78, 220, 255, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(78, 220, 255, 0.1) 1px, transparent 1px);
   background-position: center;
   background-size: 72px 72px;
   mask-image: radial-gradient(circle at 70% 36%, transparent 0, rgba(0, 0, 0, 0.8) 56%, transparent 82%);
@@ -112,12 +121,13 @@ a {
   top: 18px;
   z-index: 20;
   border: 1px solid rgba(103, 194, 255, 0.26);
-  border-radius: 18px;
+  border-radius: 0;
   background:
     linear-gradient(135deg, rgba(10, 28, 52, 0.78), rgba(3, 10, 22, 0.78)),
     rgba(4, 12, 24, 0.74);
   box-shadow: var(--shadow), var(--glow), var(--inner-glow);
   backdrop-filter: blur(18px);
+  clip-path: var(--clip-md);
 }
 
 .app-nav-brand {
@@ -146,11 +156,12 @@ a {
   position: relative;
   overflow: hidden;
   background:
-    linear-gradient(145deg, rgba(10, 29, 54, 0.72), rgba(4, 12, 24, 0.88)),
-    var(--panel);
+    linear-gradient(145deg, rgba(7, 23, 48, 0.78), rgba(3, 10, 24, 0.92)),
+    var(--data-card);
   border: 1px solid var(--border);
   box-shadow: var(--shadow), var(--inner-glow);
   backdrop-filter: blur(16px);
+  clip-path: var(--clip-md);
 }
 
 .panel::before,
@@ -160,8 +171,8 @@ a {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(120deg, rgba(89, 216, 255, 0.12), transparent 26%),
-    radial-gradient(circle at top right, rgba(166, 140, 255, 0.14), transparent 34%);
+    linear-gradient(120deg, rgba(78, 220, 255, 0.14), transparent 26%),
+    radial-gradient(circle at top right, rgba(255, 184, 77, 0.12), transparent 34%);
   opacity: 0.55;
 }
 
@@ -175,13 +186,41 @@ a {
 .hero-panel {
   min-height: 420px;
   padding: 44px;
-  border-radius: 18px;
-  border-color: rgba(103, 194, 255, 0.34);
+  border-radius: 0;
+  border-color: rgba(196, 230, 255, 0.72);
+}
+
+.hero-panel,
+.dashboard-header,
+.auth-panel,
+.auth-required,
+.locked-feature-panel {
+  background:
+    linear-gradient(135deg, var(--command-panel-strong), rgba(195, 226, 248, 0.84)),
+    var(--command-panel);
+  border-color: rgba(214, 240, 255, 0.82);
+  color: var(--command-text);
+  box-shadow:
+    0 26px 80px rgba(0, 0, 0, 0.42),
+    0 0 36px rgba(78, 220, 255, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.66);
+}
+
+.hero-panel::before,
+.dashboard-header::before,
+.auth-panel::before,
+.auth-required::before,
+.locked-feature-panel::before {
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.45), transparent 32%),
+    radial-gradient(circle at top right, rgba(78, 220, 255, 0.22), transparent 36%),
+    linear-gradient(90deg, transparent, rgba(6, 21, 40, 0.08));
+  opacity: 1;
 }
 
 .eyebrow {
   margin: 0 0 12px;
-  color: var(--warning);
+  color: var(--amber);
   font-size: 0.76rem;
   font-weight: 800;
   letter-spacing: 0.16em;
@@ -216,6 +255,14 @@ h2 {
   line-height: 1.7;
 }
 
+.hero-panel .lede,
+.dashboard-header p,
+.auth-panel .lede,
+.auth-required p,
+.locked-feature-panel p {
+  color: var(--command-muted);
+}
+
 .action-row {
   display: flex;
   flex-wrap: wrap;
@@ -230,8 +277,9 @@ h2 {
   justify-content: center;
   min-height: 44px;
   padding: 0 18px;
-  border-radius: 12px;
+  border-radius: 0;
   font-weight: 800;
+  clip-path: var(--clip-sm);
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
@@ -240,17 +288,26 @@ h2 {
 }
 
 .primary-button {
-  background: linear-gradient(135deg, #139ad6, #8b6cff);
+  background: linear-gradient(135deg, #12bff0, #5468ff);
   color: #fff;
   box-shadow:
-    0 12px 34px rgba(74, 156, 255, 0.34),
+    0 12px 34px rgba(78, 220, 255, 0.28),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
 .secondary-button {
   border: 1px solid var(--border);
-  background: linear-gradient(135deg, rgba(11, 31, 58, 0.78), rgba(5, 15, 30, 0.82));
+  background: linear-gradient(135deg, rgba(8, 31, 60, 0.82), rgba(4, 13, 29, 0.9));
   color: var(--muted);
+}
+
+.hero-panel .secondary-button,
+.dashboard-header .secondary-button,
+.auth-panel .secondary-button,
+.auth-required .secondary-button {
+  border-color: rgba(6, 21, 40, 0.2);
+  background: rgba(6, 21, 40, 0.08);
+  color: var(--command-text);
 }
 
 .primary-button:hover,
@@ -286,7 +343,7 @@ h2 {
 .metric-card {
   min-height: 122px;
   padding: 22px;
-  border-radius: 16px;
+  border-radius: 0;
 }
 
 .metric-card span,
@@ -312,7 +369,7 @@ h2 {
 .compact-panel,
 .dashboard-header,
 .dashboard .panel {
-  border-radius: 16px;
+  border-radius: 0;
   padding: 26px;
 }
 
@@ -366,7 +423,7 @@ h2 {
   align-content: start;
   gap: 16px;
   min-height: 390px;
-  border-radius: 18px;
+  border-radius: 0;
   padding: 26px;
   transition:
     border-color 160ms ease,
@@ -382,10 +439,10 @@ h2 {
 }
 
 .pricing-card.featured {
-  border-color: rgba(89, 216, 255, 0.7);
+  border-color: rgba(78, 220, 255, 0.78);
   box-shadow:
     0 24px 70px rgba(0, 0, 0, 0.38),
-    0 0 34px rgba(89, 216, 255, 0.18);
+    0 0 34px rgba(78, 220, 255, 0.2);
 }
 
 .pricing-card h2 {
@@ -411,12 +468,13 @@ h2 {
   justify-content: center;
   justify-self: start;
   min-height: 42px;
-  border: 1px solid rgba(98, 230, 166, 0.48);
-  border-radius: 999px;
-  background: linear-gradient(135deg, rgba(98, 230, 166, 0.18), rgba(89, 216, 255, 0.08));
-  color: #a9ffd0;
+  border: 1px solid rgba(255, 184, 77, 0.52);
+  border-radius: 0;
+  background: linear-gradient(135deg, rgba(255, 184, 77, 0.18), rgba(78, 220, 255, 0.08));
+  color: #ffe1a1;
   font-weight: 900;
   padding: 0 14px;
+  clip-path: var(--clip-sm);
 }
 
 .pricing-note {
@@ -427,7 +485,7 @@ h2 {
   display: grid;
   gap: 14px;
   width: min(760px, 100%);
-  border-radius: 18px;
+  border-radius: 0;
   padding: 32px;
 }
 
@@ -438,7 +496,7 @@ h2 {
 .settings-panel {
   display: grid;
   gap: 16px;
-  border-radius: 18px;
+  border-radius: 0;
   padding: 28px;
   width: min(860px, 100%);
 }
@@ -454,9 +512,10 @@ h2 {
   justify-content: space-between;
   gap: 18px;
   border: 1px solid rgba(103, 194, 255, 0.16);
-  border-radius: 14px;
+  border-radius: 0;
   background: linear-gradient(135deg, rgba(5, 18, 36, 0.78), rgba(1, 8, 18, 0.72));
   padding: 16px;
+  clip-path: var(--clip-sm);
   transition:
     border-color 160ms ease,
     transform 160ms ease;
@@ -503,13 +562,14 @@ h2 {
 
 .text-button {
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 0;
   background: linear-gradient(135deg, rgba(10, 30, 56, 0.82), rgba(5, 14, 28, 0.84));
   color: var(--text);
   cursor: pointer;
   font: inherit;
   font-weight: 800;
   padding: 8px 12px;
+  clip-path: var(--clip-sm);
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
@@ -525,12 +585,13 @@ h2 {
   min-height: 44px;
   padding: 0 18px;
   border: 1px solid rgba(255, 116, 100, 0.62);
-  border-radius: 12px;
+  border-radius: 0;
   background: linear-gradient(135deg, rgba(255, 116, 100, 0.18), rgba(80, 20, 30, 0.2));
   color: #ffd0ca;
   cursor: pointer;
   font: inherit;
   font-weight: 900;
+  clip-path: var(--clip-sm);
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
@@ -582,8 +643,9 @@ h2 {
   gap: 16px;
   padding: 14px;
   border: 1px solid rgba(103, 194, 255, 0.16);
-  border-radius: 14px;
+  border-radius: 0;
   background: linear-gradient(135deg, rgba(6, 20, 40, 0.78), rgba(3, 10, 23, 0.78));
+  clip-path: var(--clip-sm);
 }
 
 .clickable-list-row {
@@ -608,8 +670,9 @@ h2 {
   gap: 16px;
   padding: 16px;
   border: 1px solid rgba(103, 194, 255, 0.16);
-  border-radius: 14px;
+  border-radius: 0;
   background: linear-gradient(135deg, rgba(6, 20, 40, 0.78), rgba(3, 10, 23, 0.78));
+  clip-path: var(--clip-sm);
 }
 
 .deck-row span,
@@ -621,9 +684,10 @@ h2 {
 
 .empty-state {
   border: 1px dashed rgba(103, 194, 255, 0.24);
-  border-radius: 12px;
-  background: rgba(3, 10, 23, 0.58);
+  border-radius: 0;
+  background: linear-gradient(135deg, rgba(4, 15, 32, 0.68), rgba(2, 8, 18, 0.62));
   padding: 18px;
+  clip-path: var(--clip-sm);
 }
 
 .suggestion-chip-row {
@@ -637,13 +701,14 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  border: 1px solid rgba(89, 216, 255, 0.28);
-  border-radius: 999px;
-  background: rgba(12, 47, 82, 0.72);
+  border: 1px solid rgba(78, 220, 255, 0.34);
+  border-radius: 0;
+  background: linear-gradient(135deg, rgba(13, 57, 88, 0.82), rgba(5, 20, 40, 0.84));
   color: var(--text);
   font-size: 0.88rem;
   font-weight: 900;
   padding: 8px 10px;
+  clip-path: var(--clip-sm);
 }
 
 .suggestion-chip small {
@@ -660,10 +725,11 @@ h2 {
   gap: 8px;
   margin: 16px 0;
   border: 1px solid rgba(103, 194, 255, 0.18);
-  border-radius: 14px;
-  background: rgba(3, 10, 23, 0.66);
+  border-radius: 0;
+  background: linear-gradient(135deg, rgba(4, 18, 36, 0.72), rgba(2, 8, 18, 0.68));
   color: var(--muted);
   padding: 16px;
+  clip-path: var(--clip-sm);
 }
 
 .onboarding-panel strong {
@@ -689,11 +755,12 @@ h2 {
 
 .roadmap span {
   padding: 10px 14px;
-  border: 1px solid rgba(89, 216, 255, 0.24);
-  border-radius: 999px;
-  background: rgba(89, 216, 255, 0.1);
+  border: 1px solid rgba(255, 184, 77, 0.28);
+  border-radius: 0;
+  background: rgba(255, 184, 77, 0.1);
   color: #dff7ff;
   font-weight: 800;
+  clip-path: var(--clip-sm);
 }
 
 .auth-wrap {
@@ -705,7 +772,7 @@ h2 {
 .auth-panel,
 .auth-required {
   width: min(720px, 100%);
-  border-radius: 18px;
+  border-radius: 0;
   padding: 34px;
 }
 
@@ -730,11 +797,12 @@ h2 {
 .auth-form input {
   min-height: 48px;
   border: 1px solid rgba(103, 194, 255, 0.24);
-  border-radius: 10px;
+  border-radius: 0;
   background: rgba(1, 8, 18, 0.9);
   color: var(--text);
   font: inherit;
   padding: 0 14px;
+  clip-path: var(--clip-sm);
 }
 
 .auth-form input:focus {
@@ -887,13 +955,14 @@ h2 {
   min-height: 42px;
   border: 1px solid transparent;
   border-bottom: 2px solid transparent;
-  border-radius: 12px 12px 0 0;
+  border-radius: 0;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
   font: inherit;
   font-weight: 800;
   padding: 0 12px;
+  clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px);
   transition:
     background 160ms ease,
     border-color 160ms ease,
@@ -922,7 +991,7 @@ h2 {
 
 .analyzer-input-panel,
 .analyzer-results {
-  border-radius: 18px;
+  border-radius: 0;
   padding: 28px;
 }
 
@@ -947,7 +1016,7 @@ h2 {
 .analyzer-textarea {
   width: 100%;
   border: 1px solid rgba(103, 194, 255, 0.26);
-  border-radius: 12px;
+  border-radius: 0;
   background: linear-gradient(180deg, rgba(1, 8, 18, 0.94), rgba(5, 14, 28, 0.9));
   color: var(--text);
   font: inherit;
@@ -956,6 +1025,7 @@ h2 {
   resize: vertical;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   color-scheme: dark;
+  clip-path: var(--clip-sm);
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
@@ -1008,13 +1078,14 @@ h2 {
 .segmented-control button {
   min-height: 40px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 0;
   background: linear-gradient(135deg, rgba(9, 28, 54, 0.78), rgba(3, 10, 23, 0.78));
   color: var(--muted);
   cursor: pointer;
   font: inherit;
   font-weight: 800;
   padding: 0 16px;
+  clip-path: var(--clip-sm);
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
@@ -1044,7 +1115,7 @@ h2 {
   min-height: 170px;
   margin: 18px 0;
   border: 1px dashed rgba(89, 216, 255, 0.68);
-  border-radius: 18px;
+  border-radius: 0;
   background:
     linear-gradient(135deg, rgba(6, 22, 44, 0.76), rgba(2, 8, 18, 0.72)),
     rgba(4, 12, 24, 0.72);
@@ -1052,6 +1123,7 @@ h2 {
   padding: 26px;
   text-align: center;
   box-shadow: inset 0 0 40px rgba(89, 216, 255, 0.04);
+  clip-path: var(--clip-md);
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
@@ -1097,7 +1169,8 @@ h2 {
   max-width: min(860px, 100%);
   max-height: 360px;
   border: 1px solid rgba(103, 194, 255, 0.18);
-  border-radius: 12px;
+  border-radius: 0;
+  clip-path: var(--clip-sm);
   object-fit: contain;
 }
 
@@ -1121,10 +1194,11 @@ h2 {
   width: 100%;
   max-height: 230px;
   border: 1px solid rgba(103, 194, 255, 0.32);
-  border-radius: 12px;
+  border-radius: 0;
   object-fit: contain;
   background: rgba(1, 8, 18, 0.86);
   box-shadow: 0 14px 28px rgba(0, 0, 0, 0.22);
+  clip-path: var(--clip-sm);
 }
 
 .crop-preview-card figcaption {
@@ -1135,9 +1209,10 @@ h2 {
 .crop-adjust-panel {
   margin: 18px 0;
   border: 1px solid rgba(103, 194, 255, 0.18);
-  border-radius: 14px;
+  border-radius: 0;
   background: rgba(3, 10, 23, 0.7);
   padding: 14px;
+  clip-path: var(--clip-sm);
 }
 
 .crop-adjust-panel summary {
@@ -1198,10 +1273,11 @@ h2 {
   display: grid;
   gap: 7px;
   border: 1px solid rgba(255, 217, 117, 0.42);
-  border-radius: 12px;
+  border-radius: 0;
   background: linear-gradient(135deg, rgba(255, 217, 117, 0.13), rgba(60, 42, 12, 0.18));
   color: #ffe6a3;
   padding: 8px;
+  clip-path: var(--clip-sm);
 }
 
 .candidate-conflict strong {
@@ -1220,13 +1296,14 @@ h2 {
   gap: 6px;
   min-height: 34px;
   border: 1px solid rgba(103, 194, 255, 0.18);
-  border-radius: 10px;
+  border-radius: 0;
   background: linear-gradient(135deg, rgba(4, 17, 34, 0.78), rgba(1, 8, 18, 0.76));
   color: var(--muted);
   cursor: pointer;
   font: inherit;
   padding: 6px 8px;
   text-align: left;
+  clip-path: var(--clip-sm);
   transition:
     border-color 160ms ease,
     filter 160ms ease,
@@ -1266,12 +1343,13 @@ h2 {
 
 .result-hero-card {
   border: 1px solid rgba(103, 194, 255, 0.24);
-  border-radius: 18px;
+  border-radius: 0;
   background:
     linear-gradient(135deg, rgba(8, 26, 50, 0.92), rgba(4, 12, 24, 0.9)),
     rgba(4, 12, 24, 0.9);
   padding: 24px;
   box-shadow: var(--shadow), var(--inner-glow);
+  clip-path: var(--clip-md);
 }
 
 .result-hero-card.good {
@@ -1311,12 +1389,13 @@ h2 {
 
 .hand-tag {
   border: 1px solid rgba(170, 184, 204, 0.42);
-  border-radius: 8px;
+  border-radius: 0;
   background: rgba(170, 184, 204, 0.1);
   color: #d8e2f0;
   font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 0.9rem;
   padding: 6px 8px;
+  clip-path: var(--clip-sm);
 }
 
 .hand-tag.good {
@@ -1336,9 +1415,10 @@ h2 {
   display: grid;
   gap: 8px;
   border: 1px solid rgba(103, 194, 255, 0.16);
-  border-radius: 14px;
-  background: rgba(1, 8, 18, 0.78);
+  border-radius: 0;
+  background: linear-gradient(135deg, rgba(4, 17, 36, 0.82), rgba(1, 8, 18, 0.78));
   padding: 16px;
+  clip-path: var(--clip-sm);
 }
 
 .deck-context-card {
@@ -1347,9 +1427,10 @@ h2 {
   gap: 18px;
   align-items: start;
   border: 1px solid rgba(170, 184, 204, 0.32);
-  border-radius: 16px;
-  background: rgba(1, 8, 18, 0.8);
+  border-radius: 0;
+  background: linear-gradient(135deg, rgba(4, 17, 36, 0.84), rgba(1, 8, 18, 0.8));
   padding: 18px;
+  clip-path: var(--clip-md);
 }
 
 .deck-context-card.good {
@@ -1377,12 +1458,13 @@ h2 {
   gap: 4px;
   min-height: 74px;
   border: 1px solid rgba(103, 194, 255, 0.14);
-  border-radius: 12px;
+  border-radius: 0;
   background: rgba(8, 22, 42, 0.68);
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 800;
   padding: 12px;
+  clip-path: var(--clip-sm);
 }
 
 .deck-context-metrics strong {
@@ -1417,8 +1499,9 @@ h2 {
   border-collapse: collapse;
   overflow: hidden;
   border: 1px solid rgba(103, 194, 255, 0.16);
-  border-radius: 12px;
+  border-radius: 0;
   background: rgba(1, 8, 18, 0.84);
+  clip-path: var(--clip-sm);
 }
 
 .data-table th,
@@ -1440,13 +1523,14 @@ h2 {
   align-items: center;
   min-height: 26px;
   border: 1px solid rgba(170, 184, 204, 0.42);
-  border-radius: 999px;
+  border-radius: 0;
   background: rgba(170, 184, 204, 0.12);
   color: #d8e2f0;
   font-size: 0.78rem;
   font-weight: 900;
   padding: 0 9px;
   white-space: nowrap;
+  clip-path: var(--clip-sm);
 }
 
 .status-pill.good {
@@ -1482,12 +1566,13 @@ h2 {
 .chart-card,
 .plain-read-card {
   border: 1px solid rgba(103, 194, 255, 0.2);
-  border-radius: 18px;
+  border-radius: 0;
   background:
     linear-gradient(135deg, rgba(4, 18, 36, 0.88), rgba(1, 8, 18, 0.82)),
     rgba(1, 8, 18, 0.82);
   padding: 18px;
   box-shadow: var(--inner-glow);
+  clip-path: var(--clip-md);
 }
 
 .primary-chart,
@@ -1524,12 +1609,13 @@ h2 {
   align-items: center;
   gap: 7px;
   border: 1px solid rgba(103, 194, 255, 0.16);
-  border-radius: 999px;
+  border-radius: 0;
   background: linear-gradient(135deg, rgba(8, 28, 54, 0.76), rgba(4, 14, 28, 0.72));
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 800;
   padding: 6px 10px;
+  clip-path: var(--clip-sm);
 }
 
 .chart-legend i {
@@ -1651,23 +1737,25 @@ h2 {
 .archetype-admin-control input {
   width: 100%;
   border: 1px solid rgba(103, 194, 255, 0.28);
-  border-radius: 10px;
+  border-radius: 0;
   background: linear-gradient(180deg, rgba(2, 8, 18, 0.9), rgba(6, 17, 34, 0.84));
   color: var(--text);
   font: inherit;
   font-size: 0.82rem;
   padding: 7px 9px;
+  clip-path: var(--clip-sm);
 }
 
 .mini-button {
   justify-self: start;
   border: 1px solid rgba(89, 216, 255, 0.42);
-  border-radius: 10px;
+  border-radius: 0;
   background: linear-gradient(135deg, rgba(18, 92, 141, 0.78), rgba(91, 78, 174, 0.42));
   color: var(--text);
   cursor: pointer;
   font-weight: 900;
   padding: 6px 10px;
+  clip-path: var(--clip-sm);
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
