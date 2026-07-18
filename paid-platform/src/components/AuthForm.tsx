@@ -37,15 +37,20 @@ export function AuthForm({ mode }: AuthFormProps) {
       return;
     }
 
-    setMessage(
-      isSignUp
-        ? "Account created. Check your email if confirmations are enabled, then sign in."
-        : "Signed in. Opening your dashboard..."
-    );
-
-    if (!isSignUp) {
-      window.location.href = "/dashboard";
+    if (isSignUp) {
+      setMessage("Account created. Check your email if confirmations are enabled, then sign in.");
+      return;
     }
+
+    const sessionResponse = await supabase.auth.getSession();
+
+    if (!sessionResponse.data.session) {
+      setMessage("Sign-in succeeded, but this browser did not save the session. Refresh and try signing in again.");
+      return;
+    }
+
+    setMessage("Signed in. Opening your dashboard...");
+    window.location.replace("/dashboard");
   }
 
   return (

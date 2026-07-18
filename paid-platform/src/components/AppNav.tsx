@@ -31,8 +31,8 @@ export function AppNav() {
       return;
     }
 
-    supabase.auth.getUser().then(({ data }) => {
-      setIsSignedIn(Boolean(data.user));
+    supabase.auth.getSession().then(({ data }) => {
+      setIsSignedIn(Boolean(data.session?.user));
     });
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsSignedIn(Boolean(session?.user));

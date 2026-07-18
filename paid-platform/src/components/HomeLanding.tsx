@@ -31,8 +31,8 @@ export function HomeLanding() {
       return;
     }
 
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user);
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
       setIsLoading(false);
     });
 
