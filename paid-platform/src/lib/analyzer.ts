@@ -16,6 +16,7 @@ export type CardLookup = {
   imageUrl: string;
   imageUrls: string[];
   artCropUrl: string;
+  artCropUrls: string[];
   isLand: boolean;
   isMultiface: boolean;
 };
@@ -309,6 +310,15 @@ function mapScryfallCard(card: ScryfallCard): CardLookup {
     imageUrl: imageUrls[0] ?? "",
     imageUrls,
     artCropUrl: card.image_uris?.art_crop ?? castableFace?.image_uris?.art_crop ?? "",
+    artCropUrls: Array.from(
+      new Set(
+        [
+          card.image_uris?.art_crop,
+          castableFace?.image_uris?.art_crop,
+          ...(card.card_faces ?? []).map((face) => face.image_uris?.art_crop)
+        ].filter((url): url is string => Boolean(url))
+      )
+    ),
     isLand: typeLine.toLowerCase().includes("land"),
     isMultiface: Boolean(card.card_faces?.length)
   };
@@ -352,25 +362,31 @@ async function fetchSingleCard(name: string) {
   return { card: (await response.json()) as ScryfallCard, failure: "" };
 }
 
-async function fetchPrintImageUrls(name: string) {
+async function fetchPrintImages(name: string) {
   const response = await fetchWithRetries(
     `https://api.scryfall.com/cards/search?unique=prints&order=released&q=${encodeURIComponent(`!"${name}"`)}`
   );
   if (!response?.ok) {
-    return [];
+    return { imageUrls: [], artCropUrls: [] };
   }
   const payload = (await response.json()) as { data?: ScryfallCard[] };
-  return Array.from(
-    new Set(
-      (payload.data ?? [])
-        .flatMap((card) => [
-          card.image_uris?.normal,
-          card.image_uris?.small,
-          ...(card.card_faces ?? []).flatMap((face) => [face.image_uris?.normal, face.image_uris?.small])
-        ])
-        .filter((url): url is string => Boolean(url))
-    )
-  ).slice(0, 18);
+  const cards = payload.data ?? [];
+  return {
+    imageUrls: Array.from(
+      new Set(
+        cards
+          .flatMap((card) => [card.image_uris?.normal, ...(card.card_faces ?? []).map((face) => face.image_uris?.normal)])
+          .filter((url): url is string => Boolean(url))
+      )
+    ).slice(0, 48),
+    artCropUrls: Array.from(
+      new Set(
+        cards
+          .flatMap((card) => [card.image_uris?.art_crop, ...(card.card_faces ?? []).map((face) => face.image_uris?.art_crop)])
+          .filter((url): url is string => Boolean(url))
+      )
+    ).slice(0, 48)
+  };
 }
 
 export async function fetchCardData(cardNames: string[], options: { includePrintImages?: boolean } = {}) {
@@ -445,8 +461,9 @@ export async function fetchCardData(cardNames: string[], options: { includePrint
     const canonicalCards = Array.from(new Map(Array.from(lookups.values()).map((card) => [card.name, card])).values());
     await Promise.all(
       canonicalCards.map(async (card) => {
-        const printUrls = await fetchPrintImageUrls(card.name).catch(() => []);
-        card.imageUrls = Array.from(new Set([...card.imageUrls, ...printUrls]));
+        const printImages = await fetchPrintImages(card.name).catch(() => ({ imageUrls: [], artCropUrls: [] }));
+        card.imageUrls = Array.from(new Set([...card.imageUrls, ...printImages.imageUrls]));
+        card.artCropUrls = Array.from(new Set([...card.artCropUrls, ...printImages.artCropUrls]));
       })
     );
   }

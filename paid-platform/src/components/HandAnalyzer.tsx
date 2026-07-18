@@ -384,6 +384,30 @@ function fuzzyTextScore(text: string, cardName: string) {
   return Math.max(fullSimilarity, tokenSimilarity * 0.92);
 }
 
+function deckRestrictedTextScore(text: string, cardName: string, deckOptions: string[]) {
+  const baseScore = fuzzyTextScore(text, cardName);
+  const observedTokens = normalizeRecognitionText(text).split(" ").filter((token) => token.length >= 4);
+  const cardTokens = normalizeRecognitionText(cardName).split(" ").filter((token) => token.length >= 4);
+  let distinctiveScore = 0;
+
+  for (const observed of observedTokens) {
+    const candidateSimilarity = Math.max(0, ...cardTokens.map((token) => stringSimilarity(observed, token)));
+    const competingSimilarity = Math.max(
+      0,
+      ...deckOptions
+        .filter((option) => option !== cardName)
+        .flatMap((option) => normalizeRecognitionText(option).split(" "))
+        .filter((token) => token.length >= 4)
+        .map((token) => stringSimilarity(observed, token))
+    );
+    if (candidateSimilarity >= 0.7 && candidateSimilarity - competingSimilarity >= 0.1) {
+      distinctiveScore = Math.max(distinctiveScore, 0.78 + candidateSimilarity * 0.2);
+    }
+  }
+
+  return Math.max(baseScore, distinctiveScore);
+}
+
 function signatureDistance(a: number[], b: number[]) {
   const length = Math.min(a.length, b.length);
   if (!length) {
@@ -408,6 +432,12 @@ async function recognizeCropImages(
   const cardImageVariants = uniqueCards.flatMap((card) =>
     (card.imageUrls.length ? card.imageUrls : [card.imageUrl]).map((imageUrl) => ({ card, imageUrl }))
   );
+  const artImageVariants = uniqueCards.flatMap((card) =>
+    (card.artCropUrls.length ? card.artCropUrls : card.artCropUrl ? [card.artCropUrl] : []).map((imageUrl) => ({
+      card,
+      imageUrl
+    }))
+  );
   const fullCardSignatures = (
     await Promise.all(
     cardImageVariants.map(async ({ card, imageUrl }) => ({
@@ -418,15 +448,9 @@ async function recognizeCropImages(
   ).filter((item): item is { card: CardLookup; signature: number[] } => Boolean(item.signature));
   const artCardSignatures = (
     await Promise.all(
-      cardImageVariants.map(async ({ card, imageUrl }) => ({
+      artImageVariants.map(async ({ card, imageUrl }) => ({
         card,
-        signature: await imageRegionSignature(
-          imageUrl,
-          `${card.name}:arena-art:${imageUrl}`,
-          { x: 0.12, y: 0.13, width: 0.76, height: 0.39 },
-          18,
-          18
-        ).catch(() => null)
+        signature: await imageSignature(imageUrl, `${card.name}:arena-art:${imageUrl}`, 18, 18).catch(() => null)
       }))
     )
   ).filter((item): item is { card: CardLookup; signature: number[] } => Boolean(item.signature));
@@ -449,10 +473,16 @@ async function recognizeCropImages(
     throw new Error("Card images could not be loaded for recognition.");
   }
 
+  const ocrByCrop = new Map<number, string>();
+  for (const crop of crops) {
+    const ocrText = crop.source === "arena" && crop.textSrc ? await readTextSignal(crop.textSrc) : "";
+    ocrByCrop.set(crop.index, ocrText);
+  }
+
   return Promise.all(
     crops.map(async (crop) => {
       const isArenaCrop = crop.source === "arena";
-      const ocrText = isArenaCrop && crop.textSrc ? await readTextSignal(crop.textSrc) : "";
+      const ocrText = ocrByCrop.get(crop.index) ?? "";
       const signatures = isArenaCrop && artCardSignatures.length ? artCardSignatures : fullCardSignatures;
       const cropSignature = await imageSignature(crop.matchSrc ?? crop.src, "", isArenaCrop ? 18 : 14, isArenaCrop ? 18 : 20);
       const cropTitleSignature =
@@ -475,11 +505,11 @@ async function recognizeCropImages(
                 .map((item) => Math.min(1, 1 - signatureDistance(cropTitleSignature, item.signature)))
             )
           : 0;
-        const textScore = fuzzyTextScore(ocrText, card.name);
+        const textScore = deckRestrictedTextScore(ocrText, card.name, deckOptions);
         const score =
           isArenaCrop
-            ? textScore >= 0.72
-              ? Math.max(0, Math.min(1, imageScore * 0.2 + titleScore * 0.08 + textScore * 0.72))
+            ? textScore >= 0.68
+              ? Math.max(0, Math.min(1, imageScore * 0.16 + titleScore * 0.04 + textScore * 0.8))
               : Math.max(0, Math.min(1, imageScore * 0.62 + titleScore * 0.38))
             : Math.max(0, Math.min(1, imageScore * 0.72 + textScore * 0.28));
         const candidate = {
