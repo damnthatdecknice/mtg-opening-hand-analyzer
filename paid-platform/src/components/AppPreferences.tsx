@@ -8,13 +8,14 @@ const preferenceKeys = {
   text: "mtg-hand-pro:a11y-large-text"
 };
 
-function applyPreference(key: string, attr: string) {
-  const enabled = window.localStorage.getItem(key) === "true";
+function applyPreference(key: string, attr: string, defaultEnabled = false) {
+  const saved = window.localStorage.getItem(key);
+  const enabled = saved === null ? defaultEnabled : saved === "true";
   document.documentElement.dataset[attr] = enabled ? "true" : "false";
 }
 
 export function applyAccessibilityPreferences() {
-  applyPreference(preferenceKeys.contrast, "highContrast");
+  applyPreference(preferenceKeys.contrast, "highContrast", true);
   applyPreference(preferenceKeys.motion, "reducedMotion");
   applyPreference(preferenceKeys.text, "largeText");
 }

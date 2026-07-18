@@ -11,7 +11,7 @@ type Preferences = {
 };
 
 const defaultPreferences: Preferences = {
-  contrast: false,
+  contrast: true,
   motion: false,
   text: false
 };
@@ -40,7 +40,7 @@ export function SettingsPanel() {
 
   useEffect(() => {
     setPreferences({
-      contrast: window.localStorage.getItem(preferenceKeys.contrast) === "true",
+      contrast: window.localStorage.getItem(preferenceKeys.contrast) !== "false",
       motion: window.localStorage.getItem(preferenceKeys.motion) === "true",
       text: window.localStorage.getItem(preferenceKeys.text) === "true"
     });
