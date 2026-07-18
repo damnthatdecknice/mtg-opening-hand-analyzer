@@ -12,7 +12,8 @@ import {
 const mtgoRoot = "https://www.mtgo.com";
 const windowDays = 7;
 const eventNamePattern = /(challenge|showcase|qualifier|championship|premier|preliminary)/i;
-const cacheMs = 1000 * 60 * 30;
+const snapshotRevalidateSeconds = 60 * 60 * 24;
+const cacheMs = 1000 * snapshotRevalidateSeconds;
 
 type CacheEntry = {
   expiresAt: number;
@@ -64,7 +65,7 @@ export async function GET(request: NextRequest) {
   const cached = cache.get(format);
 
   if (cached && cached.expiresAt > Date.now()) {
-    return NextResponse.json(cached.data);
+    return metagameJson(cached.data);
   }
 
   try {
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
       data,
       expiresAt: Date.now() + cacheMs
     });
-    return NextResponse.json(data);
+    return metagameJson(data);
   } catch (error) {
     return NextResponse.json(
       {
@@ -82,6 +83,14 @@ export async function GET(request: NextRequest) {
       { status: 502 }
     );
   }
+}
+
+function metagameJson(data: MetagameResponse) {
+  return NextResponse.json(data, {
+    headers: {
+      "Cache-Control": `public, s-maxage=${snapshotRevalidateSeconds}, stale-while-revalidate=${snapshotRevalidateSeconds}`
+    }
+  });
 }
 
 async function buildMetagame(format: MetagameFormat): Promise<MetagameResponse> {
@@ -186,7 +195,7 @@ async function fetchText(url: string) {
       "user-agent": "MTG Opening Hand Pro metagame preview (+https://mtg-opening-hand-analyzer-hsjg.vercel.app)"
     },
     next: {
-      revalidate: 1800
+      revalidate: snapshotRevalidateSeconds
     }
   });
 
