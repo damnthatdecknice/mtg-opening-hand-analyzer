@@ -17,6 +17,72 @@ const eventNamePattern = /(challenge|showcase|qualifier|championship|premier|pre
 const snapshotRevalidateSeconds = 60 * 60 * 24;
 const cacheMs = 1000 * snapshotRevalidateSeconds;
 
+const defaultSignatureRules: Array<MetagameSignatureRule & { format: MetagameFormat }> = [
+  { format: "Modern", cardName: "Galvanic Discharge", archetypeName: "Jeskai Energy", requiredColors: ["W", "U", "R"], priority: 150 },
+  { format: "Modern", cardName: "Galvanic Discharge", archetypeName: "Boros Energy", requiredColors: ["W", "R"], priority: 140 },
+  { format: "Modern", cardName: "Mox Opal", archetypeName: "Affinity", requiredColors: ["U", "R"], priority: 130 },
+  { format: "Modern", cardName: "Goryo's Vengeance", archetypeName: "Goryo's Vengeance", requiredColors: [], priority: 140 },
+  { format: "Modern", cardName: "Thought-Knot Seer", archetypeName: "Eldrazi Tron", requiredColors: ["Colorless"], priority: 145 },
+  { format: "Modern", cardName: "Manamorphose", archetypeName: "Ruby Storm", requiredColors: ["W", "R"], priority: 130 },
+  { format: "Modern", cardName: "Monastery Swiftspear", archetypeName: "Izzet Prowess", requiredColors: ["U", "R"], priority: 130 },
+  { format: "Modern", cardName: "Cleansing Wildfire", archetypeName: "Boros Ponza", requiredColors: [], priority: 120 },
+  { format: "Modern", cardName: "Kozilek's Command", archetypeName: "RG Eldrazi", requiredColors: ["R", "G"], priority: 140 },
+  { format: "Modern", cardName: "Abhorrent Oculus", archetypeName: "Grixis Reanimator", requiredColors: ["U", "B", "R"], priority: 130 },
+  { format: "Modern", cardName: "Amulet of Vigor", archetypeName: "Amulet Titan", requiredColors: [], priority: 130 },
+  { format: "Modern", cardName: "Solitude", archetypeName: "Esper Generic Blink", requiredColors: ["W", "U", "B"], priority: 120 },
+  { format: "Modern", cardName: "Living End", archetypeName: "Living End", requiredColors: ["U", "B"], priority: 130 },
+  { format: "Modern", cardName: "Territorial Kavu", archetypeName: "Domain Zoo", requiredColors: ["W", "U", "B", "R", "G"], priority: 130 },
+  { format: "Modern", cardName: "Yawgmoth, Thran Physician", archetypeName: "Yawgmoth", requiredColors: [], priority: 130 },
+
+  { format: "Standard", cardName: "Ouroboroid", archetypeName: "Selesnya Ouroboroid", requiredColors: ["W", "G"], priority: 130 },
+  { format: "Standard", cardName: "Slickshot Show-Off", archetypeName: "Izzet Prowess", requiredColors: ["U", "R"], priority: 130 },
+  { format: "Standard", cardName: "Jeskai Revelation", archetypeName: "Jeskai Lessons", requiredColors: ["W", "U", "R"], priority: 130 },
+  { format: "Standard", cardName: "Tablet of Discovery", archetypeName: "4c Control", requiredColors: ["W", "U", "B", "R"], priority: 130 },
+  { format: "Standard", cardName: "Eddymurk Crab", archetypeName: "Izzet Spellementals", requiredColors: ["U", "R"], priority: 130 },
+  { format: "Standard", cardName: "Doomsday Excruciator", archetypeName: "Dimir Excruciator", requiredColors: ["U", "B"], priority: 130 },
+  { format: "Standard", cardName: "Icetill Explorer", archetypeName: "Mono-Green Landfall", requiredColors: ["G"], priority: 130 },
+  { format: "Standard", cardName: "Moonshadow", archetypeName: "Mardu Discard", requiredColors: ["W", "B", "R"], priority: 130 },
+  { format: "Standard", cardName: "Gran-Gran", archetypeName: "Izzet Lessons", requiredColors: ["U", "R"], priority: 130 },
+  { format: "Standard", cardName: "Mightform Harmonizer", archetypeName: "Selesnya Landfall", requiredColors: ["W", "G"], priority: 130 },
+  { format: "Standard", cardName: "Brightglass Gearhulk", archetypeName: "4c Gearhulk", requiredColors: ["W", "U", "R", "G"], priority: 140 },
+  { format: "Standard", cardName: "Hired Claw", archetypeName: "Mono-Red Aggro", requiredColors: ["R"], priority: 130 },
+  { format: "Standard", cardName: "Slickshot Show-Off", archetypeName: "Izzet Spells", requiredColors: ["U", "R"], priority: 120 },
+  { format: "Standard", cardName: "Momo, Friendly Flier", archetypeName: "Azorius Momo", requiredColors: ["W", "U"], priority: 130 },
+  { format: "Standard", cardName: "Brightglass Gearhulk", archetypeName: "Selesnya Gearhulk", requiredColors: ["W", "G"], priority: 130 },
+
+  { format: "Pioneer", cardName: "Monastery Swiftspear", archetypeName: "Izzet Prowess", requiredColors: ["U", "R"], priority: 140 },
+  { format: "Pioneer", cardName: "Monastery Swiftspear", archetypeName: "Mono-Red Prowess", requiredColors: ["R"], priority: 130 },
+  { format: "Pioneer", cardName: "Thoughtseize", archetypeName: "Golgari Midrange", requiredColors: ["B", "G"], priority: 130 },
+  { format: "Pioneer", cardName: "No More Lies", archetypeName: "Azorius Control", requiredColors: ["W", "U"], priority: 130 },
+  { format: "Pioneer", cardName: "Greasefang, Okiba Boss", archetypeName: "Abzan Greasefang", requiredColors: ["W", "B", "G"], priority: 140 },
+  { format: "Pioneer", cardName: "Greasefang, Okiba Boss", archetypeName: "Orzhov Greasefang", requiredColors: ["W", "B"], priority: 130 },
+  { format: "Pioneer", cardName: "Kaito, Bane of Nightmares", archetypeName: "Dimir Midrange", requiredColors: ["U", "B"], priority: 130 },
+  { format: "Pioneer", cardName: "Arclight Phoenix", archetypeName: "Izzet Phoenix", requiredColors: ["U", "R"], priority: 130 },
+  { format: "Pioneer", cardName: "Ouroboroid", archetypeName: "Selesnya Counters", requiredColors: ["W", "G"], priority: 130 },
+  { format: "Pioneer", cardName: "Gran-Gran", archetypeName: "Izzet Lessons", requiredColors: ["U", "R"], priority: 130 },
+  { format: "Pioneer", cardName: "Fatal Push", archetypeName: "Mono-Black Midrange", requiredColors: ["B"], priority: 120 },
+  { format: "Pioneer", cardName: "Thoughtseize", archetypeName: "Dimir Aggro", requiredColors: ["U", "B"], priority: 130 },
+  { format: "Pioneer", cardName: "Vivi Ornitier", archetypeName: "Izzet Midrange", requiredColors: ["U", "R"], priority: 130 },
+  { format: "Pioneer", cardName: "Scapeshift", archetypeName: "5c Scapeshift", requiredColors: ["W", "U", "B", "R", "G"], priority: 140 },
+  { format: "Pioneer", cardName: "Scapeshift", archetypeName: "Simic Scapeshift", requiredColors: ["U", "G"], priority: 130 },
+
+  { format: "Legacy", cardName: "Daze", archetypeName: "Izzet Delver", requiredColors: ["U", "R"], priority: 130 },
+  { format: "Legacy", cardName: "Thoughtseize", archetypeName: "Dimir Tempo", requiredColors: ["U", "B"], priority: 130 },
+  { format: "Legacy", cardName: "Reanimate", archetypeName: "Rakdos Reanimator", requiredColors: ["U", "B", "R", "G"], priority: 130 },
+  { format: "Legacy", cardName: "Doomsday", archetypeName: "Doomsday", requiredColors: ["U", "B", "G"], priority: 130 },
+  { format: "Legacy", cardName: "Show and Tell", archetypeName: "Sneak and Show", requiredColors: ["U", "B", "R"], priority: 130 },
+  { format: "Legacy", cardName: "Mox Opal", archetypeName: "Blue Artifacts", requiredColors: ["W", "U", "R"], priority: 130 },
+  { format: "Legacy", cardName: "Life from the Loam", archetypeName: "Lands", requiredColors: ["W", "R", "G"], priority: 130 },
+  { format: "Legacy", cardName: "Ocelot Pride", archetypeName: "Mardu Energy", requiredColors: ["W", "B", "R"], priority: 140 },
+  { format: "Legacy", cardName: "Burning Wish", archetypeName: "The EPIC Storm", requiredColors: ["W", "U", "B", "R", "G"], priority: 130 },
+  { format: "Legacy", cardName: "Ocelot Pride", archetypeName: "Boros Energy", requiredColors: ["W", "R"], priority: 130 },
+  { format: "Legacy", cardName: "The Fantasticar", archetypeName: "Dimir Car", requiredColors: ["U", "B"], priority: 140 },
+  { format: "Legacy", cardName: "Force of Will", archetypeName: "Azorius Control", requiredColors: ["W", "U"], priority: 120 },
+  { format: "Legacy", cardName: "Painter's Servant", archetypeName: "Painter", requiredColors: ["U", "B", "R"], priority: 130 },
+  { format: "Legacy", cardName: "Thought-Knot Seer", archetypeName: "Eldrazi", requiredColors: ["R"], priority: 130 },
+  { format: "Legacy", cardName: "The Fantasticar", archetypeName: "Car Stompy", requiredColors: ["W"], priority: 130 }
+];
+
 type CacheEntry = {
   expiresAt: number;
   data: MetagameResponse;
@@ -137,14 +203,21 @@ async function buildMetagame(format: MetagameFormat): Promise<MetagameResponse> 
 }
 
 async function fetchSignatureRules(format: MetagameFormat) {
-  const rules: MetagameSignatureRule[] = [];
+  const rules: MetagameSignatureRule[] = defaultSignatureRules
+    .filter((rule) => rule.format === format)
+    .map(({ cardName, archetypeName, requiredColors, priority }) => ({
+      cardName,
+      archetypeName,
+      requiredColors,
+      priority
+    }));
   if (!isServerAnonSupabaseConfigured) {
-    return rules;
+    return sortSignatureRules(rules);
   }
 
   const supabase = createServerAnonSupabaseClient();
   if (!supabase) {
-    return rules;
+    return sortSignatureRules(rules);
   }
 
   const { data } = await supabase
@@ -171,7 +244,39 @@ async function fetchSignatureRules(format: MetagameFormat) {
     }
   }
 
-  return rules;
+  return sortSignatureRules(dedupeSignatureRules(rules));
+}
+
+function dedupeSignatureRules(rules: MetagameSignatureRule[]) {
+  const seen = new Set<string>();
+  return rules.filter((rule) => {
+    const key = [
+      rule.cardName.toLowerCase(),
+      rule.archetypeName.toLowerCase(),
+      [...rule.requiredColors].sort().join("")
+    ].join("|");
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function sortSignatureRules(rules: MetagameSignatureRule[]) {
+  return [...rules].sort((a, b) => {
+    const priorityDelta = b.priority - a.priority;
+    if (priorityDelta) {
+      return priorityDelta;
+    }
+    return colorSpecificity(b.requiredColors) - colorSpecificity(a.requiredColors);
+  });
+}
+
+function colorSpecificity(requiredColors: string[]) {
+  return requiredColors.includes("Colorless")
+    ? 6
+    : requiredColors.filter((color) => "WUBRG".includes(color)).length;
 }
 
 async function buildWindowSnapshot(
@@ -364,7 +469,7 @@ function classifyArchetype(
   const signatureMatch = signatureRules.find(
     (rule) =>
       names.has(rule.cardName.toLowerCase()) &&
-      rule.requiredColors.every((color) => colors.includes(color))
+      matchesRequiredColors(rule.requiredColors, colors)
   );
 
   if (signatureMatch) {
@@ -403,6 +508,14 @@ function classifyArchetype(
   if (colors.length <= 2 && has("Force of Will", "Daze", "Brainstorm")) return `${colorName} Tempo`;
 
   return `${colorName} Other`;
+}
+
+function matchesRequiredColors(requiredColors: string[], colors: string[]) {
+  const normalized = requiredColors.map((color) => color.trim());
+  if (normalized.includes("Colorless")) {
+    return colors.length === 0;
+  }
+  return normalized.every((color) => colors.includes(color));
 }
 
 function buildArchetypes(
