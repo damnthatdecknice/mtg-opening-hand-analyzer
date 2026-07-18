@@ -10,6 +10,7 @@ import {
 } from "@/lib/analyzer";
 import { convertDekToDecklist, inferDeckName, parseDecklist } from "@/lib/deckParser";
 import type { SavedDeck } from "@/lib/decks";
+import { getAuthFallbackUser } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
 
@@ -89,6 +90,7 @@ Inspiring Vantage`;
 
 const lastDeckStorageKey = "mtg-hand-pro:last-analyzer-deck-id";
 const signatureCachePrefix = "mtg-hand-pro:image-signature:";
+const freeWeeklyAnalyzerLimit = 10;
 let localOcrWorkerPromise: Promise<LocalOcrWorker> | null = null;
 const defaultCropAdjustments: CropAdjustments = {
   x: 0,
@@ -109,6 +111,10 @@ function number(value: number) {
 
 function percentNumber(value: number) {
   return Math.round(value * 1000) / 10;
+}
+
+function analyzerUsageWindowStart() {
+  return new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function uniqueDeckOptions(decklist: string) {
@@ -929,6 +935,58 @@ export function HandAnalyzer() {
     }
   }
 
+  async function currentUserId() {
+    if (!supabase) {
+      return "";
+    }
+
+    const sessionResponse = await supabase.auth.getSession();
+    return sessionResponse.data.session?.user.id ?? getAuthFallbackUser()?.id ?? "";
+  }
+
+  async function canRunAnalyzerThisWeek() {
+    if (entitlements.isLoading) {
+      setMessage("Checking your account limits. Try again in a moment.");
+      return false;
+    }
+
+    if (entitlements.tierId !== "free") {
+      return true;
+    }
+
+    if (!supabase) {
+      setMessage("Could not verify the free weekly analyzer limit.");
+      return false;
+    }
+
+    const userId = await currentUserId();
+    if (!userId) {
+      setMessage("Sign in before analyzing a hand.");
+      return false;
+    }
+
+    const { count, error } = await supabase
+      .from("hand_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .gte("created_at", analyzerUsageWindowStart());
+
+    if (error) {
+      setMessage(`Could not verify the free weekly analyzer limit: ${error.message}`);
+      return false;
+    }
+
+    const used = count ?? 0;
+    if (used >= freeWeeklyAnalyzerLimit) {
+      setMessage(
+        `Free accounts include ${freeWeeklyAnalyzerLimit} opening-hand analyses every 7 days. You have used ${used}/${freeWeeklyAnalyzerLimit}. Upgrade to Pro for unlimited analyzer use.`
+      );
+      return false;
+    }
+
+    return true;
+  }
+
   async function runAnalysis(sourceHand = confirmedHand) {
     setMessage("");
     setResult(null);
@@ -942,6 +1000,11 @@ export function HandAnalyzer() {
     if (seven.length !== 7) {
       setMessage("Confirm exactly seven cards before analyzing.");
       setWorkflowTab("hand");
+      return;
+    }
+
+    const canAnalyze = await canRunAnalyzerThisWeek();
+    if (!canAnalyze) {
       return;
     }
 
@@ -970,13 +1033,13 @@ export function HandAnalyzer() {
       return;
     }
 
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) {
+    const userId = await currentUserId();
+    if (!userId) {
       return;
     }
 
     const { error } = await supabase.from("hand_sessions").insert({
-      user_id: userData.user.id,
+      user_id: userId,
       deck_id: selectedDeckId === "custom" ? null : selectedDeckId,
       source: screenshotSrc ? "screenshot" : "manual",
       confirmed_hand: seven,
@@ -1095,8 +1158,8 @@ export function HandAnalyzer() {
             <div className="onboarding-panel">
               <strong>Saved decks unlock with Deck Pro</strong>
               <span>
-                Free users can still paste a deck here and run the full analyzer.
-                The saved deck dropdown and deck vault are part of the $5/month tier.
+                Free users can paste a deck and run 10 analyses every 7 days.
+                Unlimited analysis, the saved deck dropdown, and deck vault are part of the $5/month tier.
               </span>
             </div>
           ) : entitlements.canUseDeckVault && !savedDecks.length ? (

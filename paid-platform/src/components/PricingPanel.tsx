@@ -13,8 +13,8 @@ export function PricingPanel() {
         <p className="eyebrow">Subscription tiers</p>
         <h1>Choose Your Workspace</h1>
         <p>
-          Free keeps the analyzer open. Deck Pro unlocks saved decklists and the
-          remembered deck workflow for competitive testing.
+          Free includes 10 analyzer uses per week. Deck Pro unlocks unlimited
+          analysis, saved decklists, and the remembered deck workflow for competitive testing.
         </p>
       </header>
 

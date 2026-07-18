@@ -13,9 +13,9 @@ export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
     id: "free",
     label: "Free",
     price: "$0/month",
-    description: "Try the core opener workflow without stored deck tools.",
+    description: "Try the core opener workflow with a weekly use limit.",
     features: [
-      "Opening-hand analyzer",
+      "10 opening-hand analyses per week",
       "Screenshot intake",
       "Manual seven-card confirmation",
       "Overview and deep-data results"
@@ -28,6 +28,7 @@ export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
     description: "Unlock the decklist vault and remembered deck workflow.",
     features: [
       "Everything in Free",
+      "Unlimited opening-hand analyses",
       "Save decklists",
       "Saved-deck dropdown in the analyzer",
       "Deck vault dashboard"
