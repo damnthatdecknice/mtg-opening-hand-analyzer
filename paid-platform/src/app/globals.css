@@ -114,7 +114,7 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 14px;
   margin-bottom: 24px;
   padding: 12px;
   position: sticky;
@@ -136,15 +136,15 @@ a {
   color: var(--text);
   font-weight: 900;
   letter-spacing: 0.02em;
-  min-width: min(340px, 42vw);
-  padding: 0 8px;
+  min-width: 0;
+  padding: 0 6px;
   white-space: nowrap;
   text-shadow: 0 0 22px rgba(255, 184, 77, 0.22);
 }
 
 .app-nav-brand img {
   display: block;
-  width: min(300px, 38vw);
+  width: min(205px, 26vw);
   height: auto;
   object-fit: contain;
 }
@@ -153,12 +153,12 @@ a {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
 }
 
 .app-nav-link {
   min-height: 38px;
-  padding: 0 14px;
+  padding: 0 12px;
 }
 
 .panel,
@@ -1858,7 +1858,7 @@ h2 {
   }
 
   .app-nav-brand img {
-    width: min(280px, 78vw);
+    width: min(220px, 70vw);
   }
 
   .hero-grid,
