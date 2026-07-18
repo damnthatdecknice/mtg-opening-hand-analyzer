@@ -38,6 +38,7 @@ type MtgoDecklist = {
   main_deck?: MtgoCard[];
   sideboard?: MtgoCard[];
   side_board?: MtgoCard[];
+  sideboard_deck?: MtgoCard[];
 };
 
 type MtgoStanding = {
@@ -276,7 +277,7 @@ function normalizeEventDecks(data: MtgoEventData, sourceUrl: string, format: Met
 
   return (data.decklists ?? []).map((deck) => {
     const main = normalizeCards(deck.main_deck ?? []);
-    const sideboard = normalizeCards(deck.sideboard ?? deck.side_board ?? []);
+    const sideboard = normalizeCards(deck.sideboard_deck ?? deck.sideboard ?? deck.side_board ?? []);
     const colors = inferColors(deck.main_deck ?? []);
     return {
       player: deck.player ?? "Unknown player",
@@ -318,7 +319,7 @@ function inferColors(cards: MtgoCard[]) {
   const colors = new Set<string>();
   for (const card of cards) {
     const type = card.card_attributes?.card_type ?? "";
-    if (/LAND/i.test(type)) {
+    if (isLandType(type)) {
       continue;
     }
 
@@ -503,10 +504,14 @@ function buildTopCards(decks: MetagameDeck[]): MetagameCardCount[] {
 }
 
 function isLandCard(card: { name: string; cardType?: string }) {
-  if (/\bLand\b/i.test(card.cardType ?? "")) {
+  if (isLandType(card.cardType ?? "")) {
     return true;
   }
   return ["Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"].includes(card.name);
+}
+
+function isLandType(cardType: string) {
+  return /\bLand\b/i.test(cardType) || /\bLND\b/i.test(cardType);
 }
 
 function findObjectEnd(text: string, start: number) {

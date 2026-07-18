@@ -86,7 +86,7 @@ export function MetagamePanel() {
     setIsLoading(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/metagame?format=${encodeURIComponent(nextFormat)}&v=2`);
+      const response = await fetch(`/api/metagame?format=${encodeURIComponent(nextFormat)}&v=3`);
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error ?? "Could not load metagame data.");
