@@ -7,6 +7,7 @@ import type { SavedDeck } from "@/lib/decks";
 import {
   metagameFormats,
   type MetagameCardCount,
+  type MetagameDeck,
   type MetagameFormat,
   type MetagameResponse
 } from "@/lib/metagame";
@@ -16,7 +17,10 @@ import { useEntitlements } from "@/components/useEntitlements";
 type SavedDeckNote = {
   deckName: string;
   format: string;
+  inferredColors: string[];
+  matchingArchetype?: string;
   overlappingCards: Array<{ name: string; share: number }>;
+  sideboardCards: Array<{ name: string; share: number; decks: number }>;
   note: string;
 };
 
@@ -160,7 +164,7 @@ export function MetagamePanel() {
                   <i style={{ width: `${Math.max(4, archetype.share * 100)}%` }} />
                   <em>
                     {Math.round(archetype.share * 100)}% ({archetype.decks})
-                    <small className={getTrendClass(archetype.change)}>{formatTrend(archetype.change)}</small>
+                    <small className={getTrendClass(archetype.change)}>{formatTrendLabel(archetype.change)}</small>
                   </em>
                 </div>
               ))}
@@ -193,12 +197,25 @@ export function MetagamePanel() {
                     <div className="empty-state" key={note.deckName}>
                       <strong>{note.deckName}</strong>
                       <span>{note.note}</span>
+                      <span>
+                        Color lens: {note.inferredColors.length ? note.inferredColors.join("") : "colorless/unknown"}
+                        {note.matchingArchetype ? `, closest published shell: ${note.matchingArchetype}` : ""}
+                      </span>
                       {note.overlappingCards.length ? (
                         <span>
-                          Cards showing up in the published meta:{" "}
+                          Maindeck overlap:{" "}
                           {note.overlappingCards
                             .slice(0, 5)
                             .map((card) => `${card.name} (${Math.round(card.share * 100)}%)`)
+                            .join(", ")}
+                        </span>
+                      ) : null}
+                      {note.sideboardCards.length ? (
+                        <span>
+                          Sideboard cards to check in your colors:{" "}
+                          {note.sideboardCards
+                            .slice(0, 6)
+                            .map((card) => `${card.name} (${card.decks} lists)`)
                             .join(", ")}
                         </span>
                       ) : null}
@@ -267,6 +284,17 @@ function getTrendClass(change: number) {
   return "trend-flat";
 }
 
+function formatTrendLabel(change: number) {
+  const percentagePoints = Math.round(change * 100);
+  if (percentagePoints > 0) {
+    return `up ${percentagePoints}%`;
+  }
+  if (percentagePoints < 0) {
+    return `down ${Math.abs(percentagePoints)}%`;
+  }
+  return "flat 0%";
+}
+
 function buildSavedDeckNotes(
   savedDecks: SavedDeck[],
   data: MetagameResponse,
@@ -279,23 +307,108 @@ function buildSavedDeckNotes(
     .map((deck) => {
       const parsed = parseDecklist(deck.decklist);
       const deckCards = new Set(parsed.cards.filter((card) => card.section === "main").map((card) => card.name));
+      const allSavedCards = new Set(parsed.cards.map((card) => card.name));
+      const similarDecks = findSimilarPublishedDecks(deckCards, data.decks);
+      const inferredColors = inferSavedDeckColors(similarDecks);
+      const matchingArchetype = similarDecks[0]?.deck.archetype;
+      const inColorDecks = data.decks.filter((publishedDeck) => isDeckInColors(publishedDeck, inferredColors));
+      const similarInColorDecks = similarDecks
+        .map((match) => match.deck)
+        .filter((publishedDeck) => isDeckInColors(publishedDeck, inferredColors));
+      const sideboardSourceDecks = similarInColorDecks.length >= 3 ? similarInColorDecks : inColorDecks;
+      const sideboardCards = buildSideboardSuggestions(sideboardSourceDecks, allSavedCards);
       const overlappingCards = Array.from(deckCards)
         .map((card) => topCardMap.get(card.toLowerCase()))
         .filter(isMetagameCardCount)
         .sort((a, b) => b.share - a.share)
         .map((card) => ({ name: card.name, share: card.share }));
       const note =
-        overlappingCards.length >= 5
-          ? "This saved deck shares a meaningful number of cards with the published field. Its core cards are likely relevant in current prep."
+        similarDecks.length >= 3
+          ? "This looks close enough to published lists that the sideboard cards below are worth actively testing."
           : overlappingCards.length
-            ? "This saved deck has some cards appearing in the published field, but the overlap is modest. Treat this as a light signal."
-            : "This saved deck has low overlap with the most common published cards. That may mean rogue positioning or that its cards are underrepresented this week.";
+            ? "This has partial metagame overlap. Use the sideboard cards below as a scouting list, not an automatic import."
+            : "This looks fairly rogue against the current MTGO snapshot. Sideboard advice is limited to cards from lists matching the inferred color lens.";
 
       return {
         deckName: deck.name,
         format: deck.format ?? format,
+        inferredColors,
+        matchingArchetype,
         overlappingCards,
+        sideboardCards,
         note
       };
     });
+}
+
+function findSimilarPublishedDecks(deckCards: Set<string>, publishedDecks: MetagameDeck[]) {
+  const normalizedSavedCards = new Set(Array.from(deckCards).map((card) => card.toLowerCase()));
+  return publishedDecks
+    .map((deck) => {
+      const shared = deck.main.filter((card) => normalizedSavedCards.has(card.name.toLowerCase())).length;
+      return { deck, shared };
+    })
+    .filter((match) => match.shared >= 3)
+    .sort((a, b) => b.shared - a.shared || a.deck.archetype.localeCompare(b.deck.archetype))
+    .slice(0, 12);
+}
+
+function inferSavedDeckColors(similarDecks: Array<{ deck: MetagameDeck; shared: number }>) {
+  if (!similarDecks.length) {
+    return [];
+  }
+
+  const bestScore = similarDecks[0]?.shared ?? 0;
+  const closeMatches = similarDecks.filter((match) => match.shared >= Math.max(3, bestScore - 1));
+  const colors = new Set<string>();
+  for (const match of closeMatches) {
+    for (const color of match.deck.colors) {
+      colors.add(color);
+    }
+  }
+
+  return Array.from(colors).sort((a, b) => "WUBRG".indexOf(a) - "WUBRG".indexOf(b));
+}
+
+function isDeckInColors(deck: MetagameDeck, colors: string[]) {
+  if (!deck.colors.length) {
+    return true;
+  }
+  if (!colors.length) {
+    return false;
+  }
+  return deck.colors.every((color) => colors.includes(color));
+}
+
+function buildSideboardSuggestions(decks: MetagameDeck[], savedCards: Set<string>) {
+  const copies = new Map<string, number>();
+  const deckPresence = new Map<string, number>();
+  const normalizedSavedCards = new Set(Array.from(savedCards).map((card) => card.toLowerCase()));
+
+  for (const deck of decks) {
+    const seen = new Set<string>();
+    for (const card of deck.sideboard) {
+      if (normalizedSavedCards.has(card.name.toLowerCase())) {
+        continue;
+      }
+      copies.set(card.name, (copies.get(card.name) ?? 0) + card.qty);
+      seen.add(card.name);
+    }
+    for (const card of Array.from(seen)) {
+      deckPresence.set(card, (deckPresence.get(card) ?? 0) + 1);
+    }
+  }
+
+  return Array.from(copies.entries())
+    .map(([name, count]) => {
+      const decksWithCard = deckPresence.get(name) ?? 0;
+      return {
+        name,
+        decks: decksWithCard,
+        share: decks.length ? decksWithCard / decks.length : 0,
+        count
+      };
+    })
+    .sort((a, b) => b.decks - a.decks || b.count - a.count || a.name.localeCompare(b.name))
+    .slice(0, 8);
 }
