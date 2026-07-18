@@ -70,7 +70,7 @@ export function MetagamePanel() {
     setIsLoading(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/metagame?format=${encodeURIComponent(nextFormat)}`);
+      const response = await fetch(`/api/metagame?format=${encodeURIComponent(nextFormat)}&v=2`);
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error ?? "Could not load metagame data.");
@@ -196,29 +196,20 @@ export function MetagamePanel() {
                   savedDeckNotes.map((note) => (
                     <div className="empty-state" key={note.deckName}>
                       <strong>{note.deckName}</strong>
-                      <span>{note.note}</span>
-                      <span>
-                        Color lens: {note.inferredColors.length ? note.inferredColors.join("") : "colorless/unknown"}
-                        {note.matchingArchetype ? `, closest published shell: ${note.matchingArchetype}` : ""}
-                      </span>
-                      {note.overlappingCards.length ? (
-                        <span>
-                          Maindeck overlap:{" "}
-                          {note.overlappingCards
-                            .slice(0, 5)
-                            .map((card) => `${card.name} (${Math.round(card.share * 100)}%)`)
-                            .join(", ")}
-                        </span>
-                      ) : null}
                       {note.sideboardCards.length ? (
-                        <span>
-                          Sideboard cards to check in your colors:{" "}
+                        <div className="suggestion-chip-row" aria-label={`Sideboard suggestions for ${note.deckName}`}>
                           {note.sideboardCards
                             .slice(0, 6)
-                            .map((card) => `${card.name} (${card.decks} lists)`)
-                            .join(", ")}
-                        </span>
-                      ) : null}
+                            .map((card) => (
+                              <span className="suggestion-chip" key={card.name}>
+                                {card.name}
+                                <small>{card.decks} lists</small>
+                              </span>
+                            ))}
+                        </div>
+                      ) : (
+                        <span>No sideboard suggestions found from published in-color lists yet.</span>
+                      )}
                     </div>
                   ))
                 ) : (
@@ -315,8 +306,8 @@ function buildSavedDeckNotes(
       const similarInColorDecks = similarDecks
         .map((match) => match.deck)
         .filter((publishedDeck) => isDeckInColors(publishedDeck, inferredColors));
-      const sideboardSourceDecks = similarInColorDecks.length >= 3 ? similarInColorDecks : inColorDecks;
-      const sideboardCards = buildSideboardSuggestions(sideboardSourceDecks, allSavedCards);
+      const sideboardSourceDecks = similarInColorDecks.length ? similarInColorDecks : inColorDecks;
+      const sideboardCards = buildSideboardSuggestions(sideboardSourceDecks, allSavedCards, inferredColors);
       const overlappingCards = Array.from(deckCards)
         .map((card) => topCardMap.get(card.toLowerCase()))
         .filter(isMetagameCardCount)
@@ -380,7 +371,7 @@ function isDeckInColors(deck: MetagameDeck, colors: string[]) {
   return deck.colors.every((color) => colors.includes(color));
 }
 
-function buildSideboardSuggestions(decks: MetagameDeck[], savedCards: Set<string>) {
+function buildSideboardSuggestions(decks: MetagameDeck[], savedCards: Set<string>, colors: string[]) {
   const copies = new Map<string, number>();
   const deckPresence = new Map<string, number>();
   const normalizedSavedCards = new Set(Array.from(savedCards).map((card) => card.toLowerCase()));
@@ -388,7 +379,7 @@ function buildSideboardSuggestions(decks: MetagameDeck[], savedCards: Set<string
   for (const deck of decks) {
     const seen = new Set<string>();
     for (const card of deck.sideboard) {
-      if (normalizedSavedCards.has(card.name.toLowerCase())) {
+      if (normalizedSavedCards.has(card.name.toLowerCase()) || !isCardInColors(card, colors)) {
         continue;
       }
       copies.set(card.name, (copies.get(card.name) ?? 0) + card.qty);
@@ -411,4 +402,15 @@ function buildSideboardSuggestions(decks: MetagameDeck[], savedCards: Set<string
     })
     .sort((a, b) => b.decks - a.decks || b.count - a.count || a.name.localeCompare(b.name))
     .slice(0, 8);
+}
+
+function isCardInColors(card: { colors?: string[] }, colors: string[]) {
+  const cardColors = card.colors ?? [];
+  if (!cardColors.length) {
+    return true;
+  }
+  if (!colors.length) {
+    return false;
+  }
+  return cardColors.every((color) => colors.includes(color));
 }

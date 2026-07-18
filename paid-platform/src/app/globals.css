@@ -529,6 +529,32 @@ h2 {
   padding: 18px;
 }
 
+.suggestion-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.suggestion-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(89, 216, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(12, 47, 82, 0.72);
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 900;
+  padding: 8px 10px;
+}
+
+.suggestion-chip small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
 .onboarding-panel {
   display: grid;
   gap: 8px;

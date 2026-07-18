@@ -35,6 +35,7 @@ type MtgoDecklist = {
   loginid?: string;
   main_deck?: MtgoCard[];
   sideboard?: MtgoCard[];
+  side_board?: MtgoCard[];
 };
 
 type MtgoStanding = {
@@ -227,7 +228,7 @@ function normalizeEventDecks(data: MtgoEventData, sourceUrl: string, format: Met
 
   return (data.decklists ?? []).map((deck) => {
     const main = normalizeCards(deck.main_deck ?? []);
-    const sideboard = normalizeCards(deck.sideboard ?? []);
+    const sideboard = normalizeCards(deck.sideboard ?? deck.side_board ?? []);
     const colors = inferColors(deck.main_deck ?? []);
     return {
       player: deck.player ?? "Unknown player",
@@ -249,10 +250,20 @@ function normalizeCards(cards: MtgoCard[]) {
     .map((card) => ({
       name: card.card_attributes?.card_name?.trim() ?? "",
       qty: Number(card.qty ?? 0),
-      cardType: card.card_attributes?.card_type?.trim() ?? ""
+      cardType: card.card_attributes?.card_type?.trim() ?? "",
+      colors: normalizeCardColors(card.card_attributes?.colors ?? [])
     }))
     .filter((card) => card.name && card.qty > 0)
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function normalizeCardColors(colors: string[]) {
+  return colors
+    .map((color) => color.replace("COLOR_", "").toLowerCase())
+    .filter((color) => ["white", "blue", "black", "red", "green"].includes(color))
+    .map(colorLabel)
+    .filter(Boolean)
+    .sort((a, b) => "WUBRG".indexOf(a) - "WUBRG".indexOf(b));
 }
 
 function inferColors(cards: MtgoCard[]) {

@@ -16,8 +16,8 @@ export type MetagameDeck = {
   colors: string[];
   rank?: number;
   sourceUrl: string;
-  main: Array<{ name: string; qty: number; cardType?: string }>;
-  sideboard: Array<{ name: string; qty: number; cardType?: string }>;
+  main: Array<{ name: string; qty: number; cardType?: string; colors?: string[] }>;
+  sideboard: Array<{ name: string; qty: number; cardType?: string; colors?: string[] }>;
 };
 
 export type MetagameEvent = {
