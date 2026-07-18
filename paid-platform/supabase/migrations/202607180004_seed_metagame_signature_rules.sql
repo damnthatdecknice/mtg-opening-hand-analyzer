@@ -8,7 +8,7 @@ values
   ('Modern', 'Thought-Knot Seer', 'Eldrazi Tron', array['Colorless'], 145, 'Opening Edge default archetype rule.'),
   ('Modern', 'Manamorphose', 'Ruby Storm', array['W','R'], 130, 'Opening Edge default archetype rule.'),
   ('Modern', 'Monastery Swiftspear', 'Izzet Prowess', array['U','R'], 130, 'Opening Edge default archetype rule.'),
-  ('Modern', 'Cleansing Wildfire', 'Boros Ponza', array[]::text[], 120, 'Opening Edge default archetype rule.'),
+  ('Modern', 'Cleansing Wildfire', 'Boros Ponza', array['W','R'], 120, 'Opening Edge default archetype rule.'),
   ('Modern', 'Kozilek''s Command', 'RG Eldrazi', array['R','G'], 140, 'Opening Edge default archetype rule.'),
   ('Modern', 'Abhorrent Oculus', 'Grixis Reanimator', array['U','B','R'], 130, 'Opening Edge default archetype rule.'),
   ('Modern', 'Amulet of Vigor', 'Amulet Titan', array[]::text[], 130, 'Opening Edge default archetype rule.'),

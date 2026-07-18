@@ -25,7 +25,7 @@ const defaultSignatureRules: Array<MetagameSignatureRule & { format: MetagameFor
   { format: "Modern", cardName: "Thought-Knot Seer", archetypeName: "Eldrazi Tron", requiredColors: ["Colorless"], priority: 145 },
   { format: "Modern", cardName: "Manamorphose", archetypeName: "Ruby Storm", requiredColors: ["W", "R"], priority: 130 },
   { format: "Modern", cardName: "Monastery Swiftspear", archetypeName: "Izzet Prowess", requiredColors: ["U", "R"], priority: 130 },
-  { format: "Modern", cardName: "Cleansing Wildfire", archetypeName: "Boros Ponza", requiredColors: [], priority: 120 },
+  { format: "Modern", cardName: "Cleansing Wildfire", archetypeName: "Boros Ponza", requiredColors: ["W", "R"], priority: 120 },
   { format: "Modern", cardName: "Kozilek's Command", archetypeName: "RG Eldrazi", requiredColors: ["R", "G"], priority: 140 },
   { format: "Modern", cardName: "Abhorrent Oculus", archetypeName: "Grixis Reanimator", requiredColors: ["U", "B", "R"], priority: 130 },
   { format: "Modern", cardName: "Amulet of Vigor", archetypeName: "Amulet Titan", requiredColors: [], priority: 130 },
