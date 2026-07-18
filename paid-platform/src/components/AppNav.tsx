@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEntitlements } from "@/components/useEntitlements";
 import { getAuthFallbackUser } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
@@ -20,6 +21,7 @@ const navItems = [
 ];
 
 export function AppNav() {
+  const pathname = usePathname();
   const entitlements = useEntitlements();
   const [isSignedIn, setIsSignedIn] = useState(false);
   const visibleItems = navItems.filter(
@@ -53,7 +55,12 @@ export function AppNav() {
       </Link>
       <div className="app-nav-links">
         {visibleItems.map((item) => (
-          <Link className="secondary-button app-nav-link" href={item.href} key={item.href}>
+          <Link
+            aria-current={pathname === item.href ? "page" : undefined}
+            className="secondary-button app-nav-link"
+            href={item.href}
+            key={item.href}
+          >
             {item.label}
           </Link>
         ))}

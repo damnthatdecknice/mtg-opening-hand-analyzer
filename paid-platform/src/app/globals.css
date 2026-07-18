@@ -15,6 +15,8 @@
   --good: #62e6a6;
   --warning: #ffd975;
   --amber: #ffb84d;
+  --amber-soft: rgba(255, 184, 77, 0.18);
+  --amber-border: rgba(255, 184, 77, 0.42);
   --bad: #ff7464;
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
   --glow: 0 0 34px rgba(89, 216, 255, 0.16);
@@ -31,6 +33,8 @@
   --panel: rgba(3, 9, 20, 0.97);
   --border: rgba(155, 220, 255, 0.62);
   --muted: #d7e6f7;
+  --amber-soft: rgba(255, 184, 77, 0.26);
+  --amber-border: rgba(255, 207, 119, 0.72);
   --shadow: 0 20px 70px rgba(0, 0, 0, 0.62);
 }
 
@@ -161,6 +165,13 @@ a {
   padding: 0 12px;
 }
 
+.app-nav-link[aria-current="page"] {
+  border-color: var(--amber-border);
+  box-shadow:
+    inset 0 -2px 0 rgba(255, 184, 77, 0.82),
+    0 0 20px rgba(255, 184, 77, 0.12);
+}
+
 .panel,
 .metric-card {
   position: relative;
@@ -184,6 +195,22 @@ a {
     linear-gradient(120deg, rgba(78, 220, 255, 0.14), transparent 26%),
     radial-gradient(circle at top right, rgba(255, 184, 77, 0.12), transparent 34%);
   opacity: 0.55;
+}
+
+.panel::after,
+.metric-card::after,
+.result-hero-card::after,
+.chart-card::after,
+.plain-read-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 18px;
+  width: 96px;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(90deg, var(--amber), transparent);
+  opacity: 0.72;
 }
 
 .hero-grid {
@@ -362,6 +389,12 @@ h2 {
   display: block;
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+.metric-card span {
+  color: #ffe1a1;
+  font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
 .metric-card strong {
@@ -642,6 +675,10 @@ h2 {
   margin-bottom: 18px;
 }
 
+.section-heading h2 {
+  text-shadow: 0 0 18px rgba(255, 184, 77, 0.12);
+}
+
 .list-stack {
   display: grid;
   gap: 12px;
@@ -657,6 +694,11 @@ h2 {
   border-radius: 0;
   background: linear-gradient(135deg, rgba(6, 20, 40, 0.78), rgba(3, 10, 23, 0.78));
   clip-path: var(--clip-sm);
+}
+
+.list-row strong,
+.deck-row strong {
+  color: #fff5dc;
 }
 
 .clickable-list-row {
@@ -699,6 +741,10 @@ h2 {
   background: linear-gradient(135deg, rgba(4, 15, 32, 0.68), rgba(2, 8, 18, 0.62));
   padding: 18px;
   clip-path: var(--clip-sm);
+}
+
+.empty-state strong {
+  color: #ffe1a1;
 }
 
 .suggestion-chip-row {
@@ -801,7 +847,7 @@ h2 {
 .auth-form label {
   display: grid;
   gap: 8px;
-  color: var(--muted);
+  color: #ffe1a1;
   font-weight: 800;
 }
 
@@ -876,7 +922,7 @@ h2 {
 .deck-form label {
   display: grid;
   gap: 8px;
-  color: var(--muted);
+  color: #ffe1a1;
   font-weight: 800;
 }
 
@@ -936,10 +982,10 @@ h2 {
 }
 
 .mini-metrics span {
-  border: 1px solid rgba(89, 216, 255, 0.18);
+  border: 1px solid rgba(255, 184, 77, 0.28);
   border-radius: 999px;
-  background: rgba(89, 216, 255, 0.08);
-  color: #dff7ff;
+  background: linear-gradient(135deg, rgba(255, 184, 77, 0.13), rgba(89, 216, 255, 0.08));
+  color: #ffe1a1;
   font-weight: 800;
   padding: 8px 10px;
 }
@@ -981,8 +1027,11 @@ h2 {
 }
 
 .tool-tabs button.is-selected {
-  border-bottom-color: var(--accent);
-  background: linear-gradient(180deg, rgba(89, 216, 255, 0.14), transparent);
+  border-color: rgba(255, 184, 77, 0.2);
+  border-bottom-color: var(--amber);
+  background:
+    linear-gradient(180deg, rgba(255, 184, 77, 0.16), transparent),
+    linear-gradient(90deg, rgba(89, 216, 255, 0.08), transparent);
   color: var(--text);
 }
 
@@ -1013,7 +1062,7 @@ h2 {
 .field-stack {
   display: grid;
   gap: 8px;
-  color: var(--muted);
+  color: #ffe1a1;
   font-weight: 800;
 }
 
@@ -1106,10 +1155,10 @@ h2 {
 }
 
 .segmented-control button.is-selected {
-  border-color: rgba(89, 216, 255, 0.8);
-  background: linear-gradient(135deg, rgba(89, 216, 255, 0.24), rgba(166, 140, 255, 0.16));
+  border-color: var(--amber-border);
+  background: linear-gradient(135deg, rgba(255, 184, 77, 0.18), rgba(89, 216, 255, 0.14));
   color: var(--text);
-  box-shadow: 0 0 22px rgba(89, 216, 255, 0.14);
+  box-shadow: 0 0 22px rgba(255, 184, 77, 0.12);
 }
 
 .confirmed-hand-grid {
@@ -1228,7 +1277,7 @@ h2 {
 
 .crop-adjust-panel summary {
   cursor: pointer;
-  color: var(--text);
+  color: #ffe1a1;
   font-weight: 900;
 }
 
@@ -1271,7 +1320,7 @@ h2 {
 }
 
 .recognition-status-row strong {
-  color: var(--text);
+  color: #ffe1a1;
 }
 
 .candidate-list {
@@ -1353,6 +1402,8 @@ h2 {
 }
 
 .result-hero-card {
+  position: relative;
+  overflow: hidden;
   border: 1px solid rgba(103, 194, 255, 0.24);
   border-radius: 0;
   background:
@@ -1430,6 +1481,11 @@ h2 {
   background: linear-gradient(135deg, rgba(4, 17, 36, 0.82), rgba(1, 8, 18, 0.78));
   padding: 16px;
   clip-path: var(--clip-sm);
+}
+
+.watchout-panel {
+  border-color: var(--amber-border);
+  background: linear-gradient(135deg, rgba(66, 39, 10, 0.42), rgba(1, 8, 18, 0.78));
 }
 
 .deck-context-card {
@@ -1523,7 +1579,7 @@ h2 {
 }
 
 .data-table th {
-  color: #dff7ff;
+  color: #ffe1a1;
   font-size: 0.8rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1576,6 +1632,8 @@ h2 {
 
 .chart-card,
 .plain-read-card {
+  position: relative;
+  overflow: hidden;
   border: 1px solid rgba(103, 194, 255, 0.2);
   border-radius: 0;
   background:
@@ -1599,6 +1657,7 @@ h2 {
 
 .chart-heading h2 {
   margin-bottom: 4px;
+  color: #fff5dc;
 }
 
 .chart-heading p,
@@ -1619,7 +1678,7 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  border: 1px solid rgba(103, 194, 255, 0.16);
+  border: 1px solid rgba(255, 184, 77, 0.22);
   border-radius: 0;
   background: linear-gradient(135deg, rgba(8, 28, 54, 0.76), rgba(4, 14, 28, 0.72));
   color: var(--muted);
@@ -1705,6 +1764,11 @@ h2 {
   width: min(760px, 100%);
 }
 
+.metagame-controls label {
+  color: #ffe1a1;
+  font-weight: 900;
+}
+
 .metagame-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1727,7 +1791,7 @@ h2 {
 }
 
 .meta-bar-row span {
-  color: var(--text);
+  color: #fff5dc;
   font-weight: 900;
 }
 
@@ -1824,7 +1888,7 @@ h2 {
 
 .curve-row span,
 .curve-row strong {
-  color: var(--muted);
+  color: #ffe1a1;
   font-weight: 900;
 }
 
@@ -1840,7 +1904,7 @@ h2 {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  background: linear-gradient(90deg, var(--amber), var(--accent));
 }
 
 @media (max-width: 900px) {
