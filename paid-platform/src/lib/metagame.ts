@@ -29,6 +29,7 @@ export type MetagameEvent = {
 
 export type MetagameArchetype = {
   name: string;
+  sourceName: string;
   decks: number;
   share: number;
   previousShare: number;

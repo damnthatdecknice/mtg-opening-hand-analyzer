@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServerSupabaseClient, isServerSupabaseConfigured } from "@/lib/serverSupabase";
 import {
   isMetagameFormat,
   type MetagameArchetype,
@@ -10,6 +11,7 @@ import {
 } from "@/lib/metagame";
 
 const mtgoRoot = "https://www.mtgo.com";
+const archetypeOverrideTable = "metagame_archetype_overrides";
 const windowDays = 7;
 const eventNamePattern = /(challenge|showcase|qualifier|championship|premier|preliminary)/i;
 const snapshotRevalidateSeconds = 60 * 60 * 24;
@@ -66,7 +68,7 @@ export async function GET(request: NextRequest) {
   const cached = cache.get(format);
 
   if (cached && cached.expiresAt > Date.now()) {
-    return metagameJson(cached.data);
+    return metagameJson(await applyArchetypeOverrides(cached.data, format));
   }
 
   try {
@@ -75,7 +77,7 @@ export async function GET(request: NextRequest) {
       data,
       expiresAt: Date.now() + cacheMs
     });
-    return metagameJson(data);
+    return metagameJson(await applyArchetypeOverrides(data, format));
   } catch (error) {
     return NextResponse.json(
       {
@@ -92,6 +94,52 @@ function metagameJson(data: MetagameResponse) {
       "Cache-Control": `public, s-maxage=${snapshotRevalidateSeconds}, stale-while-revalidate=${snapshotRevalidateSeconds}`
     }
   });
+}
+
+async function applyArchetypeOverrides(data: MetagameResponse, format: MetagameFormat) {
+  const overrides = await fetchArchetypeOverrides(format);
+  if (!overrides.size) {
+    return data;
+  }
+
+  return {
+    ...data,
+    archetypes: data.archetypes.map((archetype) => {
+      const sourceName = archetype.sourceName || archetype.name;
+      return {
+        ...archetype,
+        sourceName,
+        name: overrides.get(sourceName.toLowerCase()) ?? archetype.name
+      };
+    })
+  };
+}
+
+async function fetchArchetypeOverrides(format: MetagameFormat) {
+  const overrides = new Map<string, string>();
+  if (!isServerSupabaseConfigured) {
+    return overrides;
+  }
+
+  const supabase = createServerSupabaseClient();
+  if (!supabase) {
+    return overrides;
+  }
+
+  const { data } = await supabase
+    .from(archetypeOverrideTable)
+    .select("source_name, display_name")
+    .eq("format", format);
+
+  for (const row of data ?? []) {
+    const sourceName = typeof row.source_name === "string" ? row.source_name.trim() : "";
+    const displayName = typeof row.display_name === "string" ? row.display_name.trim() : "";
+    if (sourceName && displayName) {
+      overrides.set(sourceName.toLowerCase(), displayName);
+    }
+  }
+
+  return overrides;
 }
 
 async function buildMetagame(format: MetagameFormat): Promise<MetagameResponse> {
@@ -299,6 +347,14 @@ function classifyArchetype(main: Array<{ name: string; qty: number }>, colors: s
   const has = (...needles: string[]) => needles.some((needle) => names.has(needle.toLowerCase()));
   const colorName = colors.length ? colors.join("") : "Colorless";
 
+  if (has("Goryo's Vengeance")) return "Goryo's Vengeance";
+  if (has("Galvanic Discharge")) return "Boros Energy";
+  if (has("Pinnacle Emissary")) return "Affinity";
+  if (has("Thought-Knot Seer")) {
+    if (colors.includes("R") && colors.includes("G")) return "GR Eldrazi";
+    if (colors.includes("G")) return "G Eldrazi";
+    return `${colorName} Eldrazi`;
+  }
   if (has("Monastery Swiftspear", "Lightning Bolt", "Play with Fire") && colors.includes("R")) return `${colorName} Prowess/Aggro`;
   if (has("Arclight Phoenix")) return `${colorName} Phoenix`;
   if (has("Yorion, Sky Nomad", "Up the Beanstalk")) return `${colorName} Beanstalk`;
@@ -344,6 +400,7 @@ function buildArchetypes(
       const previousShare = previousShares.get(name) ?? 0;
       return {
         name,
+        sourceName: name,
         decks: archetypeDecks.length,
         share,
         previousShare,

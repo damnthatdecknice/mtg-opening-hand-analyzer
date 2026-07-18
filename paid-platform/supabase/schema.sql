@@ -71,6 +71,15 @@ create table if not exists public.rank_integration_checks (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.metagame_archetype_overrides (
+  format text not null,
+  source_name text not null,
+  display_name text not null,
+  updated_by text not null,
+  updated_at timestamptz not null default now(),
+  primary key (format, source_name)
+);
+
 create or replace function public.rank_from_subscription(status text, price_id text, email text default null)
 returns text
 language plpgsql
@@ -177,6 +186,7 @@ alter table public.rating_entries enable row level security;
 alter table public.hand_sessions enable row level security;
 alter table public.subscription_status enable row level security;
 alter table public.rank_integration_checks enable row level security;
+alter table public.metagame_archetype_overrides enable row level security;
 
 drop policy if exists "profiles are owned by users" on public.profiles;
 create policy "profiles are owned by users"
@@ -210,5 +220,11 @@ create policy "subscription rows are owned by users"
 drop policy if exists "rank integration checks are server only" on public.rank_integration_checks;
 create policy "rank integration checks are server only"
   on public.rank_integration_checks for all
+  using (false)
+  with check (false);
+
+drop policy if exists "metagame archetype overrides are server only" on public.metagame_archetype_overrides;
+create policy "metagame archetype overrides are server only"
+  on public.metagame_archetype_overrides for all
   using (false)
   with check (false);
