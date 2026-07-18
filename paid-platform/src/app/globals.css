@@ -1452,6 +1452,25 @@ h2 {
   text-align: right;
 }
 
+.meta-bar-row small {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.trend-up {
+  color: #70f2a4;
+}
+
+.trend-down {
+  color: #ff8d8d;
+}
+
+.trend-flat {
+  color: var(--muted);
+}
+
 .curve-row {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) 44px;

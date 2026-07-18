@@ -96,10 +96,39 @@ function metagameJson(data: MetagameResponse) {
 async function buildMetagame(format: MetagameFormat): Promise<MetagameResponse> {
   const warnings: string[] = [];
   const indexEvents = await fetchRecentIndexEvents(format);
+  const now = Date.now();
+  const currentCutoff = now - windowDays * 24 * 60 * 60 * 1000;
+  const previousCutoff = now - windowDays * 2 * 24 * 60 * 60 * 1000;
+  const currentEvents = indexEvents.filter((event) => Date.parse(event.date) >= currentCutoff);
+  const previousEvents = indexEvents.filter((event) => {
+    const eventTime = Date.parse(event.date);
+    return eventTime >= previousCutoff && eventTime < currentCutoff;
+  });
+  const currentSnapshot = await buildWindowSnapshot(format, currentEvents.slice(0, 8), warnings);
+  const previousSnapshot = await buildWindowSnapshot(format, previousEvents.slice(0, 8), warnings);
+  const archetypes = buildArchetypes(currentSnapshot.decks, previousSnapshot.decks);
+  const topCards = buildTopCards(currentSnapshot.decks);
+
+  return {
+    format,
+    generatedAt: new Date().toISOString(),
+    source: "Official Magic Online decklists published at mtgo.com",
+    windowDays,
+    deckCount: currentSnapshot.decks.length,
+    eventCount: currentSnapshot.events.length,
+    events: currentSnapshot.events,
+    archetypes,
+    topCards,
+    decks: currentSnapshot.decks,
+    warnings
+  };
+}
+
+async function buildWindowSnapshot(format: MetagameFormat, indexEvents: IndexEvent[], warnings: string[]) {
   const decks: MetagameDeck[] = [];
   const events: MetagameEvent[] = [];
 
-  for (const event of indexEvents.slice(0, 8)) {
+  for (const event of indexEvents) {
     try {
       const data = await fetchEventData(event.url);
       const eventDecks = normalizeEventDecks(data, event.url, format);
@@ -117,27 +146,12 @@ async function buildMetagame(format: MetagameFormat): Promise<MetagameResponse> 
     }
   }
 
-  const archetypes = buildArchetypes(decks);
-  const topCards = buildTopCards(decks);
-
-  return {
-    format,
-    generatedAt: new Date().toISOString(),
-    source: "Official Magic Online decklists published at mtgo.com",
-    windowDays,
-    deckCount: decks.length,
-    eventCount: events.length,
-    events,
-    archetypes,
-    topCards,
-    decks,
-    warnings
-  };
+  return { decks, events };
 }
 
 async function fetchRecentIndexEvents(format: MetagameFormat) {
   const html = await fetchText(`${mtgoRoot}/decklists`);
-  const cutoff = Date.now() - windowDays * 24 * 60 * 60 * 1000;
+  const cutoff = Date.now() - windowDays * 2 * 24 * 60 * 60 * 1000;
   const events: IndexEvent[] = [];
   const eventRegex =
     /<a\s+href="(\/decklist\/[^"]+)"\s+class="decklists-link">[\s\S]*?<h3>([^<]+)<\/h3>[\s\S]*?<time\s+datetime="([^"]+)"/gi;
@@ -299,20 +313,35 @@ function classifyArchetype(main: Array<{ name: string; qty: number }>, colors: s
   return `${colorName} Other`;
 }
 
-function buildArchetypes(decks: MetagameDeck[]): MetagameArchetype[] {
+function buildArchetypes(decks: MetagameDeck[], previousDecks: MetagameDeck[] = []): MetagameArchetype[] {
   const grouped = new Map<string, MetagameDeck[]>();
   for (const deck of decks) {
     grouped.set(deck.archetype, [...(grouped.get(deck.archetype) ?? []), deck]);
   }
+  const previousShares = buildArchetypeShares(previousDecks);
 
   return Array.from(grouped.entries())
-    .map(([name, archetypeDecks]) => ({
-      name,
-      decks: archetypeDecks.length,
-      share: decks.length ? archetypeDecks.length / decks.length : 0,
-      topCards: buildTopCards(archetypeDecks).slice(0, 5)
-    }))
+    .map(([name, archetypeDecks]) => {
+      const share = decks.length ? archetypeDecks.length / decks.length : 0;
+      const previousShare = previousShares.get(name) ?? 0;
+      return {
+        name,
+        decks: archetypeDecks.length,
+        share,
+        previousShare,
+        change: share - previousShare,
+        topCards: buildTopCards(archetypeDecks).slice(0, 5)
+      };
+    })
     .sort((a, b) => b.decks - a.decks || a.name.localeCompare(b.name));
+}
+
+function buildArchetypeShares(decks: MetagameDeck[]) {
+  const counts = new Map<string, number>();
+  for (const deck of decks) {
+    counts.set(deck.archetype, (counts.get(deck.archetype) ?? 0) + 1);
+  }
+  return new Map(Array.from(counts.entries()).map(([name, count]) => [name, decks.length ? count / decks.length : 0]));
 }
 
 function buildTopCards(decks: MetagameDeck[]): MetagameCardCount[] {

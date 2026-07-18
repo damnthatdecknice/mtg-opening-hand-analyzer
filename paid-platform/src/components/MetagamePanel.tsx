@@ -160,6 +160,7 @@ export function MetagamePanel() {
                   <i style={{ width: `${Math.max(4, archetype.share * 100)}%` }} />
                   <em>
                     {Math.round(archetype.share * 100)}% ({archetype.decks})
+                    <small className={getTrendClass(archetype.change)}>{formatTrend(archetype.change)}</small>
                   </em>
                 </div>
               ))}
@@ -243,6 +244,27 @@ export function MetagamePanel() {
       )}
     </section>
   );
+}
+
+function formatTrend(change: number) {
+  const percentagePoints = Math.round(change * 100);
+  if (percentagePoints > 0) {
+    return `▲ ${percentagePoints}%`;
+  }
+  if (percentagePoints < 0) {
+    return `▼ ${Math.abs(percentagePoints)}%`;
+  }
+  return "▬ 0%";
+}
+
+function getTrendClass(change: number) {
+  if (change > 0.004) {
+    return "trend-up";
+  }
+  if (change < -0.004) {
+    return "trend-down";
+  }
+  return "trend-flat";
 }
 
 function buildSavedDeckNotes(

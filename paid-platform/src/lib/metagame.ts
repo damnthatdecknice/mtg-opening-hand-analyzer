@@ -31,6 +31,8 @@ export type MetagameArchetype = {
   name: string;
   decks: number;
   share: number;
+  previousShare: number;
+  change: number;
   topCards: MetagameCardCount[];
 };
 
