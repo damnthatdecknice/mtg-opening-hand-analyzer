@@ -10,7 +10,14 @@ create table if not exists public.metagame_archetype_overrides (
 alter table public.metagame_archetype_overrides enable row level security;
 
 drop policy if exists "metagame archetype overrides are server only" on public.metagame_archetype_overrides;
-create policy "metagame archetype overrides are server only"
+drop policy if exists "metagame archetype overrides are public readable" on public.metagame_archetype_overrides;
+drop policy if exists "metagame archetype overrides are admin editable" on public.metagame_archetype_overrides;
+
+create policy "metagame archetype overrides are public readable"
+  on public.metagame_archetype_overrides for select
+  using (true);
+
+create policy "metagame archetype overrides are admin editable"
   on public.metagame_archetype_overrides for all
-  using (false)
-  with check (false);
+  using (lower(auth.jwt() ->> 'email') = 'gotthisforsoi@gmail.com')
+  with check (lower(auth.jwt() ->> 'email') = 'gotthisforsoi@gmail.com');

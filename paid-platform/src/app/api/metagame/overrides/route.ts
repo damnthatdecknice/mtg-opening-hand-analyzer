@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient, isServerSupabaseConfigured } from "@/lib/serverSupabase";
+import { createServerAnonSupabaseClient, isServerAnonSupabaseConfigured } from "@/lib/serverSupabase";
 import { isMetagameFormat, type MetagameFormat } from "@/lib/metagame";
 
 const metagameAdminEmail = "gotthisforsoi@gmail.com";
@@ -12,17 +12,17 @@ type OverrideBody = {
 };
 
 export async function POST(request: NextRequest) {
-  if (!isServerSupabaseConfigured) {
-    return NextResponse.json({ error: "Server Supabase credentials are not configured." }, { status: 503 });
+  if (!isServerAnonSupabaseConfigured) {
+    return NextResponse.json({ error: "Supabase public credentials are not configured." }, { status: 503 });
   }
 
-  const supabase = createServerSupabaseClient();
+  const token = readBearerToken(request);
+  const supabase = createServerAnonSupabaseClient(token);
   if (!supabase) {
     return NextResponse.json({ error: "Server Supabase client could not be created." }, { status: 503 });
   }
 
-  const token = readBearerToken(request);
-  const { data: userData, error: userError } = await supabase.auth.getUser(token);
+  const { data: userData, error: userError } = await supabase.auth.getUser();
   const email = userData.user?.email?.toLowerCase();
   if (userError || email !== metagameAdminEmail) {
     return NextResponse.json({ error: "Only the metagame admin can edit archetype names." }, { status: 403 });

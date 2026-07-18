@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient, isServerSupabaseConfigured } from "@/lib/serverSupabase";
+import { createServerAnonSupabaseClient, isServerAnonSupabaseConfigured } from "@/lib/serverSupabase";
 import {
   isMetagameFormat,
   type MetagameArchetype,
@@ -118,11 +118,11 @@ async function applyArchetypeOverrides(data: MetagameResponse, format: MetagameF
 
 async function fetchArchetypeOverrides(format: MetagameFormat) {
   const overrides = new Map<string, string>();
-  if (!isServerSupabaseConfigured) {
+  if (!isServerAnonSupabaseConfigured) {
     return overrides;
   }
 
-  const supabase = createServerSupabaseClient();
+  const supabase = createServerAnonSupabaseClient();
   if (!supabase) {
     return overrides;
   }
