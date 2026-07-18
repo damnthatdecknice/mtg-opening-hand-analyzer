@@ -12,9 +12,14 @@ export function DashboardActions() {
         Analyze a hand
       </Link>
       {entitlements.canUseDeckVault ? (
-        <Link className="secondary-button" href="/decks">
-          Save decks
-        </Link>
+        <>
+          <Link className="secondary-button" href="/decks">
+            Save decks
+          </Link>
+          <Link className="secondary-button" href="/metagame">
+            Metagame
+          </Link>
+        </>
       ) : (
         <Link className="secondary-button" href="/pricing">
           View Deck Pro

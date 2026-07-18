@@ -1399,6 +1399,59 @@ h2 {
   width: min(760px, 100%);
 }
 
+.metagame-page {
+  display: grid;
+  gap: 20px;
+}
+
+.metagame-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  width: min(760px, 100%);
+}
+
+.metagame-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.meta-bars {
+  display: grid;
+  gap: 12px;
+}
+
+.meta-bar-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(180px, 1.3fr) 96px;
+  gap: 12px;
+  align-items: center;
+}
+
+.meta-bar-row span {
+  color: var(--text);
+  font-weight: 900;
+}
+
+.meta-bar-row i {
+  display: block;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 18px rgba(89, 216, 255, 0.18);
+}
+
+.meta-bar-row em {
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 900;
+  text-align: right;
+}
+
 .curve-row {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) 44px;
@@ -1449,8 +1502,17 @@ h2 {
   .crop-adjust-grid,
   .source-grid,
   .deck-page-grid,
+  .metagame-grid,
   .form-row {
     grid-template-columns: 1fr;
+  }
+
+  .meta-bar-row {
+    grid-template-columns: 1fr;
+  }
+
+  .meta-bar-row em {
+    text-align: left;
   }
 
   .hero-panel {
