@@ -2,10 +2,10 @@
   --bg: #010511;
   --panel: rgba(5, 15, 31, 0.9);
   --panel-strong: rgba(2, 8, 19, 0.97);
-  --command-panel: rgba(219, 239, 255, 0.88);
-  --command-panel-strong: rgba(238, 248, 255, 0.94);
-  --command-text: #061528;
-  --command-muted: #27455f;
+  --command-panel: rgba(7, 19, 38, 0.92);
+  --command-panel-strong: rgba(12, 31, 58, 0.94);
+  --command-text: #f6fbff;
+  --command-muted: #bfd2e6;
   --data-card: rgba(4, 13, 30, 0.9);
   --border: rgba(123, 211, 255, 0.34);
   --text: #f4f8ff;
@@ -120,12 +120,12 @@ a {
   position: sticky;
   top: 18px;
   z-index: 20;
-  border: 1px solid rgba(103, 194, 255, 0.26);
+  border: 1px solid rgba(255, 184, 77, 0.28);
   border-radius: 0;
   background:
-    linear-gradient(135deg, rgba(10, 28, 52, 0.78), rgba(3, 10, 22, 0.78)),
+    linear-gradient(135deg, rgba(14, 32, 56, 0.82), rgba(3, 10, 22, 0.82)),
     rgba(4, 12, 24, 0.74);
-  box-shadow: var(--shadow), var(--glow), var(--inner-glow);
+  box-shadow: var(--shadow), 0 0 28px rgba(255, 184, 77, 0.1), var(--inner-glow);
   backdrop-filter: blur(18px);
   clip-path: var(--clip-md);
 }
@@ -136,7 +136,7 @@ a {
   letter-spacing: 0.02em;
   padding: 0 10px;
   white-space: nowrap;
-  text-shadow: 0 0 22px rgba(89, 216, 255, 0.24);
+  text-shadow: 0 0 22px rgba(255, 184, 77, 0.22);
 }
 
 .app-nav-links {
@@ -187,7 +187,7 @@ a {
   min-height: 420px;
   padding: 44px;
   border-radius: 0;
-  border-color: rgba(196, 230, 255, 0.72);
+  border-color: rgba(255, 184, 77, 0.44);
 }
 
 .hero-panel,
@@ -196,14 +196,14 @@ a {
 .auth-required,
 .locked-feature-panel {
   background:
-    linear-gradient(135deg, var(--command-panel-strong), rgba(195, 226, 248, 0.84)),
+    linear-gradient(135deg, var(--command-panel-strong), rgba(4, 12, 26, 0.94)),
     var(--command-panel);
-  border-color: rgba(214, 240, 255, 0.82);
+  border-color: rgba(255, 184, 77, 0.44);
   color: var(--command-text);
   box-shadow:
     0 26px 80px rgba(0, 0, 0, 0.42),
-    0 0 36px rgba(78, 220, 255, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.66);
+    0 0 36px rgba(255, 184, 77, 0.12),
+    inset 0 1px 0 rgba(255, 226, 164, 0.16);
 }
 
 .hero-panel::before,
@@ -212,9 +212,9 @@ a {
 .auth-required::before,
 .locked-feature-panel::before {
   background:
-    linear-gradient(120deg, rgba(255, 255, 255, 0.45), transparent 32%),
-    radial-gradient(circle at top right, rgba(78, 220, 255, 0.22), transparent 36%),
-    linear-gradient(90deg, transparent, rgba(6, 21, 40, 0.08));
+    linear-gradient(120deg, rgba(255, 184, 77, 0.18), transparent 28%),
+    radial-gradient(circle at top right, rgba(78, 220, 255, 0.2), transparent 36%),
+    linear-gradient(90deg, transparent, rgba(255, 217, 117, 0.08));
   opacity: 1;
 }
 
@@ -225,6 +225,7 @@ a {
   font-weight: 800;
   letter-spacing: 0.16em;
   text-transform: uppercase;
+  text-shadow: 0 0 18px rgba(255, 184, 77, 0.24);
 }
 
 h1,
@@ -305,9 +306,9 @@ h2 {
 .dashboard-header .secondary-button,
 .auth-panel .secondary-button,
 .auth-required .secondary-button {
-  border-color: rgba(6, 21, 40, 0.2);
-  background: rgba(6, 21, 40, 0.08);
-  color: var(--command-text);
+  border-color: rgba(255, 184, 77, 0.42);
+  background: linear-gradient(135deg, rgba(255, 184, 77, 0.14), rgba(8, 22, 42, 0.64));
+  color: #ffe2a8;
 }
 
 .primary-button:hover,
@@ -324,9 +325,9 @@ h2 {
 .secondary-button:hover,
 .text-button:hover,
 .mini-button:hover {
-  border-color: rgba(89, 216, 255, 0.62);
+  border-color: rgba(255, 184, 77, 0.58);
   color: var(--text);
-  box-shadow: 0 0 22px rgba(89, 216, 255, 0.12);
+  box-shadow: 0 0 22px rgba(255, 184, 77, 0.12);
 }
 
 .primary-button:disabled {
@@ -439,10 +440,10 @@ h2 {
 }
 
 .pricing-card.featured {
-  border-color: rgba(78, 220, 255, 0.78);
+  border-color: rgba(255, 184, 77, 0.74);
   box-shadow:
     0 24px 70px rgba(0, 0, 0, 0.38),
-    0 0 34px rgba(78, 220, 255, 0.2);
+    0 0 34px rgba(255, 184, 77, 0.18);
 }
 
 .pricing-card h2 {
@@ -459,7 +460,7 @@ h2 {
 }
 
 .feature-list li::marker {
-  color: var(--accent);
+  color: var(--amber);
 }
 
 .plan-pill {
@@ -522,7 +523,7 @@ h2 {
 }
 
 .toggle-row:hover {
-  border-color: rgba(89, 216, 255, 0.36);
+  border-color: rgba(255, 184, 77, 0.36);
   transform: translateY(-1px);
 }
 
@@ -642,7 +643,7 @@ h2 {
   justify-content: space-between;
   gap: 16px;
   padding: 14px;
-  border: 1px solid rgba(103, 194, 255, 0.16);
+  border: 1px solid rgba(255, 184, 77, 0.18);
   border-radius: 0;
   background: linear-gradient(135deg, rgba(6, 20, 40, 0.78), rgba(3, 10, 23, 0.78));
   clip-path: var(--clip-sm);
@@ -657,8 +658,8 @@ h2 {
 
 .clickable-list-row:hover,
 .clickable-list-row:focus-visible {
-  border-color: rgba(89, 216, 255, 0.52);
-  background: rgba(8, 30, 56, 0.84);
+  border-color: rgba(255, 184, 77, 0.46);
+  background: rgba(39, 27, 12, 0.34);
   outline: none;
   transform: translateY(-1px);
 }
@@ -669,7 +670,7 @@ h2 {
   justify-content: space-between;
   gap: 16px;
   padding: 16px;
-  border: 1px solid rgba(103, 194, 255, 0.16);
+  border: 1px solid rgba(255, 184, 77, 0.18);
   border-radius: 0;
   background: linear-gradient(135deg, rgba(6, 20, 40, 0.78), rgba(3, 10, 23, 0.78));
   clip-path: var(--clip-sm);
@@ -683,7 +684,7 @@ h2 {
 }
 
 .empty-state {
-  border: 1px dashed rgba(103, 194, 255, 0.24);
+  border: 1px dashed rgba(255, 184, 77, 0.28);
   border-radius: 0;
   background: linear-gradient(135deg, rgba(4, 15, 32, 0.68), rgba(2, 8, 18, 0.62));
   padding: 18px;
@@ -701,9 +702,9 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  border: 1px solid rgba(78, 220, 255, 0.34);
+  border: 1px solid rgba(255, 184, 77, 0.42);
   border-radius: 0;
-  background: linear-gradient(135deg, rgba(13, 57, 88, 0.82), rgba(5, 20, 40, 0.84));
+  background: linear-gradient(135deg, rgba(76, 47, 13, 0.56), rgba(5, 20, 40, 0.84));
   color: var(--text);
   font-size: 0.88rem;
   font-weight: 900;
@@ -724,7 +725,7 @@ h2 {
   display: grid;
   gap: 8px;
   margin: 16px 0;
-  border: 1px solid rgba(103, 194, 255, 0.18);
+  border: 1px solid rgba(255, 184, 77, 0.2);
   border-radius: 0;
   background: linear-gradient(135deg, rgba(4, 18, 36, 0.72), rgba(2, 8, 18, 0.68));
   color: var(--muted);
@@ -1736,7 +1737,7 @@ h2 {
 
 .archetype-admin-control input {
   width: 100%;
-  border: 1px solid rgba(103, 194, 255, 0.28);
+  border: 1px solid rgba(255, 184, 77, 0.32);
   border-radius: 0;
   background: linear-gradient(180deg, rgba(2, 8, 18, 0.9), rgba(6, 17, 34, 0.84));
   color: var(--text);
@@ -1748,9 +1749,9 @@ h2 {
 
 .mini-button {
   justify-self: start;
-  border: 1px solid rgba(89, 216, 255, 0.42);
+  border: 1px solid rgba(255, 184, 77, 0.42);
   border-radius: 0;
-  background: linear-gradient(135deg, rgba(18, 92, 141, 0.78), rgba(91, 78, 174, 0.42));
+  background: linear-gradient(135deg, rgba(118, 74, 19, 0.62), rgba(12, 47, 82, 0.68));
   color: var(--text);
   cursor: pointer;
   font-weight: 900;
@@ -1772,9 +1773,9 @@ h2 {
   display: block;
   height: 12px;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  background: linear-gradient(90deg, var(--amber), var(--accent));
   box-shadow:
-    0 0 18px rgba(89, 216, 255, 0.18),
+    0 0 18px rgba(255, 184, 77, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
 
