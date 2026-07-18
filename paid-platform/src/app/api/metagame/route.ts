@@ -12,6 +12,7 @@ import {
 
 const mtgoRoot = "https://www.mtgo.com";
 const archetypeOverrideTable = "metagame_archetype_overrides";
+const signatureRuleTable = "metagame_signature_rules";
 const windowDays = 7;
 const eventNamePattern = /(challenge|showcase|qualifier|championship|premier|preliminary)/i;
 const snapshotRevalidateSeconds = 60 * 60 * 24;
@@ -20,6 +21,13 @@ const cacheMs = 1000 * snapshotRevalidateSeconds;
 type CacheEntry = {
   expiresAt: number;
   data: MetagameResponse;
+};
+
+type MetagameSignatureRule = {
+  cardName: string;
+  archetypeName: string;
+  requiredColors: string[];
+  priority: number;
 };
 
 type MtgoCard = {
@@ -92,7 +100,7 @@ export async function GET(request: NextRequest) {
 function metagameJson(data: MetagameResponse) {
   return NextResponse.json(data, {
     headers: {
-      "Cache-Control": `public, s-maxage=${snapshotRevalidateSeconds}, stale-while-revalidate=${snapshotRevalidateSeconds}`
+      "Cache-Control": "no-store"
     }
   });
 }
@@ -145,6 +153,7 @@ async function fetchArchetypeOverrides(format: MetagameFormat) {
 
 async function buildMetagame(format: MetagameFormat): Promise<MetagameResponse> {
   const warnings: string[] = [];
+  const signatureRules = await fetchSignatureRules(format);
   const indexEvents = await fetchRecentIndexEvents(format);
   const now = Date.now();
   const currentCutoff = now - windowDays * 24 * 60 * 60 * 1000;
@@ -154,8 +163,8 @@ async function buildMetagame(format: MetagameFormat): Promise<MetagameResponse> 
     const eventTime = Date.parse(event.date);
     return eventTime >= previousCutoff && eventTime < currentCutoff;
   });
-  const currentSnapshot = await buildWindowSnapshot(format, currentEvents.slice(0, 8), warnings);
-  const previousSnapshot = await buildWindowSnapshot(format, previousEvents.slice(0, 8), warnings);
+  const currentSnapshot = await buildWindowSnapshot(format, currentEvents.slice(0, 8), warnings, signatureRules);
+  const previousSnapshot = await buildWindowSnapshot(format, previousEvents.slice(0, 8), warnings, signatureRules);
   const archetypes = buildArchetypes(currentSnapshot.decks, previousSnapshot.decks, format);
   const topCards = buildTopCards(currentSnapshot.decks);
 
@@ -174,14 +183,57 @@ async function buildMetagame(format: MetagameFormat): Promise<MetagameResponse> 
   };
 }
 
-async function buildWindowSnapshot(format: MetagameFormat, indexEvents: IndexEvent[], warnings: string[]) {
+async function fetchSignatureRules(format: MetagameFormat) {
+  const rules: MetagameSignatureRule[] = [];
+  if (!isServerAnonSupabaseConfigured) {
+    return rules;
+  }
+
+  const supabase = createServerAnonSupabaseClient();
+  if (!supabase) {
+    return rules;
+  }
+
+  const { data } = await supabase
+    .from(signatureRuleTable)
+    .select("card_name, archetype_name, required_colors, priority")
+    .eq("format", format)
+    .eq("is_active", true)
+    .order("priority", { ascending: false });
+
+  for (const row of data ?? []) {
+    const cardName = typeof row.card_name === "string" ? row.card_name.trim() : "";
+    const archetypeName = typeof row.archetype_name === "string" ? row.archetype_name.trim() : "";
+    const requiredColors = Array.isArray(row.required_colors)
+      ? row.required_colors.map((color) => String(color).trim().toUpperCase()).filter(Boolean)
+      : [];
+    const priority = Number(row.priority ?? 100);
+    if (cardName && archetypeName) {
+      rules.push({
+        cardName,
+        archetypeName,
+        requiredColors,
+        priority: Number.isFinite(priority) ? priority : 100
+      });
+    }
+  }
+
+  return rules;
+}
+
+async function buildWindowSnapshot(
+  format: MetagameFormat,
+  indexEvents: IndexEvent[],
+  warnings: string[],
+  signatureRules: MetagameSignatureRule[]
+) {
   const decks: MetagameDeck[] = [];
   const events: MetagameEvent[] = [];
 
   for (const event of indexEvents) {
     try {
       const data = await fetchEventData(event.url);
-      const eventDecks = normalizeEventDecks(data, event.url, format);
+      const eventDecks = normalizeEventDecks(data, event.url, format, signatureRules);
       if (eventDecks.length) {
         events.push({
           name: data.description ?? event.name,
@@ -270,7 +322,12 @@ async function fetchText(url: string) {
   return response.text();
 }
 
-function normalizeEventDecks(data: MtgoEventData, sourceUrl: string, format: MetagameFormat) {
+function normalizeEventDecks(
+  data: MtgoEventData,
+  sourceUrl: string,
+  format: MetagameFormat,
+  signatureRules: MetagameSignatureRule[]
+) {
   const standings = new Map(
     (data.standings ?? []).map((standing) => [standing.loginid, Number(standing.rank)])
   );
@@ -284,7 +341,7 @@ function normalizeEventDecks(data: MtgoEventData, sourceUrl: string, format: Met
       eventName: data.description ?? "MTGO Event",
       eventDate: toIsoDate(data.starttime),
       format,
-      archetype: classifyArchetype(main, colors),
+      archetype: classifyArchetype(main, colors, signatureRules),
       colors,
       rank: standings.get(deck.loginid),
       sourceUrl,
@@ -343,10 +400,23 @@ function colorLabel(color: string) {
   }[color] ?? "";
 }
 
-function classifyArchetype(main: Array<{ name: string; qty: number }>, colors: string[]) {
+function classifyArchetype(
+  main: Array<{ name: string; qty: number }>,
+  colors: string[],
+  signatureRules: MetagameSignatureRule[]
+) {
   const names = new Set(main.map((card) => card.name.toLowerCase()));
   const has = (...needles: string[]) => needles.some((needle) => names.has(needle.toLowerCase()));
   const colorName = colors.length ? colors.join("") : "Colorless";
+  const signatureMatch = signatureRules.find(
+    (rule) =>
+      names.has(rule.cardName.toLowerCase()) &&
+      rule.requiredColors.every((color) => colors.includes(color))
+  );
+
+  if (signatureMatch) {
+    return signatureMatch.archetypeName;
+  }
 
   if (has("Goryo's Vengeance")) return "Goryo's Vengeance";
   if (has("Galvanic Discharge")) return "Boros Energy";
