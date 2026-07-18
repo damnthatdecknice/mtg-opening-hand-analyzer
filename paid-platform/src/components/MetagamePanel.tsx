@@ -14,8 +14,6 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
 
-const metagameAdminEmail = "gotthisforsoi@gmail.com";
-
 type SavedDeckNote = {
   deckName: string;
   format: string;
@@ -37,9 +35,6 @@ export function MetagamePanel() {
   const [savedDecks, setSavedDecks] = useState<SavedDeck[]>([]);
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isMetagameAdmin, setIsMetagameAdmin] = useState(false);
-  const [renameDrafts, setRenameDrafts] = useState<Record<string, string>>({});
-  const [savingOverride, setSavingOverride] = useState("");
 
   const savedDeckNotes = useMemo(
     () => (data ? buildSavedDeckNotes(savedDecks, data, format) : []),
@@ -51,17 +46,6 @@ export function MetagamePanel() {
       void loadSavedDecks();
     }
   }, [entitlements.canUseDeckVault]);
-
-  useEffect(() => {
-    if (!supabase) {
-      setIsMetagameAdmin(false);
-      return;
-    }
-
-    supabase.auth.getUser().then(({ data }) => {
-      setIsMetagameAdmin(data.user?.email?.toLowerCase() === metagameAdminEmail);
-    });
-  }, []);
 
   useEffect(() => {
     if (entitlements.canUseDeckVault) {
@@ -92,59 +76,11 @@ export function MetagamePanel() {
         throw new Error(payload.error ?? "Could not load metagame data.");
       }
       setData(payload as MetagameResponse);
-      setRenameDrafts(
-        Object.fromEntries(
-          (payload as MetagameResponse).archetypes.map((archetype) => [
-            archetype.sourceName || archetype.name,
-            archetype.name
-          ])
-        )
-      );
     } catch (error) {
       setData(null);
       setMessage(error instanceof Error ? error.message : "Could not load metagame data.");
     } finally {
       setIsLoading(false);
-    }
-  }
-
-  async function saveArchetypeName(sourceName: string) {
-    if (!supabase) {
-      setMessage("Supabase is not configured.");
-      return;
-    }
-
-    const displayName = renameDrafts[sourceName]?.trim() ?? "";
-    if (!displayName) {
-      setMessage("Deck name cannot be blank.");
-      return;
-    }
-
-    setSavingOverride(sourceName);
-    setMessage("");
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const response = await fetch("/api/metagame/overrides", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${sessionData.session?.access_token ?? ""}`
-        },
-        body: JSON.stringify({
-          format,
-          sourceName,
-          displayName
-        })
-      });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Could not save the deck name.");
-      }
-      await loadMetagame(format);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not save the deck name.");
-    } finally {
-      setSavingOverride("");
     }
   }
 
@@ -224,31 +160,7 @@ export function MetagamePanel() {
             <div className="meta-bars">
               {data.archetypes.slice(0, 12).map((archetype) => (
                 <div className="meta-bar-row" key={archetype.name}>
-                  <span>
-                    {archetype.name}
-                    {isMetagameAdmin ? (
-                      <label className="archetype-admin-control">
-                        <span>Rename for everyone</span>
-                        <input
-                          onChange={(event) =>
-                            setRenameDrafts((current) => ({
-                              ...current,
-                              [archetype.sourceName || archetype.name]: event.target.value
-                            }))
-                          }
-                          value={renameDrafts[archetype.sourceName || archetype.name] ?? archetype.name}
-                        />
-                        <button
-                          className="mini-button"
-                          disabled={savingOverride === (archetype.sourceName || archetype.name)}
-                          onClick={() => saveArchetypeName(archetype.sourceName || archetype.name)}
-                          type="button"
-                        >
-                          {savingOverride === (archetype.sourceName || archetype.name) ? "Saving" : "Save"}
-                        </button>
-                      </label>
-                    ) : null}
-                  </span>
+                  <span>{archetype.name}</span>
                   <i style={{ width: `${Math.max(4, archetype.share * 100)}%` }} />
                   <em>
                     {Math.round(archetype.share * 100)}% ({archetype.decks})

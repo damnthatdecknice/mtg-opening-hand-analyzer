@@ -250,19 +250,9 @@ create policy "metagame archetype overrides are public readable"
   on public.metagame_archetype_overrides for select
   using (true);
 
-create policy "metagame archetype overrides are admin editable"
-  on public.metagame_archetype_overrides for all
-  using (lower(auth.jwt() ->> 'email') = 'gotthisforsoi@gmail.com')
-  with check (lower(auth.jwt() ->> 'email') = 'gotthisforsoi@gmail.com');
-
 drop policy if exists "metagame signature rules are public readable" on public.metagame_signature_rules;
 drop policy if exists "metagame signature rules are admin editable" on public.metagame_signature_rules;
 
 create policy "metagame signature rules are public readable"
   on public.metagame_signature_rules for select
   using (true);
-
-create policy "metagame signature rules are admin editable"
-  on public.metagame_signature_rules for all
-  using (lower(auth.jwt() ->> 'email') = 'gotthisforsoi@gmail.com')
-  with check (lower(auth.jwt() ->> 'email') = 'gotthisforsoi@gmail.com');
