@@ -27,9 +27,12 @@ export function AuthForm({ mode }: AuthFormProps) {
     }
 
     setIsBusy(true);
-    const result = isSignUp
-      ? await supabase.auth.signUp({ email, password })
-      : await supabase.auth.signInWithPassword({ email, password });
+    const result = await (isSignUp
+      ? supabase.auth.signUp({ email, password })
+      : supabase.auth.signInWithPassword({ email, password })).catch((error: unknown) => ({
+        data: { session: null },
+        error: error instanceof Error ? error : new Error("Sign-in failed before the dashboard could open.")
+      }));
 
     setIsBusy(false);
 
@@ -44,10 +47,12 @@ export function AuthForm({ mode }: AuthFormProps) {
     }
 
     if (result.data.session) {
-      await supabase.auth.setSession({
-        access_token: result.data.session.access_token,
-        refresh_token: result.data.session.refresh_token
-      });
+      await supabase.auth
+        .setSession({
+          access_token: result.data.session.access_token,
+          refresh_token: result.data.session.refresh_token
+        })
+        .catch(() => null);
       saveAuthFallback(result.data.session);
     }
 
