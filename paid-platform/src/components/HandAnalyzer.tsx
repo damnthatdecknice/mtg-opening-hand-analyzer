@@ -44,6 +44,11 @@ type RecognitionCandidate = {
   isConflict?: boolean;
 };
 
+type LocalOcrWorker = {
+  recognize: (image: string) => Promise<{ data: { text: string } }>;
+  setParameters: (parameters: Record<string, string>) => Promise<unknown>;
+};
+
 type RecognitionResult = {
   cropIndex: number;
   candidates: RecognitionCandidate[];
@@ -84,6 +89,7 @@ Inspiring Vantage`;
 
 const lastDeckStorageKey = "mtg-hand-pro:last-analyzer-deck-id";
 const signatureCachePrefix = "mtg-hand-pro:image-signature:";
+let localOcrWorkerPromise: Promise<LocalOcrWorker> | null = null;
 const defaultCropAdjustments: CropAdjustments = {
   x: 0,
   y: 0,
@@ -279,42 +285,103 @@ async function readTextSignal(src: string) {
   const textDetectorConstructor = (window as unknown as {
     TextDetector?: new () => BrowserTextDetector;
   }).TextDetector;
-  if (!textDetectorConstructor) {
-    return "";
+  if (textDetectorConstructor) {
+    try {
+      const image = await loadImage(src);
+      const detector = new textDetectorConstructor();
+      const detections = await detector.detect(image);
+      const detectedText = detections.map((item) => item.rawValue ?? "").join(" ").trim();
+      if (detectedText) {
+        return detectedText;
+      }
+    } catch {
+      // Fall through to the local OCR engine.
+    }
   }
 
   try {
-    const image = await loadImage(src);
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d");
-    if (!context) {
-      return "";
+    if (!localOcrWorkerPromise) {
+      localOcrWorkerPromise = import("tesseract.js").then(async ({ createWorker, PSM }) => {
+        const worker = (await createWorker("eng")) as LocalOcrWorker;
+        await worker.setParameters({
+          tessedit_pageseg_mode: PSM.SPARSE_TEXT,
+          preserve_interword_spaces: "1",
+          user_defined_dpi: "300"
+        });
+        return worker;
+      });
     }
-    canvas.width = image.width;
-    canvas.height = Math.max(24, Math.round(image.height * 0.22));
-    context.drawImage(image, 0, 0, image.width, canvas.height, 0, 0, canvas.width, canvas.height);
-    const detector = new textDetectorConstructor();
-    const detections = await detector.detect(canvas);
-    return detections.map((item) => item.rawValue ?? "").join(" ").trim();
+    const worker = await localOcrWorkerPromise;
+    const result = await worker.recognize(src);
+    return result.data.text.replace(/\s+/g, " ").trim();
   } catch {
+    localOcrWorkerPromise = null;
     return "";
   }
 }
 
+function editDistance(a: string, b: string) {
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let aIndex = 1; aIndex <= a.length; aIndex += 1) {
+    const current = [aIndex];
+    for (let bIndex = 1; bIndex <= b.length; bIndex += 1) {
+      current[bIndex] = Math.min(
+        (current[bIndex - 1] ?? 0) + 1,
+        (previous[bIndex] ?? 0) + 1,
+        (previous[bIndex - 1] ?? 0) + (a[aIndex - 1] === b[bIndex - 1] ? 0 : 1)
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[b.length] ?? Math.max(a.length, b.length);
+}
+
+function stringSimilarity(a: string, b: string) {
+  const longest = Math.max(a.length, b.length);
+  return longest ? 1 - editDistance(a, b) / longest : 0;
+}
+
+function bestContainedSimilarity(text: string, name: string) {
+  if (text.length <= name.length) {
+    return stringSimilarity(text, name);
+  }
+  let best = stringSimilarity(text, name);
+  const minimumWindow = Math.max(3, name.length - 3);
+  const maximumWindow = Math.min(text.length, name.length + 4);
+  for (let length = minimumWindow; length <= maximumWindow; length += 1) {
+    for (let start = 0; start + length <= text.length; start += 1) {
+      best = Math.max(best, stringSimilarity(text.slice(start, start + length), name));
+    }
+  }
+  return best;
+}
+
+function normalizeRecognitionText(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function fuzzyTextScore(text: string, cardName: string) {
-  const cleanText = text.toLowerCase().replace(/[^a-z0-9 ]/g, " ");
-  const cleanName = cardName.toLowerCase().replace(/[^a-z0-9 ]/g, " ");
+  const cleanText = normalizeRecognitionText(text);
+  const cleanName = normalizeRecognitionText(cardName);
   if (!cleanText || !cleanName) {
     return 0;
   }
   if (cleanText.includes(cleanName)) {
     return 1;
   }
-  const tokens = cleanName.split(/\s+/).filter((token) => token.length > 2);
-  if (!tokens.length) {
-    return 0;
-  }
-  return tokens.filter((token) => cleanText.includes(token)).length / tokens.length;
+
+  const compactText = cleanText.replace(/\s/g, "");
+  const compactName = cleanName.replace(/\s/g, "");
+  const fullSimilarity = bestContainedSimilarity(compactText, compactName);
+  const nameTokens = cleanName.split(" ").filter((token) => token.length > 2);
+  const textTokens = cleanText.split(" ").filter(Boolean);
+  const tokenSimilarity = nameTokens.length
+    ? nameTokens.reduce(
+        (total, token) => total + Math.max(0, ...textTokens.map((candidate) => stringSimilarity(candidate, token))),
+        0
+      ) / nameTokens.length
+    : 0;
+  return Math.max(fullSimilarity, tokenSimilarity * 0.92);
 }
 
 function signatureDistance(a: number[], b: number[]) {
@@ -341,11 +408,6 @@ async function recognizeCropImages(
   const cardImageVariants = uniqueCards.flatMap((card) =>
     (card.imageUrls.length ? card.imageUrls : [card.imageUrl]).map((imageUrl) => ({ card, imageUrl }))
   );
-  const artImageVariants = uniqueCards.flatMap((card) =>
-    (card.artCropUrl ? [card.artCropUrl] : card.imageUrls.length ? card.imageUrls : [card.imageUrl]).map(
-      (imageUrl) => ({ card, imageUrl })
-    )
-  );
   const fullCardSignatures = (
     await Promise.all(
     cardImageVariants.map(async ({ card, imageUrl }) => ({
@@ -356,9 +418,15 @@ async function recognizeCropImages(
   ).filter((item): item is { card: CardLookup; signature: number[] } => Boolean(item.signature));
   const artCardSignatures = (
     await Promise.all(
-      artImageVariants.map(async ({ card, imageUrl }) => ({
+      cardImageVariants.map(async ({ card, imageUrl }) => ({
         card,
-        signature: await imageSignature(imageUrl, `${card.name}:art:${imageUrl}`, 16, 16).catch(() => null)
+        signature: await imageRegionSignature(
+          imageUrl,
+          `${card.name}:arena-art:${imageUrl}`,
+          { x: 0.12, y: 0.13, width: 0.76, height: 0.39 },
+          18,
+          18
+        ).catch(() => null)
       }))
     )
   ).filter((item): item is { card: CardLookup; signature: number[] } => Boolean(item.signature));
@@ -383,28 +451,36 @@ async function recognizeCropImages(
 
   return Promise.all(
     crops.map(async (crop) => {
-      const ocrText = await readTextSignal(crop.textSrc ?? crop.src);
       const isArenaCrop = crop.source === "arena";
+      const ocrText = isArenaCrop && crop.textSrc ? await readTextSignal(crop.textSrc) : "";
       const signatures = isArenaCrop && artCardSignatures.length ? artCardSignatures : fullCardSignatures;
-      const cropSignature = await imageSignature(crop.matchSrc ?? crop.src, "", isArenaCrop ? 16 : 14, isArenaCrop ? 16 : 20);
+      const cropSignature = await imageSignature(crop.matchSrc ?? crop.src, "", isArenaCrop ? 18 : 14, isArenaCrop ? 18 : 20);
       const cropTitleSignature =
         isArenaCrop && crop.textSrc && titleCardSignatures.length
           ? await imageSignature(crop.textSrc, "", 36, 8).catch(() => null)
           : null;
       const scoredByCard = new Map<string, RecognitionCandidate>();
-      for (const { card, signature } of signatures) {
-        const imageScore = Math.max(0, Math.min(1, 1 - signatureDistance(cropSignature, signature)));
-        const cardTitleSignature = titleCardSignatures.find((item) => item.card.name === card.name)?.signature;
-        const titleScore =
-          cropTitleSignature && cardTitleSignature
-            ? Math.max(0, Math.min(1, 1 - signatureDistance(cropTitleSignature, cardTitleSignature)))
-            : 0;
+      for (const card of uniqueCards) {
+        const imageScore = Math.max(
+          0,
+          ...signatures
+            .filter((item) => item.card.name === card.name)
+            .map((item) => Math.min(1, 1 - signatureDistance(cropSignature, item.signature)))
+        );
+        const titleScore = cropTitleSignature
+          ? Math.max(
+              0,
+              ...titleCardSignatures
+                .filter((item) => item.card.name === card.name)
+                .map((item) => Math.min(1, 1 - signatureDistance(cropTitleSignature, item.signature)))
+            )
+          : 0;
         const textScore = fuzzyTextScore(ocrText, card.name);
         const score =
           isArenaCrop
-            ? textScore > 0
-              ? Math.max(0, Math.min(1, imageScore * 0.25 + titleScore * 0.25 + textScore * 0.5))
-              : Math.max(0, Math.min(1, imageScore * 0.45 + titleScore * 0.55))
+            ? textScore >= 0.72
+              ? Math.max(0, Math.min(1, imageScore * 0.2 + titleScore * 0.08 + textScore * 0.72))
+              : Math.max(0, Math.min(1, imageScore * 0.62 + titleScore * 0.38))
             : Math.max(0, Math.min(1, imageScore * 0.72 + textScore * 0.28));
         const candidate = {
           cardName: card.name,
@@ -414,10 +490,7 @@ async function recognizeCropImages(
           textScore,
           ocrText
         };
-        const current = scoredByCard.get(card.name);
-        if (!current || candidate.score > current.score) {
-          scoredByCard.set(card.name, candidate);
-        }
+        scoredByCard.set(card.name, candidate);
       }
       const candidates = Array.from(scoredByCard.values())
         .sort((a, b) => b.score - a.score)
@@ -482,11 +555,13 @@ async function makeCrops(src: string, source: ScreenshotSource, adjustments: Cro
 function makeArenaCrops(image: HTMLImageElement, adjustments: CropAdjustments) {
   const fullCanvas = document.createElement("canvas");
   const fullContext = fullCanvas.getContext("2d");
+  const titleFullCanvas = document.createElement("canvas");
+  const titleFullContext = titleFullCanvas.getContext("2d");
   const matchCanvas = document.createElement("canvas");
   const matchContext = matchCanvas.getContext("2d");
   const textCanvas = document.createElement("canvas");
   const textContext = textCanvas.getContext("2d", { willReadFrequently: true });
-  if (!fullContext || !matchContext || !textContext) {
+  if (!fullContext || !titleFullContext || !matchContext || !textContext) {
     throw new Error("This browser could not prepare Arena card crops.");
   }
 
@@ -503,10 +578,12 @@ function makeArenaCrops(image: HTMLImageElement, adjustments: CropAdjustments) {
 
   fullCanvas.width = Math.round(cropWidth);
   fullCanvas.height = Math.round(cropHeight);
+  titleFullCanvas.width = Math.round(cropWidth * 1.45);
+  titleFullCanvas.height = Math.round(cropHeight);
   matchCanvas.width = 180;
   matchCanvas.height = 120;
-  textCanvas.width = Math.round(cropWidth * 2.8);
-  textCanvas.height = Math.max(76, Math.round(cropHeight * 0.2));
+  textCanvas.width = 900;
+  textCanvas.height = 120;
 
   for (let index = 0; index < 7; index += 1) {
     const distanceFromCenter = index - 3;
@@ -521,13 +598,20 @@ function makeArenaCrops(image: HTMLImageElement, adjustments: CropAdjustments) {
     fullContext.drawImage(image, -centerX, -centerY);
     fullContext.restore();
 
+    titleFullContext.clearRect(0, 0, titleFullCanvas.width, titleFullCanvas.height);
+    titleFullContext.save();
+    titleFullContext.translate(titleFullCanvas.width / 2, titleFullCanvas.height / 2);
+    titleFullContext.rotate(-angle);
+    titleFullContext.drawImage(image, -centerX, -centerY);
+    titleFullContext.restore();
+
     matchContext.clearRect(0, 0, matchCanvas.width, matchCanvas.height);
     matchContext.drawImage(
       fullCanvas,
-      Math.round(fullCanvas.width * 0.18),
+      Math.round(fullCanvas.width * 0.12),
       Math.round(fullCanvas.height * 0.13),
-      Math.round(fullCanvas.width * 0.64),
-      Math.round(fullCanvas.height * 0.42),
+      Math.round(fullCanvas.width * 0.76),
+      Math.round(fullCanvas.height * 0.39),
       0,
       0,
       matchCanvas.width,
@@ -536,29 +620,16 @@ function makeArenaCrops(image: HTMLImageElement, adjustments: CropAdjustments) {
 
     textContext.clearRect(0, 0, textCanvas.width, textCanvas.height);
     textContext.drawImage(
-      fullCanvas,
-      Math.round(fullCanvas.width * 0.05),
-      Math.round(fullCanvas.height * 0.025),
-      Math.round(fullCanvas.width * 0.9),
-      Math.round(fullCanvas.height * 0.16),
+      titleFullCanvas,
+      Math.round(titleFullCanvas.width * 0.025),
+      Math.round(titleFullCanvas.height * 0.025),
+      Math.round(titleFullCanvas.width * 0.95),
+      Math.round(titleFullCanvas.height * 0.095),
       0,
       0,
       textCanvas.width,
       textCanvas.height
     );
-
-    const pixels = textContext.getImageData(0, 0, textCanvas.width, textCanvas.height);
-    for (let pixel = 0; pixel < pixels.data.length; pixel += 4) {
-      const r = pixels.data[pixel] ?? 0;
-      const g = pixels.data[pixel + 1] ?? 0;
-      const b = pixels.data[pixel + 2] ?? 0;
-      const gray = (r + g + b) / 3;
-      const boosted = gray > 128 ? 245 : Math.max(0, gray - 35);
-      pixels.data[pixel] = boosted;
-      pixels.data[pixel + 1] = boosted;
-      pixels.data[pixel + 2] = boosted;
-    }
-    textContext.putImageData(pixels, 0, 0);
 
     crops.push({
       index,
