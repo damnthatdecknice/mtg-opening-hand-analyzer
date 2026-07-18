@@ -1,6 +1,6 @@
-# MTG Opening Hand Analyzer Paid Platform
+# Opening Edge
 
-This folder is the separate paid-product track. The current Streamlit beta remains at the repository root and should keep serving testers while this app grows into the subscription platform.
+This folder contains Opening Edge, the separate paid-product track. The current Streamlit beta remains at the repository root and should keep serving testers while this app grows into the subscription platform.
 
 ## Target Stack
 

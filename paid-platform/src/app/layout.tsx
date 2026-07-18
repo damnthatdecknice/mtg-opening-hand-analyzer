@@ -4,8 +4,8 @@ import { AppNav } from "@/components/AppNav";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MTG Opening Hand Pro",
-  description: "A paid-product foundation for competitive Magic opening-hand analysis."
+  title: "Opening Edge",
+  description: "Competitive Magic opening-hand analysis, deck context, and metagame tools."
 };
 
 export default function RootLayout({

@@ -77,11 +77,11 @@ export function HomeLanding() {
   return (
     <section className="hero-grid">
       <div className="panel hero-panel">
-        <p className="eyebrow">Paid product track</p>
-        <h1>MTG Opening Hand Pro</h1>
+        <p className="eyebrow">Competitive opener lab</p>
+        <h1>Opening Edge</h1>
         <p className="lede">
-          A separate platform for player accounts, saved deck data, rating history,
-          and eventually subscriptions while the Streamlit beta keeps moving fast.
+          Competitive Magic opening-hand analysis with saved decks, screenshot intake,
+          metagame context, and subscription-ready player workspaces.
         </p>
         <div className="action-row">
           <Link className="primary-button" href="/login">
@@ -94,7 +94,7 @@ export function HomeLanding() {
             Create account
           </Link>
           <a className="secondary-button" href="#plan">
-            See build plan
+            See product plan
           </a>
         </div>
       </div>

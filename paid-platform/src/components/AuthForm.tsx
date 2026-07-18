@@ -64,7 +64,7 @@ export function AuthForm({ mode }: AuthFormProps) {
     <div className="auth-wrap">
       <section className="panel auth-panel">
         <p className="eyebrow">{isSignUp ? "Create account" : "Welcome back"}</p>
-        <h1>{isSignUp ? "Start your Pro workspace" : "Sign in to Pro"}</h1>
+        <h1>{isSignUp ? "Start your Opening Edge workspace" : "Sign in to Opening Edge"}</h1>
         <p className="lede">
           {isSignUp
             ? "Create a private player account for saved decks, hand sessions, and rating history."

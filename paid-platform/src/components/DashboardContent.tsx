@@ -6,11 +6,10 @@ export function DashboardContent() {
   return (
     <section className="dashboard">
       <header className="dashboard-header panel">
-        <p className="eyebrow">Subscriber workspace</p>
+        <p className="eyebrow">Opening Edge workspace</p>
         <h1>Player Command Center</h1>
         <p>
-          Your saved decks, analyzer history, and subscription workspace live here
-          while the beta app keeps moving separately.
+          Your saved decks, analyzer history, metagame tools, and subscription workspace live here.
         </p>
         <DashboardActions />
       </header>

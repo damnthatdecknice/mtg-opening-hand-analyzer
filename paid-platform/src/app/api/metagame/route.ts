@@ -261,7 +261,7 @@ async function fetchEventData(url: string) {
 async function fetchText(url: string) {
   const response = await fetch(url, {
     headers: {
-      "user-agent": "MTG Opening Hand Pro metagame preview (+https://mtg-opening-hand-analyzer-hsjg.vercel.app)"
+      "user-agent": "Opening Edge metagame preview (+https://mtg-opening-hand-analyzer-hsjg.vercel.app)"
     },
     next: {
       revalidate: snapshotRevalidateSeconds

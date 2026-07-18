@@ -48,7 +48,7 @@ export function AppNav() {
   return (
     <nav className="app-nav" aria-label="Primary navigation">
       <Link className="app-nav-brand" href="/">
-        MTG Hand Pro
+        Opening Edge
       </Link>
       <div className="app-nav-links">
         {visibleItems.map((item) => (
