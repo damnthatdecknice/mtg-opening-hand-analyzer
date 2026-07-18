@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { DashboardContent } from "@/components/DashboardContent";
+import { clearAuthFallback, getAuthFallbackUser, type AuthFallbackUser } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
 
 const pillars = [
@@ -22,7 +23,7 @@ const pillars = [
 ];
 
 export function HomeLanding() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | AuthFallbackUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -32,12 +33,12 @@ export function HomeLanding() {
     }
 
     supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null);
+      setUser(data.session?.user ?? getAuthFallbackUser());
       setIsLoading(false);
     });
 
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      setUser(session?.user ?? getAuthFallbackUser());
       setIsLoading(false);
     });
 
@@ -45,6 +46,7 @@ export function HomeLanding() {
   }, []);
 
   async function handleSignOut() {
+    clearAuthFallback();
     await supabase?.auth.signOut();
     window.location.href = "/";
   }

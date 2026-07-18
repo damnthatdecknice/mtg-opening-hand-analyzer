@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
+import { saveAuthFallback } from "@/lib/authFallback";
 import { AuthMode, isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type AuthFormProps = {
@@ -42,11 +43,12 @@ export function AuthForm({ mode }: AuthFormProps) {
       return;
     }
 
-    const sessionResponse = await supabase.auth.getSession();
-
-    if (!sessionResponse.data.session) {
-      setMessage("Sign-in succeeded, but this browser did not save the session. Refresh and try signing in again.");
-      return;
+    if (result.data.session) {
+      await supabase.auth.setSession({
+        access_token: result.data.session.access_token,
+        refresh_token: result.data.session.refresh_token
+      });
+      saveAuthFallback(result.data.session);
     }
 
     setMessage("Signed in. Opening your dashboard...");

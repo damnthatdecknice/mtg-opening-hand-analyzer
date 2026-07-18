@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getAuthFallbackUser } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
 
 type DashboardState = {
@@ -43,17 +44,23 @@ export function DashboardOverview() {
         return;
       }
 
-      const userResponse = await supabase.auth.getUser();
-      const userId = userResponse.data.user?.id;
+      const sessionResponse = await supabase.auth.getSession();
+      const userId = sessionResponse.data.session?.user.id ?? getAuthFallbackUser()?.id;
 
       const [decks, hands, profile] = await Promise.all([
-        supabase
-          .from("decks")
-          .select("id", { count: "exact", head: true })
-          .eq("is_archived", false),
-        supabase
-          .from("hand_sessions")
-          .select("id", { count: "exact", head: true }),
+        userId
+          ? supabase
+              .from("decks")
+              .select("id", { count: "exact", head: true })
+              .eq("user_id", userId)
+              .eq("is_archived", false)
+          : Promise.resolve({ count: 0, error: null }),
+        userId
+          ? supabase
+              .from("hand_sessions")
+              .select("id", { count: "exact", head: true })
+              .eq("user_id", userId)
+          : Promise.resolve({ count: 0, error: null }),
         userId
           ? supabase.from("profiles").select("rank").eq("id", userId).maybeSingle()
           : Promise.resolve({ data: null, error: null })

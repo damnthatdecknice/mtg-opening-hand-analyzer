@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useEntitlements } from "@/components/useEntitlements";
+import { getAuthFallbackUser } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
 
 const navItems = [
@@ -32,10 +33,10 @@ export function AppNav() {
     }
 
     supabase.auth.getSession().then(({ data }) => {
-      setIsSignedIn(Boolean(data.session?.user));
+      setIsSignedIn(Boolean(data.session?.user ?? getAuthFallbackUser()));
     });
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsSignedIn(Boolean(session?.user));
+      setIsSignedIn(Boolean(session?.user ?? getAuthFallbackUser()));
     });
 
     return () => {
