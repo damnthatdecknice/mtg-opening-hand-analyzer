@@ -1,12 +1,12 @@
 :root {
   --bg: #010511;
-  --panel: rgba(5, 15, 31, 0.9);
-  --panel-strong: rgba(2, 8, 19, 0.97);
-  --command-panel: rgba(7, 19, 38, 0.92);
-  --command-panel-strong: rgba(12, 31, 58, 0.94);
+  --panel: rgba(2, 9, 22, 0.78);
+  --panel-strong: rgba(1, 6, 16, 0.88);
+  --command-panel: rgba(2, 9, 22, 0.76);
+  --command-panel-strong: rgba(4, 15, 31, 0.82);
   --command-text: #f6fbff;
   --command-muted: #bfd2e6;
-  --data-card: rgba(4, 13, 30, 0.9);
+  --data-card: rgba(2, 9, 22, 0.78);
   --border: rgba(123, 211, 255, 0.34);
   --text: #f4f8ff;
   --muted: #b6c6dc;
@@ -73,10 +73,10 @@ a {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg, rgba(1, 5, 17, 0.94), rgba(1, 5, 17, 0.64) 48%, rgba(1, 5, 17, 0.46) 76%, rgba(1, 5, 17, 0.68)),
+    linear-gradient(90deg, rgba(1, 5, 17, 0.82), rgba(1, 5, 17, 0.5) 48%, rgba(1, 5, 17, 0.28) 76%, rgba(1, 5, 17, 0.48)),
     radial-gradient(circle at 76% 34%, rgba(78, 220, 255, 0.14), transparent 28%),
     radial-gradient(circle at 22% 24%, rgba(255, 184, 77, 0.08), transparent 24%),
-    radial-gradient(circle at 50% 50%, transparent, rgba(1, 5, 17, 0.62));
+    radial-gradient(circle at 50% 50%, transparent, rgba(1, 5, 17, 0.48));
 }
 
 .app-background::before {
@@ -166,7 +166,7 @@ a {
   position: relative;
   overflow: hidden;
   background:
-    linear-gradient(145deg, rgba(7, 23, 48, 0.78), rgba(3, 10, 24, 0.92)),
+    linear-gradient(145deg, rgba(3, 14, 32, 0.62), rgba(1, 6, 16, 0.82)),
     var(--data-card);
   border: 1px solid var(--border);
   box-shadow: var(--shadow), var(--inner-glow);
@@ -206,14 +206,14 @@ a {
 .auth-required,
 .locked-feature-panel {
   background:
-    linear-gradient(135deg, var(--command-panel-strong), rgba(4, 12, 26, 0.94)),
+    linear-gradient(135deg, var(--command-panel-strong), rgba(1, 6, 16, 0.8)),
     var(--command-panel);
   border-color: rgba(255, 184, 77, 0.44);
   color: var(--command-text);
   box-shadow:
     0 26px 80px rgba(0, 0, 0, 0.42),
     0 0 36px rgba(255, 184, 77, 0.12),
-    inset 0 1px 0 rgba(255, 226, 164, 0.16);
+    inset 0 1px 0 rgba(255, 226, 164, 0.12);
 }
 
 .hero-panel::before,
@@ -222,10 +222,10 @@ a {
 .auth-required::before,
 .locked-feature-panel::before {
   background:
-    linear-gradient(120deg, rgba(255, 184, 77, 0.18), transparent 28%),
-    radial-gradient(circle at top right, rgba(78, 220, 255, 0.2), transparent 36%),
-    linear-gradient(90deg, transparent, rgba(255, 217, 117, 0.08));
-  opacity: 1;
+    linear-gradient(120deg, rgba(255, 184, 77, 0.12), transparent 28%),
+    radial-gradient(circle at top right, rgba(78, 220, 255, 0.14), transparent 36%),
+    linear-gradient(90deg, transparent, rgba(255, 217, 117, 0.05));
+  opacity: 0.82;
 }
 
 .eyebrow {
