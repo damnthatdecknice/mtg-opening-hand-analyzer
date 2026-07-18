@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useEntitlements } from "@/components/useEntitlements";
 import { getAuthFallbackUser } from "@/lib/authFallback";
@@ -48,7 +49,7 @@ export function AppNav() {
   return (
     <nav className="app-nav" aria-label="Primary navigation">
       <Link className="app-nav-brand" href="/">
-        Opening Edge
+        <Image src="/opening-edge-logo.png" alt="Opening Edge" width={416} height={145} priority />
       </Link>
       <div className="app-nav-links">
         {visibleItems.map((item) => (
