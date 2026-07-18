@@ -11,6 +11,7 @@ type AuthFormProps = {
 
 export function AuthForm({ mode }: AuthFormProps) {
   const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [isBusy, setIsBusy] = useState(false);
@@ -28,7 +29,15 @@ export function AuthForm({ mode }: AuthFormProps) {
 
     setIsBusy(true);
     const result = await (isSignUp
-      ? supabase.auth.signUp({ email, password })
+      ? supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              display_name: displayName.trim()
+            }
+          }
+        })
       : supabase.auth.signInWithPassword({ email, password })).catch((error: unknown) => ({
         data: { session: null },
         error: error instanceof Error ? error : new Error("Sign-in failed before the dashboard could open.")
@@ -42,6 +51,13 @@ export function AuthForm({ mode }: AuthFormProps) {
     }
 
     if (isSignUp) {
+      if (result.data.user && displayName.trim()) {
+        await supabase.from("profiles").upsert({
+          id: result.data.user.id,
+          email,
+          display_name: displayName.trim()
+        });
+      }
       setMessage("Account created. Check your email if confirmations are enabled, then sign in.");
       return;
     }
@@ -82,6 +98,20 @@ export function AuthForm({ mode }: AuthFormProps) {
         ) : null}
 
         <form className="auth-form" onSubmit={handleSubmit}>
+          {isSignUp ? (
+            <label>
+              Username
+              <input
+                autoComplete="nickname"
+                maxLength={40}
+                minLength={2}
+                onChange={(event) => setDisplayName(event.target.value)}
+                required
+                type="text"
+                value={displayName}
+              />
+            </label>
+          ) : null}
           <label>
             Email
             <input

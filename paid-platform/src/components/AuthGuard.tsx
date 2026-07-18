@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
+import { AccountBar } from "@/components/AccountBar";
 import { clearAuthFallback, getAuthFallbackUser, type AuthFallbackUser } from "@/lib/authFallback";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
@@ -80,12 +81,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <div className="account-bar">
-        <span>{user.email}</span>
-        <button className="text-button" onClick={handleSignOut} type="button">
-          Sign out
-        </button>
-      </div>
+      <AccountBar onSignOut={handleSignOut} user={user} />
       {children}
     </>
   );
