@@ -106,7 +106,7 @@ async function buildMetagame(format: MetagameFormat): Promise<MetagameResponse> 
   });
   const currentSnapshot = await buildWindowSnapshot(format, currentEvents.slice(0, 8), warnings);
   const previousSnapshot = await buildWindowSnapshot(format, previousEvents.slice(0, 8), warnings);
-  const archetypes = buildArchetypes(currentSnapshot.decks, previousSnapshot.decks);
+  const archetypes = buildArchetypes(currentSnapshot.decks, previousSnapshot.decks, format);
   const topCards = buildTopCards(currentSnapshot.decks);
 
   return {
@@ -248,7 +248,8 @@ function normalizeCards(cards: MtgoCard[]) {
   return cards
     .map((card) => ({
       name: card.card_attributes?.card_name?.trim() ?? "",
-      qty: Number(card.qty ?? 0)
+      qty: Number(card.qty ?? 0),
+      cardType: card.card_attributes?.card_type?.trim() ?? ""
     }))
     .filter((card) => card.name && card.qty > 0)
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -313,16 +314,22 @@ function classifyArchetype(main: Array<{ name: string; qty: number }>, colors: s
   return `${colorName} Other`;
 }
 
-function buildArchetypes(decks: MetagameDeck[], previousDecks: MetagameDeck[] = []): MetagameArchetype[] {
+function buildArchetypes(
+  decks: MetagameDeck[],
+  previousDecks: MetagameDeck[] = [],
+  format: MetagameFormat = "Modern"
+): MetagameArchetype[] {
+  const normalizedDecks = applySimilarityArchetypes(decks, format);
+  const normalizedPreviousDecks = applySimilarityArchetypes(previousDecks, format);
   const grouped = new Map<string, MetagameDeck[]>();
-  for (const deck of decks) {
+  for (const deck of normalizedDecks) {
     grouped.set(deck.archetype, [...(grouped.get(deck.archetype) ?? []), deck]);
   }
-  const previousShares = buildArchetypeShares(previousDecks);
+  const previousShares = buildArchetypeShares(normalizedPreviousDecks);
 
   return Array.from(grouped.entries())
     .map(([name, archetypeDecks]) => {
-      const share = decks.length ? archetypeDecks.length / decks.length : 0;
+      const share = normalizedDecks.length ? archetypeDecks.length / normalizedDecks.length : 0;
       const previousShare = previousShares.get(name) ?? 0;
       return {
         name,
@@ -334,6 +341,57 @@ function buildArchetypes(decks: MetagameDeck[], previousDecks: MetagameDeck[] = 
       };
     })
     .sort((a, b) => b.decks - a.decks || a.name.localeCompare(b.name));
+}
+
+function applySimilarityArchetypes(decks: MetagameDeck[], format: MetagameFormat) {
+  const threshold = getSimilarityThreshold(format);
+  const clusters: Array<{ label: string; representative: MetagameDeck; decks: MetagameDeck[] }> = [];
+
+  for (const deck of decks) {
+    const matchingCluster = clusters.find((cluster) => maindeckCopyOverlap(deck, cluster.representative) >= threshold);
+    if (matchingCluster) {
+      matchingCluster.decks.push(deck);
+      continue;
+    }
+
+    clusters.push({
+      label: deck.archetype,
+      representative: deck,
+      decks: [deck]
+    });
+  }
+
+  for (const cluster of clusters) {
+    cluster.label = chooseClusterLabel(cluster.decks);
+  }
+
+  return clusters.flatMap((cluster) => cluster.decks.map((deck) => ({ ...deck, archetype: cluster.label })));
+}
+
+function getSimilarityThreshold(format: MetagameFormat) {
+  if (format === "Modern" || format === "Legacy") {
+    return 40;
+  }
+  if (format === "Pioneer") {
+    return 42;
+  }
+  return 45;
+}
+
+function maindeckCopyOverlap(left: MetagameDeck, right: MetagameDeck) {
+  const rightCounts = new Map(right.main.map((card) => [card.name.toLowerCase(), card.qty]));
+  return left.main.reduce((total, card) => {
+    const rightQty = rightCounts.get(card.name.toLowerCase()) ?? 0;
+    return total + Math.min(card.qty, rightQty);
+  }, 0);
+}
+
+function chooseClusterLabel(decks: MetagameDeck[]) {
+  const counts = new Map<string, number>();
+  for (const deck of decks) {
+    counts.set(deck.archetype, (counts.get(deck.archetype) ?? 0) + 1);
+  }
+  return Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? "Other";
 }
 
 function buildArchetypeShares(decks: MetagameDeck[]) {
@@ -351,7 +409,7 @@ function buildTopCards(decks: MetagameDeck[]): MetagameCardCount[] {
   for (const deck of decks) {
     const seen = new Set<string>();
     for (const card of deck.main) {
-      if (isBasicLand(card.name)) {
+      if (isLandCard(card)) {
         continue;
       }
       copies.set(card.name, (copies.get(card.name) ?? 0) + card.qty);
@@ -376,8 +434,11 @@ function buildTopCards(decks: MetagameDeck[]): MetagameCardCount[] {
     .slice(0, 30);
 }
 
-function isBasicLand(name: string) {
-  return ["Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"].includes(name);
+function isLandCard(card: { name: string; cardType?: string }) {
+  if (/\bLand\b/i.test(card.cardType ?? "")) {
+    return true;
+  }
+  return ["Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"].includes(card.name);
 }
 
 function findObjectEnd(text: string, start: number) {
