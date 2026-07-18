@@ -282,6 +282,23 @@ type BrowserTextDetector = {
 };
 
 async function readTextSignal(src: string) {
+  const textDetectorConstructor = (window as unknown as {
+    TextDetector?: new () => BrowserTextDetector;
+  }).TextDetector;
+  if (textDetectorConstructor) {
+    try {
+      const image = await loadImage(src);
+      const detector = new textDetectorConstructor();
+      const detections = await detector.detect(image);
+      const detectedText = detections.map((item) => item.rawValue ?? "").join(" ").trim();
+      if (detectedText) {
+        return detectedText;
+      }
+    } catch {
+      // Fall through to the local OCR engine.
+    }
+  }
+
   try {
     if (!localOcrWorkerPromise) {
       localOcrWorkerPromise = import("tesseract.js").then(async ({ createWorker, PSM }) => {
@@ -296,28 +313,11 @@ async function readTextSignal(src: string) {
     }
     const worker = await localOcrWorkerPromise;
     const result = await worker.recognize(src);
-    const localText = result.data.text.replace(/\s+/g, " ").trim();
-    if (localText) {
-      return localText;
-    }
+    return result.data.text.replace(/\s+/g, " ").trim();
   } catch {
     localOcrWorkerPromise = null;
+    return "";
   }
-
-  const textDetectorConstructor = (window as unknown as {
-    TextDetector?: new () => BrowserTextDetector;
-  }).TextDetector;
-  if (textDetectorConstructor) {
-    try {
-      const image = await loadImage(src);
-      const detector = new textDetectorConstructor();
-      const detections = await detector.detect(image);
-      return detections.map((item) => item.rawValue ?? "").join(" ").trim();
-    } catch {
-      return "";
-    }
-  }
-  return "";
 }
 
 function editDistance(a: string, b: string) {
@@ -448,22 +448,10 @@ async function recognizeCropImages(
   ).filter((item): item is { card: CardLookup; signature: number[] } => Boolean(item.signature));
   const artCardSignatures = (
     await Promise.all(
-      [
-        ...artImageVariants.map(async ({ card, imageUrl }) => ({
-          card,
-          signature: await imageSignature(imageUrl, `${card.name}:arena-art:${imageUrl}`, 18, 18).catch(() => null)
-        })),
-        ...cardImageVariants.map(async ({ card, imageUrl }) => ({
-          card,
-          signature: await imageRegionSignature(
-            imageUrl,
-            `${card.name}:arena-framed-art:${imageUrl}`,
-            { x: 0.12, y: 0.13, width: 0.76, height: 0.39 },
-            18,
-            18
-          ).catch(() => null)
-        }))
-      ]
+      artImageVariants.map(async ({ card, imageUrl }) => ({
+        card,
+        signature: await imageSignature(imageUrl, `${card.name}:arena-art:${imageUrl}`, 18, 18).catch(() => null)
+      }))
     )
   ).filter((item): item is { card: CardLookup; signature: number[] } => Boolean(item.signature));
   const titleCardSignatures = (
@@ -485,32 +473,18 @@ async function recognizeCropImages(
     throw new Error("Card images could not be loaded for recognition.");
   }
 
-  const cropSignatures = new Map<number, number[]>();
-  await Promise.all(
-    crops.map(async (crop) => {
-      const isArenaCrop = crop.source === "arena";
-      const signature = await imageSignature(
-        crop.matchSrc ?? crop.src,
-        "",
-        isArenaCrop ? 18 : 14,
-        isArenaCrop ? 18 : 20
-      );
-      cropSignatures.set(crop.index, signature);
-    })
-  );
-
   const ocrByCrop = new Map<number, string>();
   for (const crop of crops) {
     const ocrText = crop.source === "arena" && crop.textSrc ? await readTextSignal(crop.textSrc) : "";
     ocrByCrop.set(crop.index, ocrText);
   }
 
-  const results = await Promise.all(
+  return Promise.all(
     crops.map(async (crop) => {
       const isArenaCrop = crop.source === "arena";
       const ocrText = ocrByCrop.get(crop.index) ?? "";
       const signatures = isArenaCrop && artCardSignatures.length ? artCardSignatures : fullCardSignatures;
-      const cropSignature = cropSignatures.get(crop.index) ?? [];
+      const cropSignature = await imageSignature(crop.matchSrc ?? crop.src, "", isArenaCrop ? 18 : 14, isArenaCrop ? 18 : 20);
       const cropTitleSignature =
         isArenaCrop && crop.textSrc && titleCardSignatures.length
           ? await imageSignature(crop.textSrc, "", 36, 8).catch(() => null)
@@ -560,42 +534,6 @@ async function recognizeCropImages(
       return { cropIndex: crop.index, candidates };
     })
   );
-
-  for (const target of results) {
-    const targetTop = target.candidates[0];
-    const targetSignature = cropSignatures.get(target.cropIndex);
-    if (!targetTop || targetTop.textScore >= 0.68 || !targetSignature) {
-      continue;
-    }
-
-    const duplicateDonor = results
-      .filter((result) => result.cropIndex !== target.cropIndex && (result.candidates[0]?.textScore ?? 0) >= 0.68)
-      .map((result) => ({
-        result,
-        distance: signatureDistance(targetSignature, cropSignatures.get(result.cropIndex) ?? [])
-      }))
-      .filter((item) => item.distance <= 0.105)
-      .sort((a, b) => a.distance - b.distance)[0];
-
-    const donorTop = duplicateDonor?.result.candidates[0];
-    if (!donorTop) {
-      continue;
-    }
-    const propagated: RecognitionCandidate = {
-      ...donorTop,
-      score: Math.max(targetTop.score, donorTop.score * 0.97),
-      imageScore: Math.max(0, 1 - (duplicateDonor?.distance ?? 1)),
-      textScore: 0,
-      ocrText: ocrByCrop.get(target.cropIndex) ?? "",
-      isConflict: false
-    };
-    target.candidates = [
-      propagated,
-      ...target.candidates.filter((candidate) => candidate.cardName !== propagated.cardName)
-    ].slice(0, 3);
-  }
-
-  return results;
 }
 
 async function makeCrops(src: string, source: ScreenshotSource, adjustments: CropAdjustments) {
