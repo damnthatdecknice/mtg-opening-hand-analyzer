@@ -6,10 +6,10 @@ export function DashboardContent() {
   return (
     <section className="dashboard">
       <header className="dashboard-header panel">
-        <p className="eyebrow">Opening Edge workspace</p>
-        <h1>Player Command Center</h1>
+        <p className="eyebrow">Opening Edge</p>
+        <h1>Prepare Better. Mulligan Smarter.</h1>
         <p>
-          Your saved decks, analyzer history, metagame tools, and subscription workspace live here.
+          Tools for opening-hand analysis, deck management, and metagame preparation.
         </p>
         <DashboardActions />
       </header>
