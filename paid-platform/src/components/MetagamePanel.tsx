@@ -203,7 +203,6 @@ export function MetagamePanel() {
                             .map((card) => (
                               <span className="suggestion-chip" key={card.name}>
                                 <span>{card.name}</span>
-                                <small>{card.decks} lists</small>
                               </span>
                             ))}
                         </div>
