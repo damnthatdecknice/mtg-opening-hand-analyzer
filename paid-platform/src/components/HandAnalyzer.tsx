@@ -1109,9 +1109,8 @@ export function HandAnalyzer() {
         <p className="eyebrow">Opening hand analyzer</p>
         <h1>Analyze a Seven</h1>
         <p>
-          Paid-version port of the beta workflow: deck matrix, confirmed hand,
-          screenshot intake, land math, draw/ramp context, mulligan comparison,
-          and mana curve.
+          See how keepable your opening hand is, why it works or fails, and whether a
+          mulligan gives you better odds.
         </p>
       </header>
 
