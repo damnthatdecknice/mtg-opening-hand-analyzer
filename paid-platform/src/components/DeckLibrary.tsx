@@ -230,17 +230,6 @@ export function DeckLibrary() {
               </select>
             </label>
           </div>
-          <label>
-            Decklist
-            <textarea
-              onChange={(event) => {
-                setDecklist(event.target.value);
-                setImportMetadata(undefined);
-              }}
-              spellCheck={false}
-              value={decklist}
-            />
-          </label>
           <div className="import-row preferred-import-row">
             <span>
               <strong>Preferred: import MTGO .dek</strong>
@@ -259,6 +248,17 @@ export function DeckLibrary() {
               />
             </label>
           </div>
+          <label>
+            Decklist
+            <textarea
+              onChange={(event) => {
+                setDecklist(event.target.value);
+                setImportMetadata(undefined);
+              }}
+              spellCheck={false}
+              value={decklist}
+            />
+          </label>
           <div className="deck-save-row">
             <div className="mini-metrics">
               <span>{parsed.mainCount} main</span>
