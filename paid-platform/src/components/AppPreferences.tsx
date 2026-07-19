@@ -10,8 +10,10 @@ const preferenceKeys = {
 };
 
 const themes = [
-  { id: "opening-edge", label: "Opening Edge" },
-  { id: "nicol-bolas", label: "Nicol Bolas" }
+  { id: "opening-edge", label: "Jace" },
+  { id: "nicol-bolas", label: "Nicol Bolas" },
+  { id: "karn", label: "Karn" },
+  { id: "ajani", label: "Ajani" }
 ] as const;
 
 export type ThemeId = (typeof themes)[number]["id"];

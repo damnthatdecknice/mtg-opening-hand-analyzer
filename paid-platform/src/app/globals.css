@@ -71,6 +71,74 @@
   --amber-border: rgba(240, 166, 43, 0.78);
 }
 
+:root[data-theme="karn"] {
+  --bg: #0b1116;
+  --panel: rgba(11, 17, 22, 0.88);
+  --panel-strong: rgba(11, 17, 22, 0.94);
+  --command-panel: rgba(11, 17, 22, 0.82);
+  --command-panel-strong: rgba(17, 27, 34, 0.88);
+  --command-text: #e5ecec;
+  --command-muted: #9eadb1;
+  --data-card: rgba(17, 27, 34, 0.84);
+  --border: rgba(43, 66, 77, 0.8);
+  --text: #e5ecec;
+  --muted: #9eadb1;
+  --accent: #73b8c7;
+  --accent-2: #3c7787;
+  --good: #d8c078;
+  --warning: #d8c078;
+  --amber: #d8c078;
+  --amber-soft: rgba(216, 192, 120, 0.14);
+  --amber-border: rgba(216, 192, 120, 0.42);
+  --bad: #b9655e;
+  --shadow: 0 18px 52px rgba(0, 0, 0, 0.28);
+  --glow: 0 0 28px rgba(78, 143, 163, 0.2);
+  --inner-glow: inset 0 1px 0 rgba(229, 236, 236, 0.07);
+}
+
+:root[data-theme="karn"][data-high-contrast="true"] {
+  --panel: rgba(11, 17, 22, 0.94);
+  --command-panel: rgba(11, 17, 22, 0.9);
+  --border: rgba(78, 143, 163, 0.76);
+  --muted: #c8d4d6;
+  --amber-soft: rgba(216, 192, 120, 0.2);
+  --amber-border: rgba(216, 192, 120, 0.62);
+}
+
+:root[data-theme="ajani"] {
+  --bg: #0d0c0a;
+  --panel: rgba(13, 12, 10, 0.9);
+  --panel-strong: rgba(13, 12, 10, 0.95);
+  --command-panel: rgba(13, 12, 10, 0.82);
+  --command-panel-strong: rgba(33, 27, 20, 0.9);
+  --command-text: #f0e9dc;
+  --command-muted: #b8ad9b;
+  --data-card: rgba(25, 22, 17, 0.84);
+  --border: rgba(75, 64, 48, 0.88);
+  --text: #f0e9dc;
+  --muted: #b8ad9b;
+  --accent: #58a7a0;
+  --accent-2: #2e7773;
+  --good: #e6c566;
+  --warning: #e6c566;
+  --amber: #e4c46b;
+  --amber-soft: rgba(228, 196, 107, 0.16);
+  --amber-border: rgba(183, 140, 54, 0.58);
+  --bad: #b85f4d;
+  --shadow: 0 22px 60px rgba(0, 0, 0, 0.34);
+  --glow: 0 0 30px rgba(183, 140, 54, 0.18);
+  --inner-glow: inset 0 1px 0 rgba(240, 233, 220, 0.08);
+}
+
+:root[data-theme="ajani"][data-high-contrast="true"] {
+  --panel: rgba(13, 12, 10, 0.95);
+  --command-panel: rgba(13, 12, 10, 0.9);
+  --border: rgba(183, 140, 54, 0.76);
+  --muted: #ded2bd;
+  --amber-soft: rgba(228, 196, 107, 0.22);
+  --amber-border: rgba(228, 196, 107, 0.72);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -108,6 +176,16 @@ a {
 :root[data-theme="nicol-bolas"] .app-background {
   background-image: url("/nicol-bolas-background.png");
   background-position: center right;
+}
+
+:root[data-theme="karn"] .app-background {
+  background-image: url("/karn-background.png");
+  background-position: center center;
+}
+
+:root[data-theme="ajani"] .app-background {
+  background-image: url("/ajani-background.png");
+  background-position: center center;
 }
 
 .app-background::after {
@@ -159,6 +237,50 @@ a {
   background:
     linear-gradient(90deg, rgba(9, 7, 7, 0.94), rgba(9, 7, 7, 0.74) 48%, rgba(9, 7, 7, 0.5) 78%, rgba(9, 7, 7, 0.62)),
     radial-gradient(circle at 70% 42%, rgba(240, 166, 43, 0.12), transparent 24%);
+}
+
+:root[data-theme="karn"] .app-background::after {
+  background:
+    linear-gradient(90deg, rgba(11, 17, 22, 0.88), rgba(11, 17, 22, 0.6) 45%, rgba(11, 17, 22, 0.32) 74%, rgba(11, 17, 22, 0.5)),
+    radial-gradient(circle at 72% 42%, rgba(115, 184, 199, 0.16), transparent 28%),
+    radial-gradient(circle at 60% 25%, rgba(216, 192, 120, 0.07), transparent 18%),
+    radial-gradient(circle at 50% 50%, transparent, rgba(11, 17, 22, 0.5));
+}
+
+:root[data-theme="karn"] .app-background::before {
+  opacity: 0.24;
+  background-image:
+    linear-gradient(rgba(78, 143, 163, 0.11) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(78, 143, 163, 0.11) 1px, transparent 1px);
+  mask-image: radial-gradient(circle at 72% 42%, transparent 0, rgba(0, 0, 0, 0.78) 58%, transparent 84%);
+}
+
+:root[data-theme="karn"][data-high-contrast="true"] .app-background::after {
+  background:
+    linear-gradient(90deg, rgba(11, 17, 22, 0.93), rgba(11, 17, 22, 0.72) 48%, rgba(11, 17, 22, 0.5) 78%, rgba(11, 17, 22, 0.64)),
+    radial-gradient(circle at 72% 42%, rgba(115, 184, 199, 0.1), transparent 28%);
+}
+
+:root[data-theme="ajani"] .app-background::after {
+  background:
+    linear-gradient(90deg, rgba(13, 12, 10, 0.88), rgba(13, 12, 10, 0.62) 44%, rgba(13, 12, 10, 0.34) 74%, rgba(13, 12, 10, 0.5)),
+    radial-gradient(circle at 74% 24%, rgba(228, 196, 107, 0.18), transparent 24%),
+    radial-gradient(circle at 35% 44%, rgba(46, 119, 115, 0.12), transparent 24%),
+    radial-gradient(circle at 50% 50%, transparent, rgba(13, 12, 10, 0.52));
+}
+
+:root[data-theme="ajani"] .app-background::before {
+  opacity: 0.18;
+  background-image:
+    linear-gradient(rgba(199, 155, 59, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(46, 119, 115, 0.1) 1px, transparent 1px);
+  mask-image: radial-gradient(circle at 70% 34%, transparent 0, rgba(0, 0, 0, 0.72) 58%, transparent 84%);
+}
+
+:root[data-theme="ajani"][data-high-contrast="true"] .app-background::after {
+  background:
+    linear-gradient(90deg, rgba(13, 12, 10, 0.93), rgba(13, 12, 10, 0.76) 48%, rgba(13, 12, 10, 0.54) 78%, rgba(13, 12, 10, 0.66)),
+    radial-gradient(circle at 74% 24%, rgba(228, 196, 107, 0.1), transparent 24%);
 }
 
 :root[data-reduced-motion="true"] *,
@@ -394,6 +516,22 @@ h2 {
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
+:root[data-theme="karn"] .primary-button {
+  background: linear-gradient(135deg, #3c7787, #5297a8);
+  color: #f1f5f4;
+  box-shadow:
+    0 0 26px rgba(78, 143, 163, 0.2),
+    inset 0 1px 0 rgba(241, 245, 244, 0.14);
+}
+
+:root[data-theme="ajani"] .primary-button {
+  background: linear-gradient(135deg, #a97d2f, #c69a41);
+  color: #fff8e8;
+  box-shadow:
+    0 0 28px rgba(228, 196, 107, 0.16),
+    inset 0 1px 0 rgba(255, 248, 232, 0.16);
+}
+
 .secondary-button {
   border: 1px solid var(--border);
   background: linear-gradient(135deg, rgba(8, 31, 60, 0.82), rgba(4, 13, 29, 0.9));
@@ -407,6 +545,22 @@ h2 {
   border-color: rgba(255, 184, 77, 0.42);
   background: linear-gradient(135deg, rgba(255, 184, 77, 0.14), rgba(8, 22, 42, 0.64));
   color: #ffe2a8;
+}
+
+:root[data-theme="karn"] .secondary-button,
+:root[data-theme="karn"] .text-button,
+:root[data-theme="karn"] .mini-button {
+  border-color: rgba(78, 143, 163, 0.46);
+  background: linear-gradient(135deg, rgba(24, 52, 61, 0.68), rgba(17, 27, 34, 0.86));
+  color: #e5ecec;
+}
+
+:root[data-theme="ajani"] .secondary-button,
+:root[data-theme="ajani"] .text-button,
+:root[data-theme="ajani"] .mini-button {
+  border-color: rgba(46, 119, 115, 0.42);
+  background: linear-gradient(135deg, rgba(36, 90, 87, 0.54), rgba(25, 22, 17, 0.86));
+  color: #f0e9dc;
 }
 
 .primary-button:hover,
@@ -1098,6 +1252,22 @@ h2 {
     linear-gradient(180deg, rgba(255, 184, 77, 0.16), transparent),
     linear-gradient(90deg, rgba(89, 216, 255, 0.08), transparent);
   color: var(--text);
+}
+
+:root[data-theme="karn"] .tool-tabs button.is-selected,
+:root[data-theme="karn"] .segmented-control button.is-selected {
+  border-color: rgba(78, 143, 163, 0.76);
+  border-bottom-color: #4e8fa3;
+  background: linear-gradient(135deg, rgba(24, 52, 61, 0.78), rgba(11, 17, 22, 0.72));
+  box-shadow: 0 0 22px rgba(78, 143, 163, 0.15);
+}
+
+:root[data-theme="ajani"] .tool-tabs button.is-selected,
+:root[data-theme="ajani"] .segmented-control button.is-selected {
+  border-color: rgba(46, 119, 115, 0.68);
+  border-bottom-color: #58a7a0;
+  background: linear-gradient(135deg, rgba(23, 59, 57, 0.78), rgba(33, 27, 20, 0.72));
+  box-shadow: 0 0 22px rgba(46, 119, 115, 0.14);
 }
 
 .result-tabs {
@@ -1982,6 +2152,22 @@ h2 {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--amber), var(--accent));
+}
+
+:root[data-theme="karn"] .curve-row i,
+:root[data-theme="karn"] .meta-bar-row i {
+  background: linear-gradient(90deg, #3c7787, #73b8c7);
+  box-shadow:
+    0 0 16px rgba(78, 143, 163, 0.18),
+    inset 0 1px 0 rgba(229, 236, 236, 0.2);
+}
+
+:root[data-theme="ajani"] .curve-row i,
+:root[data-theme="ajani"] .meta-bar-row i {
+  background: linear-gradient(90deg, #a97d2f, #58a7a0);
+  box-shadow:
+    0 0 16px rgba(228, 196, 107, 0.16),
+    inset 0 1px 0 rgba(255, 248, 232, 0.2);
 }
 
 @media (max-width: 900px) {
