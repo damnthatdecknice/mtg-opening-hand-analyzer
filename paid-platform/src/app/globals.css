@@ -1168,6 +1168,18 @@ h2 {
   margin: 18px 0;
 }
 
+.hand-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.hand-action-row .secondary-button {
+  margin-left: auto;
+}
+
 .screenshot-dropzone {
   display: grid;
   place-items: center;
