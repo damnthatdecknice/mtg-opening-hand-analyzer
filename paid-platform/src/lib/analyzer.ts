@@ -413,7 +413,7 @@ async function fetchSingleCard(name: string) {
 async function fetchMtgoCard(mtgoId: number) {
   const response = await fetchWithRetries(`https://api.scryfall.com/cards/mtgo/${mtgoId}`);
   if (!response?.ok) {
-    return { card: null, failure: `MTGO CatID ${mtgoId}: ${response ? scryfallErrorMessage(response.status) : "Network error"}` };
+    return { card: null, failure: `Exact .dek art lookup: ${response ? scryfallErrorMessage(response.status) : "Network error"}` };
   }
   return { card: (await response.json()) as ScryfallCard, failure: "" };
 }
@@ -531,7 +531,7 @@ export async function fetchCardData(
     for (const mtgoId of entry.ids) {
       const exact = await fetchMtgoCard(mtgoId);
       if (!exact.card) {
-        failures.push(exact.failure || `MTGO CatID ${mtgoId}: Card not found`);
+        failures.push(exact.failure || "Exact .dek art lookup: Card not found");
         continue;
       }
 

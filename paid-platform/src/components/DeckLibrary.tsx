@@ -173,7 +173,7 @@ export function DeckLibrary() {
         setName(file.name.replace(/\.dek$/i, "").replace(/^Deck\s*-\s*/i, ""));
       }
       setMessage(
-        `Imported .dek file: ${convertedParsed.mainCount} main, ${convertedParsed.sideboardCount} sideboard. MTGO CatIDs will be saved for exact-art recognition.`
+        `Imported .dek file: ${convertedParsed.mainCount} main, ${convertedParsed.sideboardCount} sideboard. Preferred .dek matching will be saved for Magic Online screenshots.`
       );
     } catch {
       setMessage("Could not import that .dek file.");
@@ -244,7 +244,7 @@ export function DeckLibrary() {
           <div className="import-row preferred-import-row">
             <span>
               <strong>Preferred: import MTGO .dek</strong>
-              <em>Uses MTGO CatIDs for exact-art screenshot recognition.</em>
+              <em>Preferred for sharper Magic Online screenshot recognition.</em>
             </span>
             <label className="secondary-button file-button">
               Import .dek
@@ -265,7 +265,7 @@ export function DeckLibrary() {
               <span>{parsed.sideboardCount} sideboard</span>
               <span>{parsed.cards.length} unique rows</span>
               {importMetadata?.source === "mtgo_dek" ? (
-                <span>{importMetadata.cards.length} MTGO CatID rows</span>
+                <span>.dek import ready</span>
               ) : null}
             </div>
             <button className="primary-button" disabled={isBusy} type="submit">
@@ -301,7 +301,7 @@ export function DeckLibrary() {
                   <span>
                     {deck.format || "Unspecified"} | {deck.parsed_json.mainCount ?? 0} main |{" "}
                     {deck.parsed_json.sideboardCount ?? 0} sideboard
-                    {deck.parsed_json.importMetadata?.source === "mtgo_dek" ? " | MTGO .dek art" : ""}
+                    {deck.parsed_json.importMetadata?.source === "mtgo_dek" ? " | .dek import" : ""}
                   </span>
                 </div>
                 <button

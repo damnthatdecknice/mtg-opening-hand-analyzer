@@ -607,7 +607,7 @@ async function makeCrops(src: string, source: ScreenshotSource, adjustments: Cro
   const cropHeight =
     image.height * 0.252 * (1 + adjustments.height / 100);
   const startX = image.width * 0.087 + image.width * (adjustments.x / 100);
-  const startY = image.height * 0.695 + image.height * (adjustments.y / 100);
+  const startY = image.height * 0.712 + image.height * (adjustments.y / 100);
   const step =
     image.width * 0.1025 * (1 + adjustments.spread / 100);
 
@@ -826,7 +826,7 @@ export function HandAnalyzer() {
     const mtgoIdCount = deck.parsed_json.importMetadata?.cards.length ?? 0;
     setMessage(
       mtgoIdCount
-        ? `Loaded ${deck.name}. ${mtgoIdCount} MTGO CatID row(s) will be used for exact-art MTGO recognition.`
+        ? `Loaded ${deck.name}. Preferred .dek art matching is available for Magic Online screenshots.`
         : `Loaded ${deck.name}.`
     );
   }
@@ -846,7 +846,7 @@ export function HandAnalyzer() {
       setSelectedDeckId("custom");
       window.localStorage.removeItem(lastDeckStorageKey);
       setMessage(
-        `Imported .dek file: ${convertedParsed.mainCount} main, ${convertedParsed.sideboardCount} sideboard. MTGO recognition will use CatID exact art only.`
+        `Imported .dek file: ${convertedParsed.mainCount} main, ${convertedParsed.sideboardCount} sideboard. Preferred .dek art matching is on for Magic Online screenshots.`
       );
     } catch {
       setMessage("Could not import that .dek file.");
@@ -902,9 +902,7 @@ export function HandAnalyzer() {
       if (nextHand.filter(Boolean).length === 7) {
         setConfirmedHand(nextHand);
         setHandText(nextHand.join("\n"));
-        const exactArtNote = useExactMtgoArt
-          ? ` Used ${mtgoIdCount} saved MTGO CatID row(s) as the exact-art comparison pool.`
-          : "";
+        const exactArtNote = useExactMtgoArt ? " Using saved .dek art for sharper matching." : "";
         setMessage(
           failures.length
             ? `Recognition finished, but ${failures.length} card lookup(s) need review.${exactArtNote} Confirm the seven cards below; dropdowns still work for loaded cards.`
@@ -1240,7 +1238,7 @@ export function HandAnalyzer() {
             <span>{parsed.sideboardCount} sideboard</span>
             <span>{parsed.cards.length} unique rows</span>
             {deckImportMetadata?.source === "mtgo_dek" ? (
-              <span>{deckImportMetadata.cards.length} MTGO CatID rows</span>
+              <span>.dek import ready</span>
             ) : null}
           </div>
           {!entitlements.canUseDeckVault && !entitlements.isLoading ? (
@@ -1307,7 +1305,7 @@ export function HandAnalyzer() {
           <div className="import-row preferred-import-row">
             <span>
               <strong>Preferred: import MTGO .dek</strong>
-              <em>Uses MTGO CatIDs for exact-art screenshot recognition.</em>
+              <em>Preferred for sharper Magic Online screenshot recognition.</em>
             </span>
             <label className="secondary-button file-button">
               Import .dek
@@ -1506,6 +1504,7 @@ export function HandAnalyzer() {
                       cropIndex={crop.index}
                       onChoose={(name) => updateConfirmed(crop.index, name)}
                       result={recognitionResults.find((item) => item.cropIndex === crop.index)}
+                      selectedCard={confirmedHand[crop.index] ?? ""}
                     />
                   </figure>
                 ))}
@@ -2084,11 +2083,13 @@ function OtherTools({ result }: { result: AnalyzerResult }) {
 function CandidateList({
   cropIndex,
   onChoose,
-  result
+  result,
+  selectedCard
 }: {
   cropIndex: number;
   onChoose: (name: string) => void;
   result?: RecognitionResult;
+  selectedCard: string;
 }) {
   if (!result?.candidates.length) {
     return <span className="candidate-empty">No candidates yet</span>;
@@ -2104,10 +2105,20 @@ function CandidateList({
         <div className="candidate-conflict">
           <strong>Which card?</strong>
           <div>
-            <button onClick={() => onChoose(first.cardName)} type="button">
+            <button
+              aria-pressed={selectedCard === first.cardName}
+              className={selectedCard === first.cardName ? "is-selected-choice" : ""}
+              onClick={() => onChoose(first.cardName)}
+              type="button"
+            >
               {first.cardName}
             </button>
-            <button onClick={() => onChoose(second.cardName)} type="button">
+            <button
+              aria-pressed={selectedCard === second.cardName}
+              className={selectedCard === second.cardName ? "is-selected-choice" : ""}
+              onClick={() => onChoose(second.cardName)}
+              type="button"
+            >
               {second.cardName}
             </button>
           </div>
@@ -2115,7 +2126,11 @@ function CandidateList({
       ) : null}
       {result.candidates.map((candidate, index) => (
         <button
-          className={index === 0 ? "is-best" : ""}
+          aria-pressed={selectedCard === candidate.cardName}
+          className={[
+            index === 0 ? "is-best" : "",
+            selectedCard === candidate.cardName ? "is-selected-choice" : ""
+          ].filter(Boolean).join(" ")}
           key={`${cropIndex}-${candidate.cardName}`}
           onClick={() => onChoose(candidate.cardName)}
           type="button"
