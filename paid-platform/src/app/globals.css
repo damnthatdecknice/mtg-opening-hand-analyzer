@@ -38,6 +38,39 @@
   --shadow: 0 20px 70px rgba(0, 0, 0, 0.62);
 }
 
+:root[data-theme="nicol-bolas"] {
+  --bg: #090707;
+  --panel: rgba(9, 7, 7, 0.82);
+  --panel-strong: rgba(9, 7, 7, 0.92);
+  --command-panel: rgba(23, 17, 17, 0.74);
+  --command-panel-strong: rgba(23, 17, 17, 0.86);
+  --command-text: #f3e8d0;
+  --command-muted: #dec9a6;
+  --data-card: rgba(12, 8, 8, 0.8);
+  --border: rgba(216, 90, 24, 0.42);
+  --text: #f3e8d0;
+  --muted: #d9c9ad;
+  --accent: #d85a18;
+  --accent-2: #a82020;
+  --good: #f0a62b;
+  --warning: #f0a62b;
+  --amber: #f0a62b;
+  --amber-soft: rgba(240, 166, 43, 0.18);
+  --amber-border: rgba(240, 166, 43, 0.58);
+  --bad: #ff7464;
+  --glow: 0 0 34px rgba(216, 90, 24, 0.18);
+  --inner-glow: inset 0 1px 0 rgba(243, 232, 208, 0.08);
+}
+
+:root[data-theme="nicol-bolas"][data-high-contrast="true"] {
+  --panel: rgba(9, 7, 7, 0.94);
+  --command-panel: rgba(23, 17, 17, 0.84);
+  --border: rgba(240, 166, 43, 0.66);
+  --muted: #f0dfc0;
+  --amber-soft: rgba(240, 166, 43, 0.25);
+  --amber-border: rgba(240, 166, 43, 0.78);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -72,6 +105,11 @@ a {
   background-size: cover;
 }
 
+:root[data-theme="nicol-bolas"] .app-background {
+  background-image: url("/nicol-bolas-background.png");
+  background-position: center right;
+}
+
 .app-background::after {
   content: "";
   position: absolute;
@@ -98,6 +136,29 @@ a {
 
 :root[data-high-contrast="true"] .app-background::after {
   background: rgba(2, 7, 19, 0.86);
+}
+
+:root[data-theme="nicol-bolas"] .app-background::after {
+  background:
+    linear-gradient(90deg, rgba(9, 7, 7, 0.9), rgba(9, 7, 7, 0.62) 42%, rgba(9, 7, 7, 0.3) 72%, rgba(9, 7, 7, 0.45)),
+    radial-gradient(circle at 70% 42%, rgba(240, 166, 43, 0.18), transparent 24%),
+    radial-gradient(circle at 58% 28%, rgba(168, 32, 32, 0.18), transparent 28%),
+    radial-gradient(circle at 22% 34%, rgba(110, 16, 21, 0.18), transparent 28%),
+    radial-gradient(circle at 50% 50%, transparent, rgba(9, 7, 7, 0.58));
+}
+
+:root[data-theme="nicol-bolas"] .app-background::before {
+  opacity: 0.2;
+  background-image:
+    linear-gradient(rgba(240, 166, 43, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(168, 32, 32, 0.12) 1px, transparent 1px);
+  mask-image: radial-gradient(circle at 68% 42%, transparent 0, rgba(0, 0, 0, 0.75) 58%, transparent 84%);
+}
+
+:root[data-theme="nicol-bolas"][data-high-contrast="true"] .app-background::after {
+  background:
+    linear-gradient(90deg, rgba(9, 7, 7, 0.94), rgba(9, 7, 7, 0.74) 48%, rgba(9, 7, 7, 0.5) 78%, rgba(9, 7, 7, 0.62)),
+    radial-gradient(circle at 70% 42%, rgba(240, 166, 43, 0.12), transparent 24%);
 }
 
 :root[data-reduced-motion="true"] *,
@@ -548,6 +609,10 @@ h2 {
 .settings-stack {
   display: grid;
   gap: 12px;
+}
+
+.settings-select {
+  width: min(260px, 100%);
 }
 
 .toggle-row {

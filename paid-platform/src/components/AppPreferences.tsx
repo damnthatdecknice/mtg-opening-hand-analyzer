@@ -5,8 +5,20 @@ import { useEffect } from "react";
 const preferenceKeys = {
   contrast: "mtg-hand-pro:a11y-high-contrast",
   motion: "mtg-hand-pro:a11y-reduced-motion",
-  text: "mtg-hand-pro:a11y-large-text"
+  text: "mtg-hand-pro:a11y-large-text",
+  theme: "mtg-hand-pro:theme"
 };
+
+const themes = [
+  { id: "opening-edge", label: "Opening Edge" },
+  { id: "nicol-bolas", label: "Nicol Bolas" }
+] as const;
+
+export type ThemeId = (typeof themes)[number]["id"];
+
+function isThemeId(value: string | null): value is ThemeId {
+  return themes.some((theme) => theme.id === value);
+}
 
 function applyPreference(key: string, attr: string, defaultEnabled = false) {
   const saved = window.localStorage.getItem(key);
@@ -14,10 +26,16 @@ function applyPreference(key: string, attr: string, defaultEnabled = false) {
   document.documentElement.dataset[attr] = enabled ? "true" : "false";
 }
 
+function applyThemePreference() {
+  const saved = window.localStorage.getItem(preferenceKeys.theme);
+  document.documentElement.dataset.theme = isThemeId(saved) ? saved : "opening-edge";
+}
+
 export function applyAccessibilityPreferences() {
   applyPreference(preferenceKeys.contrast, "highContrast", true);
   applyPreference(preferenceKeys.motion, "reducedMotion");
   applyPreference(preferenceKeys.text, "largeText");
+  applyThemePreference();
 }
 
 export function AppPreferences() {
@@ -35,4 +53,4 @@ export function AppPreferences() {
   return null;
 }
 
-export { preferenceKeys };
+export { preferenceKeys, themes };

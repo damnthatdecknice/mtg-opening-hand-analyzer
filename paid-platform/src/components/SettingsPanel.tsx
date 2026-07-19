@@ -1,19 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { applyAccessibilityPreferences, preferenceKeys } from "@/components/AppPreferences";
+import {
+  applyAccessibilityPreferences,
+  preferenceKeys,
+  themes,
+  type ThemeId
+} from "@/components/AppPreferences";
 import { supabase } from "@/lib/supabase";
 
 type Preferences = {
   contrast: boolean;
   motion: boolean;
   text: boolean;
+  theme: ThemeId;
 };
 
 const defaultPreferences: Preferences = {
   contrast: true,
   motion: false,
-  text: false
+  text: false,
+  theme: "opening-edge"
 };
 
 function clearLocalAppCaches() {
@@ -22,7 +29,8 @@ function clearLocalAppCaches() {
     "mtg-hand-pro:last-analyzer-deck-id",
     preferenceKeys.contrast,
     preferenceKeys.motion,
-    preferenceKeys.text
+    preferenceKeys.text,
+    preferenceKeys.theme
   ];
 
   for (const key of Object.keys(window.localStorage)) {
@@ -42,7 +50,10 @@ export function SettingsPanel() {
     setPreferences({
       contrast: window.localStorage.getItem(preferenceKeys.contrast) !== "false",
       motion: window.localStorage.getItem(preferenceKeys.motion) === "true",
-      text: window.localStorage.getItem(preferenceKeys.text) === "true"
+      text: window.localStorage.getItem(preferenceKeys.text) === "true",
+      theme:
+        themes.find((theme) => theme.id === window.localStorage.getItem(preferenceKeys.theme))?.id ??
+        defaultPreferences.theme
     });
   }, []);
 
@@ -56,6 +67,12 @@ export function SettingsPanel() {
 
     window.localStorage.setItem(storageKey, String(value));
     setPreferences((current) => ({ ...current, [key]: value }));
+    applyAccessibilityPreferences();
+  }
+
+  function updateTheme(value: ThemeId) {
+    window.localStorage.setItem(preferenceKeys.theme, value);
+    setPreferences((current) => ({ ...current, theme: value }));
     applyAccessibilityPreferences();
   }
 
@@ -118,6 +135,23 @@ export function SettingsPanel() {
           <h2>Display Preferences</h2>
         </div>
         <div className="settings-stack">
+          <label className="toggle-row">
+            <span>
+              <strong>Theme</strong>
+              <em>Changes the site background and accent palette in this browser.</em>
+            </span>
+            <select
+              className="card-select settings-select"
+              onChange={(event) => updateTheme(event.target.value as ThemeId)}
+              value={preferences.theme}
+            >
+              {themes.map((theme) => (
+                <option key={theme.id} value={theme.id}>
+                  {theme.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="toggle-row">
             <span>
               <strong>High contrast</strong>
