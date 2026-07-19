@@ -7,14 +7,6 @@ export default function HelpPage() {
       <h1>Help and Troubleshooting</h1>
       <div className="legal-stack">
         <section>
-          <h2>Scryfall Lookup Issues</h2>
-          <p>
-            The analyzer retries Scryfall requests, falls back from batch lookup to exact-card lookup,
-            and keeps working when only part of a deck loads. If a card still fails, check spelling,
-            punctuation, and whether the decklist uses an Arena-style card name.
-          </p>
-        </section>
-        <section>
           <h2>Screenshot Recognition</h2>
           <p>
             Screenshot recognition compares deck-card images, extra print images, and browser OCR when
