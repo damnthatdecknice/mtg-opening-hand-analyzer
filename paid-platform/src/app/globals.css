@@ -1576,6 +1576,31 @@ h2 {
   padding: 12px;
 }
 
+.preferred-import-row {
+  border-color: color-mix(in srgb, var(--gold) 42%, transparent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--gold) 14%, transparent), transparent 55%),
+    var(--panel-strong);
+}
+
+.preferred-import-row > span {
+  display: grid;
+  gap: 3px;
+}
+
+.preferred-import-row strong {
+  color: var(--gold);
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+}
+
+.preferred-import-row em {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
 .mini-metrics {
   display: flex;
   flex-wrap: wrap;

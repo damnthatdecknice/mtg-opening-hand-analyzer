@@ -241,8 +241,11 @@ export function DeckLibrary() {
               value={decklist}
             />
           </label>
-          <div className="import-row">
-            <span>MTGO .dek file</span>
+          <div className="import-row preferred-import-row">
+            <span>
+              <strong>Preferred: import MTGO .dek</strong>
+              <em>Uses MTGO CatIDs for exact-art screenshot recognition.</em>
+            </span>
             <label className="secondary-button file-button">
               Import .dek
               <input
