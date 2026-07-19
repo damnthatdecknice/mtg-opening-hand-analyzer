@@ -416,7 +416,7 @@ a {
 .auth-required,
 .locked-feature-panel {
   background:
-    linear-gradient(135deg, var(--command-panel-strong), rgba(1, 6, 16, 0.8)),
+    linear-gradient(100deg, var(--command-panel-strong) 0%, var(--command-panel) 58%, rgba(1, 6, 16, 0.42) 78%, rgba(1, 6, 16, 0.14) 100%),
     var(--command-panel);
   border-color: rgba(255, 184, 77, 0.44);
   color: var(--command-text);
@@ -424,6 +424,36 @@ a {
     0 26px 80px rgba(0, 0, 0, 0.42),
     0 0 36px rgba(255, 184, 77, 0.12),
     inset 0 1px 0 rgba(255, 226, 164, 0.12);
+}
+
+:root[data-theme="nicol-bolas"] .hero-panel,
+:root[data-theme="nicol-bolas"] .dashboard-header,
+:root[data-theme="nicol-bolas"] .auth-panel,
+:root[data-theme="nicol-bolas"] .auth-required,
+:root[data-theme="nicol-bolas"] .locked-feature-panel {
+  background:
+    linear-gradient(100deg, rgba(23, 17, 17, 0.9) 0%, rgba(23, 17, 17, 0.74) 55%, rgba(23, 17, 17, 0.34) 78%, rgba(23, 17, 17, 0.08) 100%),
+    var(--command-panel);
+}
+
+:root[data-theme="karn"] .hero-panel,
+:root[data-theme="karn"] .dashboard-header,
+:root[data-theme="karn"] .auth-panel,
+:root[data-theme="karn"] .auth-required,
+:root[data-theme="karn"] .locked-feature-panel {
+  background:
+    linear-gradient(100deg, rgba(17, 27, 34, 0.9) 0%, rgba(11, 17, 22, 0.78) 55%, rgba(11, 17, 22, 0.36) 78%, rgba(11, 17, 22, 0.1) 100%),
+    var(--command-panel);
+}
+
+:root[data-theme="ajani"] .hero-panel,
+:root[data-theme="ajani"] .dashboard-header,
+:root[data-theme="ajani"] .auth-panel,
+:root[data-theme="ajani"] .auth-required,
+:root[data-theme="ajani"] .locked-feature-panel {
+  background:
+    linear-gradient(100deg, rgba(33, 27, 20, 0.92) 0%, rgba(13, 12, 10, 0.78) 55%, rgba(13, 12, 10, 0.36) 78%, rgba(13, 12, 10, 0.1) 100%),
+    var(--command-panel);
 }
 
 .hero-panel::before,
