@@ -651,10 +651,15 @@ a {
 }
 
 .hero-panel {
-  min-height: 420px;
-  padding: 44px;
+  width: min(920px, 100%);
+  min-height: 360px;
+  padding: 40px;
   border-radius: 0;
   border-color: rgba(255, 184, 77, 0.44);
+}
+
+.dashboard-header {
+  width: min(920px, 100%);
 }
 
 .hero-panel,
@@ -662,9 +667,7 @@ a {
 .auth-panel,
 .auth-required,
 .locked-feature-panel {
-  background:
-    linear-gradient(100deg, var(--command-panel-strong) 0%, var(--command-panel) 58%, rgba(1, 6, 16, 0.42) 78%, rgba(1, 6, 16, 0.14) 100%),
-    var(--command-panel);
+  background: linear-gradient(100deg, var(--command-panel-strong) 0%, var(--command-panel) 54%, rgba(1, 6, 16, 0.24) 74%, rgba(1, 6, 16, 0.04) 100%);
   border-color: rgba(255, 184, 77, 0.44);
   color: var(--command-text);
   box-shadow:
@@ -678,9 +681,7 @@ a {
 :root[data-theme="nicol-bolas"] .auth-panel,
 :root[data-theme="nicol-bolas"] .auth-required,
 :root[data-theme="nicol-bolas"] .locked-feature-panel {
-  background:
-    linear-gradient(100deg, rgba(23, 17, 17, 0.9) 0%, rgba(23, 17, 17, 0.74) 55%, rgba(23, 17, 17, 0.34) 78%, rgba(23, 17, 17, 0.08) 100%),
-    var(--command-panel);
+  background: linear-gradient(100deg, rgba(23, 17, 17, 0.9) 0%, rgba(23, 17, 17, 0.72) 52%, rgba(23, 17, 17, 0.2) 72%, rgba(23, 17, 17, 0.02) 100%);
 }
 
 :root[data-theme="karn"] .hero-panel,
@@ -688,9 +689,7 @@ a {
 :root[data-theme="karn"] .auth-panel,
 :root[data-theme="karn"] .auth-required,
 :root[data-theme="karn"] .locked-feature-panel {
-  background:
-    linear-gradient(100deg, rgba(17, 27, 34, 0.9) 0%, rgba(11, 17, 22, 0.78) 55%, rgba(11, 17, 22, 0.36) 78%, rgba(11, 17, 22, 0.1) 100%),
-    var(--command-panel);
+  background: linear-gradient(100deg, rgba(17, 27, 34, 0.9) 0%, rgba(11, 17, 22, 0.76) 52%, rgba(11, 17, 22, 0.22) 72%, rgba(11, 17, 22, 0.03) 100%);
 }
 
 :root[data-theme="ajani"] .hero-panel,
@@ -698,9 +697,7 @@ a {
 :root[data-theme="ajani"] .auth-panel,
 :root[data-theme="ajani"] .auth-required,
 :root[data-theme="ajani"] .locked-feature-panel {
-  background:
-    linear-gradient(100deg, rgba(33, 27, 20, 0.92) 0%, rgba(13, 12, 10, 0.78) 55%, rgba(13, 12, 10, 0.36) 78%, rgba(13, 12, 10, 0.1) 100%),
-    var(--command-panel);
+  background: linear-gradient(100deg, rgba(33, 27, 20, 0.92) 0%, rgba(13, 12, 10, 0.76) 52%, rgba(13, 12, 10, 0.22) 72%, rgba(13, 12, 10, 0.03) 100%);
 }
 
 :root[data-theme="teferi"] .hero-panel,
@@ -708,9 +705,7 @@ a {
 :root[data-theme="teferi"] .auth-panel,
 :root[data-theme="teferi"] .auth-required,
 :root[data-theme="teferi"] .locked-feature-panel {
-  background:
-    linear-gradient(100deg, rgba(14, 33, 56, 0.92) 0%, rgba(7, 20, 38, 0.8) 55%, rgba(7, 20, 38, 0.38) 78%, rgba(7, 20, 38, 0.1) 100%),
-    var(--command-panel);
+  background: linear-gradient(100deg, rgba(14, 33, 56, 0.92) 0%, rgba(7, 20, 38, 0.78) 52%, rgba(7, 20, 38, 0.24) 72%, rgba(7, 20, 38, 0.03) 100%);
 }
 
 :root[data-theme="chandra"] .hero-panel,
@@ -718,9 +713,7 @@ a {
 :root[data-theme="chandra"] .auth-panel,
 :root[data-theme="chandra"] .auth-required,
 :root[data-theme="chandra"] .locked-feature-panel {
-  background:
-    linear-gradient(100deg, rgba(26, 13, 9, 0.93) 0%, rgba(11, 7, 6, 0.82) 55%, rgba(11, 7, 6, 0.4) 78%, rgba(11, 7, 6, 0.12) 100%),
-    var(--command-panel);
+  background: linear-gradient(100deg, rgba(26, 13, 9, 0.93) 0%, rgba(11, 7, 6, 0.8) 52%, rgba(11, 7, 6, 0.25) 72%, rgba(11, 7, 6, 0.04) 100%);
 }
 
 :root[data-theme="progenitus"] .hero-panel,
@@ -728,9 +721,7 @@ a {
 :root[data-theme="progenitus"] .auth-panel,
 :root[data-theme="progenitus"] .auth-required,
 :root[data-theme="progenitus"] .locked-feature-panel {
-  background:
-    linear-gradient(100deg, rgba(17, 25, 28, 0.95) 0%, rgba(7, 10, 11, 0.9) 58%, rgba(7, 10, 11, 0.56) 80%, rgba(7, 10, 11, 0.22) 100%),
-    var(--command-panel);
+  background: linear-gradient(100deg, rgba(17, 25, 28, 0.95) 0%, rgba(7, 10, 11, 0.86) 54%, rgba(7, 10, 11, 0.32) 74%, rgba(7, 10, 11, 0.06) 100%);
 }
 
 :root[data-theme="landscape"] .hero-panel,
@@ -738,9 +729,7 @@ a {
 :root[data-theme="landscape"] .auth-panel,
 :root[data-theme="landscape"] .auth-required,
 :root[data-theme="landscape"] .locked-feature-panel {
-  background:
-    linear-gradient(100deg, rgba(18, 27, 39, 0.93) 0%, rgba(10, 16, 27, 0.84) 56%, rgba(10, 16, 27, 0.42) 78%, rgba(10, 16, 27, 0.16) 100%),
-    var(--command-panel);
+  background: linear-gradient(100deg, rgba(18, 27, 39, 0.93) 0%, rgba(10, 16, 27, 0.8) 52%, rgba(10, 16, 27, 0.26) 72%, rgba(10, 16, 27, 0.04) 100%);
 }
 
 .hero-panel::before,
