@@ -173,6 +173,40 @@
   --amber-border: rgba(224, 198, 117, 0.68);
 }
 
+:root[data-theme="chandra"] {
+  --bg: #0b0706;
+  --panel: rgba(11, 7, 6, 0.91);
+  --panel-strong: rgba(11, 7, 6, 0.96);
+  --command-panel: rgba(11, 7, 6, 0.84);
+  --command-panel-strong: rgba(26, 13, 9, 0.92);
+  --command-text: #f7eee7;
+  --command-muted: #c8afa1;
+  --data-card: rgba(26, 15, 11, 0.86);
+  --border: rgba(90, 38, 25, 0.88);
+  --text: #f7eee7;
+  --muted: #c8afa1;
+  --accent: #ff7a32;
+  --accent-2: #c72b16;
+  --good: #ffb33a;
+  --warning: #ffb33a;
+  --amber: #ffb33a;
+  --amber-soft: rgba(255, 179, 58, 0.15);
+  --amber-border: rgba(255, 179, 58, 0.48);
+  --bad: #ff4b35;
+  --shadow: 0 22px 62px rgba(0, 0, 0, 0.38);
+  --glow: 0 0 32px rgba(227, 74, 29, 0.2);
+  --inner-glow: inset 0 1px 0 rgba(255, 246, 237, 0.08);
+}
+
+:root[data-theme="chandra"][data-high-contrast="true"] {
+  --panel: rgba(11, 7, 6, 0.96);
+  --command-panel: rgba(11, 7, 6, 0.92);
+  --border: rgba(227, 74, 29, 0.76);
+  --muted: #ead2c4;
+  --amber-soft: rgba(255, 179, 58, 0.22);
+  --amber-border: rgba(255, 179, 58, 0.7);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -224,6 +258,11 @@ a {
 
 :root[data-theme="teferi"] .app-background {
   background-image: url("/teferi-background.png");
+  background-position: center center;
+}
+
+:root[data-theme="chandra"] .app-background {
+  background-image: url("/chandra-background.png");
   background-position: center center;
 }
 
@@ -343,6 +382,29 @@ a {
   background:
     linear-gradient(90deg, rgba(7, 20, 38, 0.94), rgba(7, 20, 38, 0.76) 48%, rgba(7, 20, 38, 0.56) 78%, rgba(7, 20, 38, 0.66)),
     radial-gradient(circle at 76% 36%, rgba(89, 185, 232, 0.12), transparent 26%);
+}
+
+:root[data-theme="chandra"] .app-background::after {
+  background:
+    linear-gradient(90deg, rgba(11, 7, 6, 0.9), rgba(11, 7, 6, 0.66) 42%, rgba(11, 7, 6, 0.36) 72%, rgba(11, 7, 6, 0.5)),
+    radial-gradient(circle at 78% 28%, rgba(240, 90, 24, 0.2), transparent 26%),
+    radial-gradient(circle at 28% 48%, rgba(199, 43, 22, 0.2), transparent 30%),
+    radial-gradient(circle at 52% 44%, rgba(255, 179, 58, 0.08), transparent 18%),
+    radial-gradient(circle at 50% 50%, transparent, rgba(11, 7, 6, 0.56));
+}
+
+:root[data-theme="chandra"] .app-background::before {
+  opacity: 0.18;
+  background-image:
+    linear-gradient(rgba(227, 74, 29, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 179, 58, 0.08) 1px, transparent 1px);
+  mask-image: radial-gradient(circle at 74% 34%, transparent 0, rgba(0, 0, 0, 0.72) 58%, transparent 84%);
+}
+
+:root[data-theme="chandra"][data-high-contrast="true"] .app-background::after {
+  background:
+    linear-gradient(90deg, rgba(11, 7, 6, 0.95), rgba(11, 7, 6, 0.78) 48%, rgba(11, 7, 6, 0.58) 78%, rgba(11, 7, 6, 0.7)),
+    radial-gradient(circle at 78% 28%, rgba(240, 90, 24, 0.12), transparent 26%);
 }
 
 :root[data-reduced-motion="true"] *,
@@ -528,6 +590,16 @@ a {
     var(--command-panel);
 }
 
+:root[data-theme="chandra"] .hero-panel,
+:root[data-theme="chandra"] .dashboard-header,
+:root[data-theme="chandra"] .auth-panel,
+:root[data-theme="chandra"] .auth-required,
+:root[data-theme="chandra"] .locked-feature-panel {
+  background:
+    linear-gradient(100deg, rgba(26, 13, 9, 0.93) 0%, rgba(11, 7, 6, 0.82) 55%, rgba(11, 7, 6, 0.4) 78%, rgba(11, 7, 6, 0.12) 100%),
+    var(--command-panel);
+}
+
 .hero-panel::before,
 .dashboard-header::before,
 .auth-panel::before,
@@ -642,6 +714,14 @@ h2 {
     inset 0 1px 0 rgba(247, 251, 252, 0.16);
 }
 
+:root[data-theme="chandra"] .primary-button {
+  background: linear-gradient(135deg, #c93818, #ed541f);
+  color: #fff6ed;
+  box-shadow:
+    0 0 30px rgba(227, 74, 29, 0.22),
+    inset 0 1px 0 rgba(255, 246, 237, 0.16);
+}
+
 .secondary-button {
   border: 1px solid var(--border);
   background: linear-gradient(135deg, rgba(8, 31, 60, 0.82), rgba(4, 13, 29, 0.9));
@@ -679,6 +759,14 @@ h2 {
   border-color: rgba(199, 168, 90, 0.42);
   background: linear-gradient(135deg, rgba(156, 129, 68, 0.36), rgba(14, 33, 56, 0.86));
   color: #f0f5f6;
+}
+
+:root[data-theme="chandra"] .secondary-button,
+:root[data-theme="chandra"] .text-button,
+:root[data-theme="chandra"] .mini-button {
+  border-color: rgba(227, 74, 29, 0.5);
+  background: linear-gradient(135deg, rgba(110, 33, 22, 0.58), rgba(26, 15, 11, 0.88));
+  color: #f7eee7;
 }
 
 .primary-button:hover,
@@ -1394,6 +1482,14 @@ h2 {
   border-bottom-color: #59b9e8;
   background: linear-gradient(135deg, rgba(24, 62, 91, 0.78), rgba(14, 33, 56, 0.72));
   box-shadow: 0 0 22px rgba(89, 185, 232, 0.16);
+}
+
+:root[data-theme="chandra"] .tool-tabs button.is-selected,
+:root[data-theme="chandra"] .segmented-control button.is-selected {
+  border-color: rgba(227, 74, 29, 0.72);
+  border-bottom-color: #e34a1d;
+  background: linear-gradient(135deg, rgba(58, 22, 14, 0.82), rgba(26, 15, 11, 0.76));
+  box-shadow: 0 0 22px rgba(227, 74, 29, 0.16);
 }
 
 .result-tabs {
@@ -2302,6 +2398,14 @@ h2 {
   box-shadow:
     0 0 18px rgba(89, 185, 232, 0.18),
     inset 0 1px 0 rgba(247, 251, 252, 0.2);
+}
+
+:root[data-theme="chandra"] .curve-row i,
+:root[data-theme="chandra"] .meta-bar-row i {
+  background: linear-gradient(90deg, #c72b16, #f05a18);
+  box-shadow:
+    0 0 18px rgba(227, 74, 29, 0.2),
+    inset 0 1px 0 rgba(255, 246, 237, 0.18);
 }
 
 @media (max-width: 900px) {
