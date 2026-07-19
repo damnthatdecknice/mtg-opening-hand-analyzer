@@ -25,6 +25,20 @@ Sideboard
 3 Destroy Evil
 2 Lithomantic Barrage`;
 
+const deckFormats = [
+  "Standard",
+  "Pioneer",
+  "Modern",
+  "Legacy",
+  "Draft",
+  "Commander",
+  "Vintage",
+  "Penny Dreadful",
+  "Premodern",
+  "Historic",
+  "Explorer"
+];
+
 export function DeckLibrary() {
   const entitlements = useEntitlements();
   const [decks, setDecks] = useState<SavedDeck[]>([]);
@@ -193,11 +207,17 @@ export function DeckLibrary() {
             </label>
             <label>
               Format
-              <input
+              <select
+                className="card-select"
                 onChange={(event) => setFormat(event.target.value)}
-                placeholder="Standard, Pioneer, Modern..."
                 value={format}
-              />
+              >
+                {deckFormats.map((deckFormat) => (
+                  <option key={deckFormat} value={deckFormat}>
+                    {deckFormat}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
           <label>
