@@ -603,13 +603,13 @@ async function makeCrops(src: string, source: ScreenshotSource, adjustments: Cro
 
   const crops: CropPreview[] = [];
   const cropWidth =
-    image.width * 0.112 * (1 + adjustments.width / 100);
+    image.width * 0.108 * (1 + adjustments.width / 100);
   const cropHeight =
-    image.height * 0.25 * (1 + adjustments.height / 100);
-  const startX = image.width * 0.071 + image.width * (adjustments.x / 100);
-  const startY = image.height * 0.705 + image.height * (adjustments.y / 100);
+    image.height * 0.252 * (1 + adjustments.height / 100);
+  const startX = image.width * 0.087 + image.width * (adjustments.x / 100);
+  const startY = image.height * 0.695 + image.height * (adjustments.y / 100);
   const step =
-    image.width * 0.115 * (1 + adjustments.spread / 100);
+    image.width * 0.1025 * (1 + adjustments.spread / 100);
 
   canvas.width = Math.round(cropWidth);
   canvas.height = Math.round(cropHeight);
@@ -624,8 +624,8 @@ async function makeCrops(src: string, source: ScreenshotSource, adjustments: Cro
       sourceY,
       Math.round(cropWidth),
       Math.round(cropHeight),
-      -canvas.width / 2,
-      -canvas.height / 2,
+      0,
+      0,
       canvas.width,
       canvas.height
     );
