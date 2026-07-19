@@ -9,9 +9,7 @@ import { getAuthFallbackUser } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
 
 const navItems = [
-  { href: "/", label: "Home" },
   { href: "/analyzer", label: "Analyzer" },
-  { href: "/dashboard", label: "Dashboard" },
   { href: "/decks", label: "Save a Deck", deckProOnly: true },
   { href: "/metagame", label: "Metagame", deckProOnly: true },
   { href: "/pricing", label: "Pricing" },
