@@ -4,10 +4,23 @@ export type ParsedDeckCard = {
   section: "main" | "sideboard";
 };
 
+export type MtgoDekCardIdentity = {
+  catId: number;
+  qty: number;
+  name: string;
+  section: ParsedDeckCard["section"];
+};
+
+export type DeckImportMetadata = {
+  source: "mtgo_dek";
+  cards: MtgoDekCardIdentity[];
+};
+
 export type ParsedDeck = {
   mainCount: number;
   sideboardCount: number;
   cards: ParsedDeckCard[];
+  importMetadata?: DeckImportMetadata;
 };
 
 const sectionHeaders = new Set(["deck", "main", "maindeck"]);
@@ -27,19 +40,29 @@ function xmlAttribute(tag: string, attribute: string) {
 }
 
 export function convertDekToDecklist(dekText: string) {
+  return parseDekImport(dekText).decklist;
+}
+
+export function parseDekImport(dekText: string) {
   const main = new Map<string, number>();
   const sideboard = new Map<string, number>();
+  const identities: MtgoDekCardIdentity[] = [];
   const cardTags = Array.from(dekText.matchAll(/<Cards\b[^>]*\/?>/gi)).map((match) => match[0] ?? "");
 
   for (const tag of cardTags) {
     const name = xmlAttribute(tag, "Name").trim();
     const qty = Number(xmlAttribute(tag, "Quantity") || 0);
+    const catId = Number(xmlAttribute(tag, "CatID") || 0);
     const isSideboard = xmlAttribute(tag, "Sideboard").toLowerCase() === "true";
     if (!name || !qty) {
       continue;
     }
+    const section = isSideboard ? "sideboard" : "main";
     const target = isSideboard ? sideboard : main;
     target.set(name, (target.get(name) ?? 0) + qty);
+    if (catId) {
+      identities.push({ catId, qty, name, section });
+    }
   }
 
   const lines = ["Deck"];
@@ -54,7 +77,19 @@ export function convertDekToDecklist(dekText: string) {
     }
   }
 
-  return lines.join("\n");
+  const decklist = lines.join("\n");
+  return {
+    decklist,
+    parsed: {
+      ...parseDecklist(decklist),
+      importMetadata: identities.length
+        ? {
+            source: "mtgo_dek" as const,
+            cards: identities
+          }
+        : undefined
+    }
+  };
 }
 
 export function parseDecklist(decklist: string): ParsedDeck {

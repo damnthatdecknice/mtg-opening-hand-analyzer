@@ -17,6 +17,7 @@ export type CardLookup = {
   imageUrls: string[];
   artCropUrl: string;
   artCropUrls: string[];
+  mtgoIds: number[];
   isLand: boolean;
   isMultiface: boolean;
 };
@@ -130,6 +131,8 @@ export type AnalyzerResult = {
 
 type ScryfallCard = {
   name: string;
+  mtgo_id?: number;
+  mtgo_foil_id?: number;
   cmc?: number;
   mana_cost?: string;
   type_line?: string;
@@ -335,8 +338,37 @@ function mapScryfallCard(card: ScryfallCard): CardLookup {
         ].filter((url): url is string => Boolean(url))
       )
     ),
+    mtgoIds: [card.mtgo_id, card.mtgo_foil_id].filter((id): id is number => Boolean(id)),
     isLand: typeLine.toLowerCase().includes("land"),
     isMultiface: Boolean(card.card_faces?.length)
+  };
+}
+
+function mergeLookupImages(base: CardLookup, exact: CardLookup): CardLookup {
+  const imageUrls = Array.from(new Set([...exact.imageUrls, exact.imageUrl, ...base.imageUrls, base.imageUrl].filter(Boolean)));
+  const artCropUrls = Array.from(
+    new Set([...exact.artCropUrls, exact.artCropUrl, ...base.artCropUrls, base.artCropUrl].filter(Boolean))
+  );
+  return {
+    ...base,
+    imageUrl: imageUrls[0] ?? base.imageUrl,
+    imageUrls,
+    artCropUrl: artCropUrls[0] ?? base.artCropUrl,
+    artCropUrls,
+    mtgoIds: Array.from(new Set([...exact.mtgoIds, ...base.mtgoIds]))
+  };
+}
+
+function replaceLookupImagesWithExact(base: CardLookup, exact: CardLookup): CardLookup {
+  const imageUrls = Array.from(new Set([exact.imageUrl, ...exact.imageUrls].filter(Boolean)));
+  const artCropUrls = Array.from(new Set([exact.artCropUrl, ...exact.artCropUrls].filter(Boolean)));
+  return {
+    ...base,
+    imageUrl: imageUrls[0] ?? base.imageUrl,
+    imageUrls,
+    artCropUrl: artCropUrls[0] ?? base.artCropUrl,
+    artCropUrls,
+    mtgoIds: Array.from(new Set([...exact.mtgoIds, ...base.mtgoIds]))
   };
 }
 
@@ -378,6 +410,14 @@ async function fetchSingleCard(name: string) {
   return { card: (await response.json()) as ScryfallCard, failure: "" };
 }
 
+async function fetchMtgoCard(mtgoId: number) {
+  const response = await fetchWithRetries(`https://api.scryfall.com/cards/mtgo/${mtgoId}`);
+  if (!response?.ok) {
+    return { card: null, failure: `MTGO CatID ${mtgoId}: ${response ? scryfallErrorMessage(response.status) : "Network error"}` };
+  }
+  return { card: (await response.json()) as ScryfallCard, failure: "" };
+}
+
 async function fetchPrintImages(name: string) {
   const response = await fetchWithRetries(
     `https://api.scryfall.com/cards/search?unique=prints&order=released&q=${encodeURIComponent(`!"${name}"`)}`
@@ -405,7 +445,14 @@ async function fetchPrintImages(name: string) {
   };
 }
 
-export async function fetchCardData(cardNames: string[], options: { includePrintImages?: boolean } = {}) {
+export async function fetchCardData(
+  cardNames: string[],
+  options: {
+    exactMtgoImagesOnly?: boolean;
+    includePrintImages?: boolean;
+    mtgoIdsByName?: Record<string, number[]>;
+  } = {}
+) {
   const uniqueNames = Array.from(new Set(cardNames.map((name) => name.trim()).filter(Boolean)));
   const lookups = new Map<string, CardLookup>();
   const failures: string[] = [];
@@ -468,6 +515,39 @@ export async function fetchCardData(cardNames: string[], options: { includePrint
           }
         } else {
           failures.push(fallback.failure || `${missing.name}: Card name not found`);
+        }
+      }
+    }
+  }
+
+  const mtgoEntries = Object.entries(options.mtgoIdsByName ?? {})
+    .map(([name, ids]) => ({
+      name,
+      ids: Array.from(new Set(ids.filter((id) => Number.isFinite(id) && id > 0)))
+    }))
+    .filter((entry) => entry.ids.length);
+
+  for (const entry of mtgoEntries) {
+    for (const mtgoId of entry.ids) {
+      const exact = await fetchMtgoCard(mtgoId);
+      if (!exact.card) {
+        failures.push(exact.failure || `MTGO CatID ${mtgoId}: Card not found`);
+        continue;
+      }
+
+      const mapped = mapScryfallCard(exact.card);
+      const deckKey = normalizeName(entry.name);
+      const current = lookups.get(deckKey) ?? lookups.get(normalizeName(mapped.name));
+      const merged = current
+        ? options.exactMtgoImagesOnly
+          ? replaceLookupImagesWithExact(current, mapped)
+          : mergeLookupImages(current, mapped)
+        : mapped;
+      lookups.set(deckKey, merged);
+      lookups.set(normalizeName(mapped.name), merged);
+      for (const face of merged.faces) {
+        if (face.name) {
+          lookups.set(normalizeName(face.name), merged);
         }
       }
     }

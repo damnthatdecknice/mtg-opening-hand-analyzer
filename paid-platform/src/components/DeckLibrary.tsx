@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { convertDekToDecklist, inferDeckName, parseDecklist } from "@/lib/deckParser";
+import { inferDeckName, parseDecklist, parseDekImport, type DeckImportMetadata } from "@/lib/deckParser";
 import type { DeckInsert, SavedDeck } from "@/lib/decks";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
@@ -46,11 +46,16 @@ export function DeckLibrary() {
   const [name, setName] = useState("");
   const [format, setFormat] = useState("Standard");
   const [decklist, setDecklist] = useState(defaultDecklist);
+  const [importMetadata, setImportMetadata] = useState<DeckImportMetadata | undefined>();
   const [showArchived, setShowArchived] = useState(false);
   const [message, setMessage] = useState("");
   const [isBusy, setIsBusy] = useState(false);
 
   const parsed = useMemo(() => parseDecklist(decklist), [decklist]);
+  const parsedForSave = useMemo(
+    () => (importMetadata ? { ...parsed, importMetadata } : parsed),
+    [importMetadata, parsed]
+  );
   const activeDecks = decks.filter((deck) => !deck.is_archived);
   const visibleDecks = decks.filter((deck) => showArchived || !deck.is_archived);
 
@@ -115,7 +120,7 @@ export function DeckLibrary() {
         .filter((card) => card.section === "sideboard")
         .map((card) => `${card.qty} ${card.name}`)
         .join("\n"),
-      parsed_json: parsed
+      parsed_json: parsedForSave
     };
 
     setIsBusy(true);
@@ -155,17 +160,21 @@ export function DeckLibrary() {
   async function handleDekUpload(file: File) {
     setMessage("");
     try {
-      const converted = convertDekToDecklist(await file.text());
-      const convertedParsed = parseDecklist(converted);
+      const imported = parseDekImport(await file.text());
+      const converted = imported.decklist;
+      const convertedParsed = imported.parsed;
       if (!convertedParsed.mainCount) {
         setMessage("That .dek file did not contain any main-deck cards.");
         return;
       }
       setDecklist(converted);
+      setImportMetadata(imported.parsed.importMetadata);
       if (!name.trim()) {
         setName(file.name.replace(/\.dek$/i, "").replace(/^Deck\s*-\s*/i, ""));
       }
-      setMessage(`Imported .dek file: ${convertedParsed.mainCount} main, ${convertedParsed.sideboardCount} sideboard.`);
+      setMessage(
+        `Imported .dek file: ${convertedParsed.mainCount} main, ${convertedParsed.sideboardCount} sideboard. MTGO CatIDs will be saved for exact-art recognition.`
+      );
     } catch {
       setMessage("Could not import that .dek file.");
     }
@@ -224,7 +233,10 @@ export function DeckLibrary() {
           <label>
             Decklist
             <textarea
-              onChange={(event) => setDecklist(event.target.value)}
+              onChange={(event) => {
+                setDecklist(event.target.value);
+                setImportMetadata(undefined);
+              }}
               spellCheck={false}
               value={decklist}
             />
@@ -249,6 +261,9 @@ export function DeckLibrary() {
               <span>{parsed.mainCount} main</span>
               <span>{parsed.sideboardCount} sideboard</span>
               <span>{parsed.cards.length} unique rows</span>
+              {importMetadata?.source === "mtgo_dek" ? (
+                <span>{importMetadata.cards.length} MTGO CatID rows</span>
+              ) : null}
             </div>
             <button className="primary-button" disabled={isBusy} type="submit">
               {isBusy ? "Saving..." : "Save deck"}
@@ -283,6 +298,7 @@ export function DeckLibrary() {
                   <span>
                     {deck.format || "Unspecified"} | {deck.parsed_json.mainCount ?? 0} main |{" "}
                     {deck.parsed_json.sideboardCount ?? 0} sideboard
+                    {deck.parsed_json.importMetadata?.source === "mtgo_dek" ? " | MTGO .dek art" : ""}
                   </span>
                 </div>
                 <button

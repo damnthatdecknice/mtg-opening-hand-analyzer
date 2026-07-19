@@ -8,7 +8,12 @@ import {
   type CardLookup,
   type PlayDraw
 } from "@/lib/analyzer";
-import { convertDekToDecklist, inferDeckName, parseDecklist } from "@/lib/deckParser";
+import {
+  inferDeckName,
+  parseDecklist,
+  parseDekImport,
+  type DeckImportMetadata
+} from "@/lib/deckParser";
 import type { SavedDeck } from "@/lib/decks";
 import { getAuthFallbackUser } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
@@ -148,6 +153,21 @@ function randomSevenFromDeck(decklist: string) {
   }
 
   return mainDeck.slice(0, 7);
+}
+
+function mtgoIdsByNameFromMetadata(metadata?: DeckImportMetadata) {
+  const idsByName: Record<string, number[]> = {};
+  for (const card of metadata?.cards ?? []) {
+    if (!card.catId) {
+      continue;
+    }
+    idsByName[card.name] = [...(idsByName[card.name] ?? []), card.catId];
+  }
+  return idsByName;
+}
+
+function countMtgoIds(idsByName: Record<string, number[]>) {
+  return Object.values(idsByName).reduce((total, ids) => total + ids.length, 0);
 }
 
 function readFileAsDataUrl(file: File) {
@@ -711,6 +731,7 @@ export function HandAnalyzer() {
   const [workflowTab, setWorkflowTab] = useState<WorkflowTab>("deck");
   const [resultTab, setResultTab] = useState<ResultTab>("overview");
   const [decklist, setDecklist] = useState(sampleDeck);
+  const [deckImportMetadata, setDeckImportMetadata] = useState<DeckImportMetadata | undefined>();
   const [deckFormat, setDeckFormat] = useState("Standard");
   const [savedDecks, setSavedDecks] = useState<SavedDeck[]>([]);
   const [selectedDeckId, setSelectedDeckId] = useState("custom");
@@ -767,6 +788,7 @@ export function HandAnalyzer() {
       if (initialDeck) {
         setSelectedDeckId(initialDeck.id);
         setDecklist(initialDeck.decklist);
+        setDeckImportMetadata(initialDeck.parsed_json.importMetadata);
         setDeckFormat(initialDeck.format ?? "Standard");
         window.localStorage.setItem(lastDeckStorageKey, initialDeck.id);
         if (requestedDeck) {
@@ -787,6 +809,7 @@ export function HandAnalyzer() {
   function chooseSavedDeck(deckId: string) {
     setSelectedDeckId(deckId);
     if (deckId === "custom") {
+      setDeckImportMetadata(undefined);
       window.localStorage.removeItem(lastDeckStorageKey);
       return;
     }
@@ -797,24 +820,34 @@ export function HandAnalyzer() {
     }
 
     setDecklist(deck.decklist);
+    setDeckImportMetadata(deck.parsed_json.importMetadata);
     setDeckFormat(deck.format ?? "Standard");
     window.localStorage.setItem(lastDeckStorageKey, deck.id);
-    setMessage(`Loaded ${deck.name}.`);
+    const mtgoIdCount = deck.parsed_json.importMetadata?.cards.length ?? 0;
+    setMessage(
+      mtgoIdCount
+        ? `Loaded ${deck.name}. ${mtgoIdCount} MTGO CatID row(s) will be used for exact-art MTGO recognition.`
+        : `Loaded ${deck.name}.`
+    );
   }
 
   async function handleDeckDekUpload(file: File) {
     setMessage("");
     try {
-      const converted = convertDekToDecklist(await file.text());
-      const convertedParsed = parseDecklist(converted);
+      const imported = parseDekImport(await file.text());
+      const converted = imported.decklist;
+      const convertedParsed = imported.parsed;
       if (!convertedParsed.mainCount) {
         setMessage("That .dek file did not contain any main-deck cards.");
         return;
       }
       setDecklist(converted);
+      setDeckImportMetadata(imported.parsed.importMetadata);
       setSelectedDeckId("custom");
       window.localStorage.removeItem(lastDeckStorageKey);
-      setMessage(`Imported .dek file: ${convertedParsed.mainCount} main, ${convertedParsed.sideboardCount} sideboard.`);
+      setMessage(
+        `Imported .dek file: ${convertedParsed.mainCount} main, ${convertedParsed.sideboardCount} sideboard. MTGO recognition will use CatID exact art only.`
+      );
     } catch {
       setMessage("Could not import that .dek file.");
     }
@@ -854,17 +887,28 @@ export function HandAnalyzer() {
     setRecognitionResults([]);
     try {
       const namesForLookup = parsed.cards.map((card) => card.name);
-      const { lookups, failures } = await fetchCardData(namesForLookup, { includePrintImages: true });
+      const mtgoIdsByName =
+        screenshotSource === "mtgo" ? mtgoIdsByNameFromMetadata(deckImportMetadata) : {};
+      const mtgoIdCount = countMtgoIds(mtgoIdsByName);
+      const useExactMtgoArt = screenshotSource === "mtgo" && mtgoIdCount > 0;
+      const { lookups, failures } = await fetchCardData(namesForLookup, {
+        exactMtgoImagesOnly: useExactMtgoArt,
+        includePrintImages: !useExactMtgoArt,
+        mtgoIdsByName: useExactMtgoArt ? mtgoIdsByName : undefined
+      });
       const recognized = await recognizeCropImages(nextCrops, lookups, options);
       setRecognitionResults(recognized);
       const nextHand = recognized.map((crop) => crop.candidates[0]?.cardName ?? "");
       if (nextHand.filter(Boolean).length === 7) {
         setConfirmedHand(nextHand);
         setHandText(nextHand.join("\n"));
+        const exactArtNote = useExactMtgoArt
+          ? ` Used ${mtgoIdCount} saved MTGO CatID row(s) as the exact-art comparison pool.`
+          : "";
         setMessage(
           failures.length
-            ? `Recognition finished, but ${failures.length} card lookup(s) need review. Confirm the seven cards below; dropdowns still work for loaded cards.`
-            : "Recognition finished. Confirm the seven cards below, then analyze."
+            ? `Recognition finished, but ${failures.length} card lookup(s) need review.${exactArtNote} Confirm the seven cards below; dropdowns still work for loaded cards.`
+            : `Recognition finished.${exactArtNote} Confirm the seven cards below, then analyze.`
         );
       } else {
         setMessage("Recognition ran, but some cards need manual confirmation.");
@@ -1195,6 +1239,9 @@ export function HandAnalyzer() {
             <span>{parsed.mainCount} main</span>
             <span>{parsed.sideboardCount} sideboard</span>
             <span>{parsed.cards.length} unique rows</span>
+            {deckImportMetadata?.source === "mtgo_dek" ? (
+              <span>{deckImportMetadata.cards.length} MTGO CatID rows</span>
+            ) : null}
           </div>
           {!entitlements.canUseDeckVault && !entitlements.isLoading ? (
             <div className="onboarding-panel">
@@ -1214,6 +1261,7 @@ export function HandAnalyzer() {
                 className="secondary-button"
                 onClick={() => {
                   setDecklist(sampleDeck);
+                  setDeckImportMetadata(undefined);
                   setSelectedDeckId("custom");
                 }}
                 type="button"
@@ -1248,6 +1296,7 @@ export function HandAnalyzer() {
               className="analyzer-textarea deck-textarea"
               onChange={(event) => {
                 setDecklist(event.target.value);
+                setDeckImportMetadata(undefined);
                 setSelectedDeckId("custom");
                 window.localStorage.removeItem(lastDeckStorageKey);
               }}
