@@ -13,7 +13,8 @@ const themes = [
   { id: "opening-edge", label: "Jace" },
   { id: "nicol-bolas", label: "Nicol Bolas" },
   { id: "karn", label: "Karn" },
-  { id: "ajani", label: "Ajani" }
+  { id: "ajani", label: "Ajani" },
+  { id: "teferi", label: "Teferi" }
 ] as const;
 
 export type ThemeId = (typeof themes)[number]["id"];

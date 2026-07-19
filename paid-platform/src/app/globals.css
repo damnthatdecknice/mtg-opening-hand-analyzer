@@ -139,6 +139,40 @@
   --amber-border: rgba(228, 196, 107, 0.72);
 }
 
+:root[data-theme="teferi"] {
+  --bg: #071426;
+  --panel: rgba(7, 20, 38, 0.9);
+  --panel-strong: rgba(7, 20, 38, 0.96);
+  --command-panel: rgba(7, 20, 38, 0.84);
+  --command-panel-strong: rgba(14, 33, 56, 0.9);
+  --command-text: #f0f5f6;
+  --command-muted: #aabbc8;
+  --data-card: rgba(14, 33, 56, 0.84);
+  --border: rgba(46, 86, 117, 0.82);
+  --text: #f0f5f6;
+  --muted: #aabbc8;
+  --accent: #6bc8f1;
+  --accent-2: #286b9b;
+  --good: #e0c675;
+  --warning: #e0c675;
+  --amber: #c7a85a;
+  --amber-soft: rgba(199, 168, 90, 0.14);
+  --amber-border: rgba(199, 168, 90, 0.44);
+  --bad: #c3636d;
+  --shadow: 0 22px 58px rgba(0, 0, 0, 0.34);
+  --glow: 0 0 32px rgba(89, 185, 232, 0.2);
+  --inner-glow: inset 0 1px 0 rgba(238, 244, 245, 0.08);
+}
+
+:root[data-theme="teferi"][data-high-contrast="true"] {
+  --panel: rgba(7, 20, 38, 0.96);
+  --command-panel: rgba(7, 20, 38, 0.92);
+  --border: rgba(89, 185, 232, 0.72);
+  --muted: #d2e0e8;
+  --amber-soft: rgba(199, 168, 90, 0.22);
+  --amber-border: rgba(224, 198, 117, 0.68);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -185,6 +219,11 @@ a {
 
 :root[data-theme="ajani"] .app-background {
   background-image: url("/ajani-background.png");
+  background-position: center center;
+}
+
+:root[data-theme="teferi"] .app-background {
+  background-image: url("/teferi-background.png");
   background-position: center center;
 }
 
@@ -281,6 +320,29 @@ a {
   background:
     linear-gradient(90deg, rgba(13, 12, 10, 0.93), rgba(13, 12, 10, 0.76) 48%, rgba(13, 12, 10, 0.54) 78%, rgba(13, 12, 10, 0.66)),
     radial-gradient(circle at 74% 24%, rgba(228, 196, 107, 0.1), transparent 24%);
+}
+
+:root[data-theme="teferi"] .app-background::after {
+  background:
+    linear-gradient(90deg, rgba(7, 20, 38, 0.9), rgba(7, 20, 38, 0.66) 43%, rgba(7, 20, 38, 0.38) 72%, rgba(7, 20, 38, 0.5)),
+    radial-gradient(circle at 76% 36%, rgba(89, 185, 232, 0.18), transparent 26%),
+    radial-gradient(circle at 18% 22%, rgba(238, 244, 245, 0.1), transparent 22%),
+    radial-gradient(circle at 58% 42%, rgba(199, 168, 90, 0.08), transparent 20%),
+    radial-gradient(circle at 50% 50%, transparent, rgba(7, 20, 38, 0.5));
+}
+
+:root[data-theme="teferi"] .app-background::before {
+  opacity: 0.24;
+  background-image:
+    linear-gradient(rgba(89, 185, 232, 0.11) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(89, 185, 232, 0.11) 1px, transparent 1px);
+  mask-image: radial-gradient(circle at 74% 36%, transparent 0, rgba(0, 0, 0, 0.76) 58%, transparent 84%);
+}
+
+:root[data-theme="teferi"][data-high-contrast="true"] .app-background::after {
+  background:
+    linear-gradient(90deg, rgba(7, 20, 38, 0.94), rgba(7, 20, 38, 0.76) 48%, rgba(7, 20, 38, 0.56) 78%, rgba(7, 20, 38, 0.66)),
+    radial-gradient(circle at 76% 36%, rgba(89, 185, 232, 0.12), transparent 26%);
 }
 
 :root[data-reduced-motion="true"] *,
@@ -456,6 +518,16 @@ a {
     var(--command-panel);
 }
 
+:root[data-theme="teferi"] .hero-panel,
+:root[data-theme="teferi"] .dashboard-header,
+:root[data-theme="teferi"] .auth-panel,
+:root[data-theme="teferi"] .auth-required,
+:root[data-theme="teferi"] .locked-feature-panel {
+  background:
+    linear-gradient(100deg, rgba(14, 33, 56, 0.92) 0%, rgba(7, 20, 38, 0.8) 55%, rgba(7, 20, 38, 0.38) 78%, rgba(7, 20, 38, 0.1) 100%),
+    var(--command-panel);
+}
+
 .hero-panel::before,
 .dashboard-header::before,
 .auth-panel::before,
@@ -562,6 +634,14 @@ h2 {
     inset 0 1px 0 rgba(255, 248, 232, 0.16);
 }
 
+:root[data-theme="teferi"] .primary-button {
+  background: linear-gradient(135deg, #286b9b, #3787bc);
+  color: #f7fbfc;
+  box-shadow:
+    0 0 28px rgba(89, 185, 232, 0.2),
+    inset 0 1px 0 rgba(247, 251, 252, 0.16);
+}
+
 .secondary-button {
   border: 1px solid var(--border);
   background: linear-gradient(135deg, rgba(8, 31, 60, 0.82), rgba(4, 13, 29, 0.9));
@@ -591,6 +671,14 @@ h2 {
   border-color: rgba(46, 119, 115, 0.42);
   background: linear-gradient(135deg, rgba(36, 90, 87, 0.54), rgba(25, 22, 17, 0.86));
   color: #f0e9dc;
+}
+
+:root[data-theme="teferi"] .secondary-button,
+:root[data-theme="teferi"] .text-button,
+:root[data-theme="teferi"] .mini-button {
+  border-color: rgba(199, 168, 90, 0.42);
+  background: linear-gradient(135deg, rgba(156, 129, 68, 0.36), rgba(14, 33, 56, 0.86));
+  color: #f0f5f6;
 }
 
 .primary-button:hover,
@@ -1298,6 +1386,14 @@ h2 {
   border-bottom-color: #58a7a0;
   background: linear-gradient(135deg, rgba(23, 59, 57, 0.78), rgba(33, 27, 20, 0.72));
   box-shadow: 0 0 22px rgba(46, 119, 115, 0.14);
+}
+
+:root[data-theme="teferi"] .tool-tabs button.is-selected,
+:root[data-theme="teferi"] .segmented-control button.is-selected {
+  border-color: rgba(89, 185, 232, 0.72);
+  border-bottom-color: #59b9e8;
+  background: linear-gradient(135deg, rgba(24, 62, 91, 0.78), rgba(14, 33, 56, 0.72));
+  box-shadow: 0 0 22px rgba(89, 185, 232, 0.16);
 }
 
 .result-tabs {
@@ -2198,6 +2294,14 @@ h2 {
   box-shadow:
     0 0 16px rgba(228, 196, 107, 0.16),
     inset 0 1px 0 rgba(255, 248, 232, 0.2);
+}
+
+:root[data-theme="teferi"] .curve-row i,
+:root[data-theme="teferi"] .meta-bar-row i {
+  background: linear-gradient(90deg, #2e6fa3, #59b9e8);
+  box-shadow:
+    0 0 18px rgba(89, 185, 232, 0.18),
+    inset 0 1px 0 rgba(247, 251, 252, 0.2);
 }
 
 @media (max-width: 900px) {
