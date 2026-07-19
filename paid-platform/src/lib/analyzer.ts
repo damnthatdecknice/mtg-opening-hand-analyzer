@@ -121,6 +121,7 @@ export type AnalyzerResult = {
   watchouts: string[];
   mulligan: MulliganSummary | null;
   deckProfile: DeckProfile;
+  commanderCard: string;
   landNames: string[];
   missingCards: string[];
   lookupFailures: string[];
@@ -169,6 +170,21 @@ function countsFromCards(cards: ParsedDeckCard[], includeSideboard = false) {
     counts.set(card.name, (counts.get(card.name) ?? 0) + card.qty);
   }
   return counts;
+}
+
+function isCommanderStyleFormat(format = "") {
+  return ["commander", "brawl"].includes(format.trim().toLowerCase());
+}
+
+function commanderCardsFromSideboard(cards: ParsedDeckCard[], format = "") {
+  if (!isCommanderStyleFormat(format)) {
+    return [];
+  }
+
+  return cards
+    .filter((card) => card.section === "sideboard")
+    .flatMap((card) => Array.from({ length: card.qty }, () => card.name))
+    .slice(0, 1);
 }
 
 function chooseCastableFace(card: ScryfallCard) {
@@ -1010,7 +1026,12 @@ function scoreSeven(cards: string[], cardData: Map<string, CardLookup>) {
   return textureScore(lands, lands, avgMv, early);
 }
 
-function mulliganSummary(mainCounts: Map<string, number>, cardData: Map<string, CardLookup>, currentScore: number): MulliganSummary | null {
+function mulliganSummary(
+  mainCounts: Map<string, number>,
+  cardData: Map<string, CardLookup>,
+  currentScore: number,
+  extraAvailableCards: string[] = []
+): MulliganSummary | null {
   const deckCards = Array.from(mainCounts.entries()).flatMap(([name, qty]) => Array.from({ length: qty }, () => name));
   if (deckCards.length < 7) {
     return null;
@@ -1028,7 +1049,9 @@ function mulliganSummary(mainCounts: Map<string, number>, cardData: Map<string, 
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
     const seven = shuffled.slice(0, 7);
-    const sixScores = seven.map((_card, index) => scoreSeven(seven.filter((__, cardIndex) => cardIndex !== index), cardData));
+    const sixScores = seven.map((_card, index) =>
+      scoreSeven([...seven.filter((__, cardIndex) => cardIndex !== index), ...extraAvailableCards], cardData)
+    );
     scores.push(Math.max(...sixScores));
   }
   scores.sort((a, b) => a - b);
@@ -1136,11 +1159,15 @@ export function analyzeOpeningHand(
   decklist: string,
   handNames: string[],
   cardData: Map<string, CardLookup>,
-  playDraw: PlayDraw
+  playDraw: PlayDraw,
+  options: { format?: string } = {}
 ): AnalyzerResult {
   const parsed = parseDecklist(decklist);
   const mainCounts = countsFromCards(parsed.cards);
   const hand = handNames.map((name) => name.trim()).filter(Boolean);
+  const commanderCards = commanderCardsFromSideboard(parsed.cards, options.format);
+  const analysisHand = [...hand, ...commanderCards];
+  const commanderCard = commanderCards[0] ?? "";
   const missingCards: string[] = [];
   const notes: string[] = [];
 
@@ -1167,7 +1194,7 @@ export function analyzeOpeningHand(
 
   const landNames = Array.from(mainCounts.keys()).filter((name) => cardData.get(normalizeName(name))?.isLand);
   const landSet = new Set(landNames.map(normalizeName));
-  const landEquivalentSources = hand
+  const landEquivalentSources = analysisHand
     .map((name) => cardData.get(normalizeName(name)))
     .filter((card): card is CardLookup => Boolean(card))
     .map(landEquivalent)
@@ -1176,8 +1203,8 @@ export function analyzeOpeningHand(
     ...Array.from(landSet),
     ...landEquivalentSources.map((source) => normalizeName(source.cardName))
   ]);
-  const landsInHand = hand.filter((name) => landSet.has(normalizeName(name))).length;
-  const effectiveLandsInHand = hand.filter((name) => effectiveLandSet.has(normalizeName(name))).length;
+  const landsInHand = analysisHand.filter((name) => landSet.has(normalizeName(name))).length;
+  const effectiveLandsInHand = analysisHand.filter((name) => effectiveLandSet.has(normalizeName(name))).length;
   const librarySize = Array.from(library.values()).reduce((total, qty) => total + qty, 0);
   const landsRemaining = Array.from(library.entries()).reduce(
     (total, [name, qty]) => total + (landSet.has(normalizeName(name)) ? qty : 0),
@@ -1188,7 +1215,7 @@ export function analyzeOpeningHand(
     0
   );
 
-  const handCards = hand
+  const handCards = analysisHand
     .map((name) => cardData.get(normalizeName(name)))
     .filter((card): card is CardLookup => Boolean(card));
   const nonlands = handCards.filter((card) => !card.isLand);
@@ -1199,7 +1226,7 @@ export function analyzeOpeningHand(
   const baseHandTextureScore = textureScore(landsInHand, effectiveLandsInHand, averageManaValue, earlySpellCount);
   const profile = deckProfile(mainCounts, cardData, landsInHand, effectiveLandsInHand);
   const handTextureScore = Math.max(0, Math.min(100, baseHandTextureScore + profile.scoreAdjustment));
-  const castability = castabilityMonteCarlo(hand, library, cardData, playDraw);
+  const castability = castabilityMonteCarlo(analysisHand, library, cardData, playDraw);
   const drawSources = handCards
     .map((card) => ({ card, depth: drawDepth(card) }))
     .filter(({ depth }) => depth.drawn > 0 || depth.seen > 0)
@@ -1261,7 +1288,7 @@ export function analyzeOpeningHand(
 
   const turn3 = turnProbabilities.find((row) => row.turn === 3)?.landDropWithDraw ?? 0;
   const rec = recommendation(handTextureScore, landsInHand, turn3);
-  const mulligan = mulliganSummary(mainCounts, cardData, baseHandTextureScore);
+  const mulligan = mulliganSummary(mainCounts, cardData, baseHandTextureScore, commanderCards);
   const tags: AnalyzerResult["tags"] = [
     {
       label: profile.label.toLowerCase(),
@@ -1305,6 +1332,9 @@ export function analyzeOpeningHand(
   if (hand.length !== 7) {
     notes.push("Enter exactly seven cards for opening-hand math.");
   }
+  if (commanderCard) {
+    notes.push(`${commanderCard} is being treated as an eighth available card from the command zone.`);
+  }
 
   return {
     mainCount: parsed.mainCount,
@@ -1331,6 +1361,7 @@ export function analyzeOpeningHand(
     watchouts,
     mulligan,
     deckProfile: profile,
+    commanderCard,
     landNames,
     missingCards,
     lookupFailures: [],

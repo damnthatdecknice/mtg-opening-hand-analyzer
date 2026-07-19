@@ -91,6 +91,20 @@ Inspiring Vantage`;
 const lastDeckStorageKey = "mtg-hand-pro:last-analyzer-deck-id";
 const signatureCachePrefix = "mtg-hand-pro:image-signature:";
 const freeWeeklyAnalyzerLimit = 10;
+const deckFormats = [
+  "Standard",
+  "Pioneer",
+  "Modern",
+  "Legacy",
+  "Draft",
+  "Commander",
+  "Brawl",
+  "Vintage",
+  "Penny Dreadful",
+  "Premodern",
+  "Historic",
+  "Explorer"
+];
 let localOcrWorkerPromise: Promise<LocalOcrWorker> | null = null;
 const defaultCropAdjustments: CropAdjustments = {
   x: 0,
@@ -697,6 +711,7 @@ export function HandAnalyzer() {
   const [workflowTab, setWorkflowTab] = useState<WorkflowTab>("deck");
   const [resultTab, setResultTab] = useState<ResultTab>("overview");
   const [decklist, setDecklist] = useState(sampleDeck);
+  const [deckFormat, setDeckFormat] = useState("Standard");
   const [savedDecks, setSavedDecks] = useState<SavedDeck[]>([]);
   const [selectedDeckId, setSelectedDeckId] = useState("custom");
   const [isLoadingDecks, setIsLoadingDecks] = useState(false);
@@ -752,6 +767,7 @@ export function HandAnalyzer() {
       if (initialDeck) {
         setSelectedDeckId(initialDeck.id);
         setDecklist(initialDeck.decklist);
+        setDeckFormat(initialDeck.format ?? "Standard");
         window.localStorage.setItem(lastDeckStorageKey, initialDeck.id);
         if (requestedDeck) {
           setMessage(`Loaded ${requestedDeck.name}.`);
@@ -781,6 +797,7 @@ export function HandAnalyzer() {
     }
 
     setDecklist(deck.decklist);
+    setDeckFormat(deck.format ?? "Standard");
     window.localStorage.setItem(lastDeckStorageKey, deck.id);
     setMessage(`Loaded ${deck.name}.`);
   }
@@ -1038,7 +1055,7 @@ export function HandAnalyzer() {
     try {
       const namesForLookup = parsed.cards.map((card) => card.name);
       const { lookups, failures } = await fetchCardData(namesForLookup);
-      const analysis = analyzeOpeningHand(decklist, seven, lookups, playDraw);
+      const analysis = analyzeOpeningHand(decklist, seven, lookups, playDraw, { format: deckFormat });
       const completedAnalysis = { ...analysis, lookupFailures: failures };
       setResult(completedAnalysis);
       setWorkflowTab("results");
@@ -1169,9 +1186,9 @@ export function HandAnalyzer() {
             ) : null}
             <p>
               Paste your main deck first. Put Sideboard on its own line, then list
-              sideboard cards below it. Sideboard cards help screenshot
-              confirmation, but analysis assumes the main deck unless one appears
-              in the confirmed hand.
+              sideboard cards below it. In Commander or Brawl, the first card under
+              Sideboard is treated as your commander and analyzed as an eighth
+              available card.
             </p>
           </div>
           <div className="mini-metrics">
@@ -1205,6 +1222,26 @@ export function HandAnalyzer() {
               </button>
             </div>
           ) : null}
+          <label className="field-stack deck-picker">
+            Format
+            <select
+              className="card-select"
+              onChange={(event) => {
+                setDeckFormat(event.target.value);
+                if (selectedDeckId !== "custom") {
+                  setSelectedDeckId("custom");
+                  window.localStorage.removeItem(lastDeckStorageKey);
+                }
+              }}
+              value={deckFormat}
+            >
+              {deckFormats.map((formatOption) => (
+                <option key={formatOption} value={formatOption}>
+                  {formatOption}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="field-stack">
             Decklist
             <textarea

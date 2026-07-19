@@ -32,6 +32,7 @@ const deckFormats = [
   "Legacy",
   "Draft",
   "Commander",
+  "Brawl",
   "Vintage",
   "Penny Dreadful",
   "Premodern",
