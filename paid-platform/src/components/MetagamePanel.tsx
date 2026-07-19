@@ -102,11 +102,10 @@ export function MetagamePanel() {
   return (
     <section className="metagame-page">
       <header className="panel dashboard-header">
-        <p className="eyebrow">MTGO Challenge Event Decklists</p>
-        <h1>Metagame</h1>
+        <p className="eyebrow">Recent Tournament Data</p>
+        <h1>Metagame Snapshot</h1>
         <p>
-          Standard, Pioneer, Modern, and Legacy snapshots from official Magic Online Challenge event decklists
-          published in the last 7 days.
+          Explore the decks shaping each format, based on recent official Magic Online Challenge decklists.
         </p>
       </header>
 
