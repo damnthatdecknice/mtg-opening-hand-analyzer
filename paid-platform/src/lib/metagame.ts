@@ -1,4 +1,5 @@
 export type MetagameFormat = "Standard" | "Pioneer" | "Modern" | "Legacy";
+export type MetagameWindowDays = 7 | 14 | 30;
 
 export type MetagameCardCount = {
   name: string;
@@ -52,7 +53,12 @@ export type MetagameResponse = {
 };
 
 export const metagameFormats: MetagameFormat[] = ["Standard", "Pioneer", "Modern", "Legacy"];
+export const metagameWindowOptions: MetagameWindowDays[] = [7, 14, 30];
 
 export function isMetagameFormat(value: string | null): value is MetagameFormat {
   return metagameFormats.includes(value as MetagameFormat);
+}
+
+export function isMetagameWindowDays(value: number): value is MetagameWindowDays {
+  return metagameWindowOptions.includes(value as MetagameWindowDays);
 }

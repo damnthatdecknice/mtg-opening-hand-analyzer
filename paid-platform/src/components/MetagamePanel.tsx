@@ -6,10 +6,12 @@ import { parseDecklist } from "@/lib/deckParser";
 import type { SavedDeck } from "@/lib/decks";
 import {
   metagameFormats,
+  metagameWindowOptions,
   type MetagameCardCount,
   type MetagameDeck,
   type MetagameFormat,
-  type MetagameResponse
+  type MetagameResponse,
+  type MetagameWindowDays
 } from "@/lib/metagame";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
@@ -37,6 +39,7 @@ function isMetagameCardCount(card: MetagameCardCount | undefined): card is Metag
 export function MetagamePanel() {
   const entitlements = useEntitlements();
   const [format, setFormat] = useState<MetagameFormat>("Modern");
+  const [windowDays, setWindowDays] = useState<MetagameWindowDays>(7);
   const [data, setData] = useState<MetagameResponse | null>(null);
   const [savedDecks, setSavedDecks] = useState<SavedDeck[]>([]);
   const [message, setMessage] = useState("");
@@ -56,9 +59,9 @@ export function MetagamePanel() {
 
   useEffect(() => {
     if (entitlements.canUseDeckVault) {
-      void loadMetagame(format);
+      void loadMetagame(format, windowDays);
     }
-  }, [entitlements.canUseDeckVault, format]);
+  }, [entitlements.canUseDeckVault, format, windowDays]);
 
   async function loadSavedDecks() {
     if (!supabase) {
@@ -73,11 +76,13 @@ export function MetagamePanel() {
     setSavedDecks((rows ?? []) as SavedDeck[]);
   }
 
-  async function loadMetagame(nextFormat: MetagameFormat) {
+  async function loadMetagame(nextFormat: MetagameFormat, nextWindowDays: MetagameWindowDays) {
     setIsLoading(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/metagame?format=${encodeURIComponent(nextFormat)}&v=3`);
+      const response = await fetch(
+        `/api/metagame?format=${encodeURIComponent(nextFormat)}&windowDays=${nextWindowDays}&v=4`
+      );
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error ?? "Could not load metagame data.");
@@ -131,7 +136,26 @@ export function MetagamePanel() {
             ))}
           </select>
         </label>
-        <button className="secondary-button" disabled={isLoading} onClick={() => loadMetagame(format)} type="button">
+        <label className="field-stack">
+          Window
+          <select
+            className="card-select"
+            onChange={(event) => setWindowDays(Number(event.target.value) as MetagameWindowDays)}
+            value={windowDays}
+          >
+            {metagameWindowOptions.map((item) => (
+              <option key={item} value={item}>
+                Last {item} days
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="secondary-button"
+          disabled={isLoading}
+          onClick={() => loadMetagame(format, windowDays)}
+          type="button"
+        >
           {isLoading ? "Refreshing..." : "Refresh"}
         </button>
       </section>
@@ -284,7 +308,7 @@ export function MetagamePanel() {
           <p className="eyebrow">{isLoading ? "Loading" : "No data"}</p>
           <h2>{isLoading ? "Building metagame snapshot" : "No published events found"}</h2>
           <p className="muted-copy">
-            The snapshot uses only official MTGO event decklists published in the last 7 days.
+            The snapshot uses only official MTGO event decklists published in the selected window.
           </p>
         </section>
       )}

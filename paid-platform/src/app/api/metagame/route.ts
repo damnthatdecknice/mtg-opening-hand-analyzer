@@ -2,17 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerAnonSupabaseClient, isServerAnonSupabaseConfigured } from "@/lib/serverSupabase";
 import {
   isMetagameFormat,
+  isMetagameWindowDays,
   type MetagameArchetype,
   type MetagameCardCount,
   type MetagameDeck,
   type MetagameEvent,
   type MetagameFormat,
-  type MetagameResponse
+  type MetagameResponse,
+  type MetagameWindowDays
 } from "@/lib/metagame";
 
 const mtgoRoot = "https://www.mtgo.com";
 const signatureRuleTable = "metagame_signature_rules";
-const windowDays = 7;
 const eventNamePattern = /(challenge|showcase|qualifier|championship|premier|preliminary)/i;
 const snapshotRevalidateSeconds = 60 * 60 * 24;
 const cacheMs = 1000 * snapshotRevalidateSeconds;
@@ -134,20 +135,23 @@ type IndexEvent = {
   date: string;
 };
 
-const cache = new Map<MetagameFormat, CacheEntry>();
+const cache = new Map<string, CacheEntry>();
 
 export async function GET(request: NextRequest) {
   const requestedFormat = request.nextUrl.searchParams.get("format");
   const format = isMetagameFormat(requestedFormat) ? requestedFormat : "Modern";
-  const cached = cache.get(format);
+  const requestedWindowDays = Number(request.nextUrl.searchParams.get("windowDays"));
+  const windowDays = isMetagameWindowDays(requestedWindowDays) ? requestedWindowDays : 7;
+  const cacheKey = `${format}:${windowDays}`;
+  const cached = cache.get(cacheKey);
 
   if (cached && cached.expiresAt > Date.now()) {
     return metagameJson(cached.data);
   }
 
   try {
-    const data = await buildMetagame(format);
-    cache.set(format, {
+    const data = await buildMetagame(format, windowDays);
+    cache.set(cacheKey, {
       data,
       expiresAt: Date.now() + cacheMs
     });
@@ -170,10 +174,10 @@ function metagameJson(data: MetagameResponse) {
   });
 }
 
-async function buildMetagame(format: MetagameFormat): Promise<MetagameResponse> {
+async function buildMetagame(format: MetagameFormat, windowDays: MetagameWindowDays): Promise<MetagameResponse> {
   const warnings: string[] = [];
   const signatureRules = await fetchSignatureRules(format);
-  const indexEvents = await fetchRecentIndexEvents(format);
+  const indexEvents = await fetchRecentIndexEvents(format, windowDays);
   const now = Date.now();
   const currentCutoff = now - windowDays * 24 * 60 * 60 * 1000;
   const previousCutoff = now - windowDays * 2 * 24 * 60 * 60 * 1000;
@@ -309,7 +313,7 @@ async function buildWindowSnapshot(
   return { decks, events };
 }
 
-async function fetchRecentIndexEvents(format: MetagameFormat) {
+async function fetchRecentIndexEvents(format: MetagameFormat, windowDays: MetagameWindowDays) {
   const html = await fetchText(`${mtgoRoot}/decklists`);
   const cutoff = Date.now() - windowDays * 2 * 24 * 60 * 60 * 1000;
   const events: IndexEvent[] = [];
