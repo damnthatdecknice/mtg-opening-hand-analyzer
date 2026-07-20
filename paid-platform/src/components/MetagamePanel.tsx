@@ -168,7 +168,7 @@ export function MetagamePanel() {
                 {data.archetypes.slice(0, 12).map((archetype) => (
                   <div className="meta-bar-row" key={archetype.name}>
                     <span>{archetype.name}</span>
-                    <i style={{ width: `${Math.max(4, archetype.share * 100)}%` }} />
+                    <i style={{ width: `${Math.max(4, Math.min(100, archetype.share * 200))}%` }} />
                     <em>
                       {Math.round(archetype.share * 100)}% ({archetype.decks})
                       <small className={getTrendClass(archetype.change)}>{formatTrendLabel(archetype.change)}</small>
