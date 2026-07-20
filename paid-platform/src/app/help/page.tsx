@@ -90,10 +90,11 @@ export default function HelpPage() {
             up most often across the field.
           </p>
           <p>
-            For your saved decks, Opening Edge uses a color-aware sideboard discovery algorithm to
-            compare your list against nearby published archetypes and the broader format. The result is
-            a focused scouting list of potential sideboard cards that are actually showing up in decks
-            like yours, or in colorless cards available to any deck.
+            For your saved decks, Opening Edge tunes the metagame scan around your exact decklist.
+            Its color-aware sideboard discovery algorithm compares your cards, colors, and closest
+            published archetype shells against the broader format. The result is a focused scouting
+            list of potential sideboard cards that are actually showing up in decks like yours, or in
+            colorless cards available to any deck.
           </p>
           <p>
             Treat the suggestions as a competitive testing queue, not an automatic import. The goal is
