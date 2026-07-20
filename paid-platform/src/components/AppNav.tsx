@@ -13,7 +13,7 @@ const navItems = [
   { href: "/decks", label: "Save a Deck", deckProOnly: true },
   { href: "/metagame", label: "Metagame", deckProOnly: true },
   { href: "/pricing", label: "Pricing" },
-  { href: "/help", label: "HOW TO" },
+  { href: "/help", label: "How To" },
   { href: "/settings", label: "Settings" },
   { href: "/login", label: "Sign In" }
 ];
