@@ -179,11 +179,11 @@ export function MetagamePanel() {
             </article>
 
             <article className="panel compact-panel">
-              <p className="eyebrow">Performance weighted</p>
-              <h2>What Is Winning</h2>
+              <p className="eyebrow">Opening Edge</p>
+              <h2>Proprietary Performance Rating</h2>
               <p className="muted-copy">
-                Separate from metagame share. This weights published finishes so stronger Challenge
-                results float upward.
+                Separate from metagame share. This highlights which archetypes are converting recent
+                Challenge appearances into stronger results.
               </p>
               <div className="list-stack">
                 {performanceDecks.length ? (
@@ -195,13 +195,13 @@ export function MetagamePanel() {
                           {deck.finishes} finish{deck.finishes === 1 ? "" : "es"} tracked
                         </span>
                       </div>
-                      <em>{deck.score} pts</em>
+                      <em>{deck.score}</em>
                     </div>
                   ))
                 ) : (
                   <div className="empty-state">
                     <strong>No ranked finishes found yet</strong>
-                    <span>When MTGO publishes standings, this box weights archetypes by finish.</span>
+                    <span>When MTGO publishes standings, this box highlights stronger finishes.</span>
                   </div>
                 )}
               </div>
@@ -342,7 +342,7 @@ function buildPerformanceDecks(decks: MetagameDeck[]): PerformanceDeck[] {
     .map(([name, value]) => ({
       name,
       finishes: value.finishes,
-      score: Math.round(value.score)
+      score: Math.round(value.score / value.finishes)
     }))
     .sort((a, b) => b.score - a.score || b.finishes - a.finishes || a.name.localeCompare(b.name));
 }
