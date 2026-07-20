@@ -186,8 +186,9 @@ async function buildMetagame(format: MetagameFormat, windowDays: MetagameWindowD
     const eventTime = Date.parse(event.date);
     return eventTime >= previousCutoff && eventTime < currentCutoff;
   });
-  const currentSnapshot = await buildWindowSnapshot(format, currentEvents.slice(0, 8), warnings, signatureRules);
-  const previousSnapshot = await buildWindowSnapshot(format, previousEvents.slice(0, 8), warnings, signatureRules);
+  const eventLimit = getWindowEventLimit(windowDays);
+  const currentSnapshot = await buildWindowSnapshot(format, currentEvents.slice(0, eventLimit), warnings, signatureRules);
+  const previousSnapshot = await buildWindowSnapshot(format, previousEvents.slice(0, eventLimit), warnings, signatureRules);
   const archetypes = buildArchetypes(currentSnapshot.decks, previousSnapshot.decks, format);
   const topCards = buildTopCards(currentSnapshot.decks);
 
@@ -204,6 +205,10 @@ async function buildMetagame(format: MetagameFormat, windowDays: MetagameWindowD
     decks: currentSnapshot.decks,
     warnings
   };
+}
+
+function getWindowEventLimit(windowDays: MetagameWindowDays) {
+  return Math.ceil(windowDays / 7) * 8;
 }
 
 async function fetchSignatureRules(format: MetagameFormat) {

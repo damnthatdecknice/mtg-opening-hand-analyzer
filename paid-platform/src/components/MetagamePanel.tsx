@@ -81,7 +81,7 @@ export function MetagamePanel() {
     setMessage("");
     try {
       const response = await fetch(
-        `/api/metagame?format=${encodeURIComponent(nextFormat)}&windowDays=${nextWindowDays}&v=4`
+        `/api/metagame?format=${encodeURIComponent(nextFormat)}&windowDays=${nextWindowDays}&v=5`
       );
       const payload = await response.json();
       if (!response.ok) {
