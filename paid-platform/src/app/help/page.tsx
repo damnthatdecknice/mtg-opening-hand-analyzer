@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export default function HelpPage() {
   return (
@@ -8,17 +9,75 @@ export default function HelpPage() {
       <section className="panel compact-panel">
         <div className="legal-stack">
           <h2>How to use Opening Edge</h2>
-          <p>
-            Start by saving or pasting your deck, then enter a seven-card hand manually, choose a
-            random seven, or add a screenshot. Confirm the seven cards before running analysis so the
-            land math, castability, mulligan comparison, and metagame context are based on the actual
-            hand you are considering.
-          </p>
-          <p>
-            For Magic Online screenshots, importing a .dek file is preferred because it gives the app
-            the exact card images to compare against. Screenshot recognition is still a first pass:
-            the final card choices stay under your control.
-          </p>
+          <ol className="help-guide">
+            <li>
+              Click <strong>Save a Deck</strong> on the top bar.
+              <figure className="help-shot">
+                <Image
+                  src="/help/save-a-deck-nav.png"
+                  alt="Save a Deck button on the top navigation bar"
+                  width={1390}
+                  height={169}
+                />
+              </figure>
+            </li>
+            <li>Name your deck and select the deck&apos;s format.</li>
+            <li>
+              Click <strong>Import .dek</strong>, or paste the decklist in MTG Arena format in the
+              box below.
+              <figure className="help-shot">
+                <Image
+                  src="/help/deck-setup-import.png"
+                  alt="Deck name, format, and Import .dek controls"
+                  width={1675}
+                  height={973}
+                />
+              </figure>
+            </li>
+            <li>
+              Click <strong>Save deck</strong>.
+              <figure className="help-shot">
+                <Image
+                  src="/help/save-deck-button.png"
+                  alt="Save deck button below the decklist"
+                  width={1179}
+                  height={1411}
+                />
+              </figure>
+            </li>
+            <li>
+              Click <strong>Analyzer</strong> on the top bar and select your deck from the dropdown.
+              <figure className="help-shot">
+                <Image
+                  src="/help/analyzer-nav.png"
+                  alt="Analyzer button on the top navigation bar"
+                  width={925}
+                  height={176}
+                />
+              </figure>
+            </li>
+            <li>
+              Either click <strong>Hand</strong> to manually select your hand from the dropdowns, or
+              click <strong>Screenshot</strong> to take a screenshot of Magic Online or MTG Arena.
+            </li>
+            <li>
+              If you clicked <strong>Hand</strong>, click <strong>Use this hand and analyze</strong>.
+            </li>
+            <li>
+              If you clicked <strong>Screenshot</strong>, select <strong>Magic Online</strong> or{" "}
+              <strong>MTG Arena</strong>, then paste, upload, or click{" "}
+              <strong>Capture MTGO Window</strong> / <strong>Capture MTGA Window</strong>. Your
+              browser will request access to your screen; choose the game window you are actively
+              playing in.
+            </li>
+            <li>
+              Review the screenshot recognition below. Correct any cards using the dropdowns or the
+              quick choice buttons below the cropped card images.
+            </li>
+            <li>
+              Click <strong>Confirm crops and analyze</strong>.
+            </li>
+          </ol>
         </div>
       </section>
       <section className="panel compact-panel">
