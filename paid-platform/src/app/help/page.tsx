@@ -4,7 +4,7 @@ export default function HelpPage() {
   return (
     <main className="legal-page help-page">
       <p className="eyebrow">Support</p>
-      <h1>HOW TO</h1>
+      <h1>How To</h1>
       <section className="panel compact-panel">
         <div className="legal-stack">
           <h2>How to use Opening Edge</h2>
