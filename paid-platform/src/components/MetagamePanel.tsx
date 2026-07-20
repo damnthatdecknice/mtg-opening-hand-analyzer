@@ -208,8 +208,8 @@ export function MetagamePanel() {
                 <h2>Proprietary Performance Rating</h2>
               </div>
               <p className="muted-copy">
-                Separate from metagame share. This highlights which archetypes are converting recent
-                Challenge appearances into stronger results.
+                Separate from metagame share. This highlights which archetypes are converting
+                Challenge appearances from the last {data.windowDays} days into stronger results.
               </p>
               <div className="list-stack">
                 {performanceDecks.length ? (
