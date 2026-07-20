@@ -1322,6 +1322,25 @@ h2 {
   text-shadow: 0 0 18px rgba(255, 184, 77, 0.12);
 }
 
+.performance-heading {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.performance-heading strong {
+  color: var(--amber);
+  font-size: 0.88rem;
+  font-weight: 950;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.performance-heading h2 {
+  margin: 0;
+  text-shadow: 0 0 18px rgba(255, 184, 77, 0.12);
+}
+
 .list-stack {
   display: grid;
   gap: 12px;

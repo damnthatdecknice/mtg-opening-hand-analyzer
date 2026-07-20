@@ -179,8 +179,10 @@ export function MetagamePanel() {
             </article>
 
             <article className="panel compact-panel">
-              <p className="eyebrow">Opening Edge</p>
-              <h2>Proprietary Performance Rating</h2>
+              <div className="performance-heading">
+                <strong>Opening Edge</strong>
+                <h2>Proprietary Performance Rating</h2>
+              </div>
               <p className="muted-copy">
                 Separate from metagame share. This highlights which archetypes are converting recent
                 Challenge appearances into stronger results.
@@ -323,7 +325,15 @@ function formatTrendLabel(change: number) {
 }
 
 function buildPerformanceDecks(decks: MetagameDeck[]): PerformanceDeck[] {
-  const scores = new Map<string, { finishes: number; score: number }>();
+  const scores = new Map<string, { deckCount: number; finishes: number; score: number }>();
+
+  for (const deck of decks) {
+    const current = scores.get(deck.archetype) ?? { deckCount: 0, finishes: 0, score: 0 };
+    scores.set(deck.archetype, {
+      ...current,
+      deckCount: current.deckCount + 1
+    });
+  }
 
   for (const deck of decks) {
     if (!deck.rank || deck.rank < 1) {
@@ -331,20 +341,38 @@ function buildPerformanceDecks(decks: MetagameDeck[]): PerformanceDeck[] {
     }
 
     const finishScore = Math.max(1, 33 - deck.rank);
-    const current = scores.get(deck.archetype) ?? { finishes: 0, score: 0 };
+    const current = scores.get(deck.archetype) ?? { deckCount: 0, finishes: 0, score: 0 };
     scores.set(deck.archetype, {
+      ...current,
       finishes: current.finishes + 1,
       score: current.score + finishScore
     });
   }
 
+  const totalScore = Array.from(scores.values()).reduce((sum, value) => sum + value.score, 0);
+  const totalDecks = decks.length;
+
   return Array.from(scores.entries())
+    .filter(([, value]) => value.finishes > 0 && totalScore > 0 && totalDecks > 0)
     .map(([name, value]) => ({
       name,
       finishes: value.finishes,
-      score: Math.round(value.score / value.finishes)
+      score: buildOverperformanceRating(value.score, value.deckCount, value.finishes, totalScore, totalDecks)
     }))
     .sort((a, b) => b.score - a.score || b.finishes - a.finishes || a.name.localeCompare(b.name));
+}
+
+function buildOverperformanceRating(
+  score: number,
+  deckCount: number,
+  finishes: number,
+  totalScore: number,
+  totalDecks: number
+) {
+  const resultShare = score / totalScore;
+  const populationShare = deckCount / totalDecks;
+  const sampleConfidence = finishes / (finishes + 4);
+  return Math.max(1, Math.round(100 + (resultShare - populationShare) * 220 * sampleConfidence));
 }
 
 function buildSavedDeckNotes(
