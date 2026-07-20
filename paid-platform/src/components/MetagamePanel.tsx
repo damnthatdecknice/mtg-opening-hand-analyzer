@@ -221,7 +221,7 @@ export function MetagamePanel() {
                           {deck.finishes} finish{deck.finishes === 1 ? "" : "es"} tracked
                         </span>
                       </div>
-                      <em>{deck.score}</em>
+                      <em>{deck.score.toFixed(2)}</em>
                     </div>
                   ))
                 ) : (
@@ -396,7 +396,7 @@ function buildOverperformanceRating(
   const resultShare = score / totalScore;
   const populationShare = deckCount / totalDecks;
   const sampleConfidence = finishes / (finishes + 4);
-  return Math.max(1, Math.round(100 + (resultShare - populationShare) * 220 * sampleConfidence));
+  return Math.max(1, 100 + (resultShare - populationShare) * 220 * sampleConfidence);
 }
 
 function buildSavedDeckNotes(
