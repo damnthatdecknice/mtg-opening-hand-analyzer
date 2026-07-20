@@ -82,6 +82,27 @@ export default function HelpPage() {
       </section>
       <section className="panel compact-panel">
         <div className="legal-stack">
+          <h2>Metagame</h2>
+          <p>
+            The Metagame page builds a recent tournament snapshot from official Magic Online Challenge
+            decklists. Opening Edge groups similar decklists into archetypes, tracks which decks are
+            rising or falling compared with the prior week, and highlights the nonland cards that show
+            up most often across the field.
+          </p>
+          <p>
+            For your saved decks, Opening Edge uses a color-aware sideboard discovery algorithm to
+            compare your list against nearby published archetypes and the broader format. The result is
+            a focused scouting list of potential sideboard cards that are actually showing up in decks
+            like yours, or in colorless cards available to any deck.
+          </p>
+          <p>
+            Treat the suggestions as a competitive testing queue, not an automatic import. The goal is
+            to surface cards worth trying before your next league, challenge, or local event.
+          </p>
+        </div>
+      </section>
+      <section className="panel compact-panel">
+        <div className="legal-stack">
           <h2>Troubleshooting</h2>
           <p>
             If screenshot recognition is uncertain, use the quick choice buttons or dropdowns to
