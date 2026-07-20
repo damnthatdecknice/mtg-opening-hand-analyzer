@@ -24,6 +24,12 @@ type SavedDeckNote = {
   note: string;
 };
 
+type PerformanceDeck = {
+  name: string;
+  finishes: number;
+  score: number;
+};
+
 function isMetagameCardCount(card: MetagameCardCount | undefined): card is MetagameCardCount {
   return Boolean(card);
 }
@@ -40,6 +46,7 @@ export function MetagamePanel() {
     () => (data ? buildSavedDeckNotes(savedDecks, data, format) : []),
     [data, format, savedDecks]
   );
+  const performanceDecks = useMemo(() => (data ? buildPerformanceDecks(data.decks) : []), [data]);
 
   useEffect(() => {
     if (entitlements.canUseDeckVault) {
@@ -148,26 +155,57 @@ export function MetagamePanel() {
             </div>
           </div>
 
-          <section className="panel compact-panel">
-            <div className="section-heading split-heading">
-              <div>
-                <p className="eyebrow">Archetype share</p>
-                <h2>{format} snapshot</h2>
-              </div>
-              <span className="muted-copy">{data.source}</span>
-            </div>
-            <div className="meta-bars">
-              {data.archetypes.slice(0, 12).map((archetype) => (
-                <div className="meta-bar-row" key={archetype.name}>
-                  <span>{archetype.name}</span>
-                  <i style={{ width: `${Math.max(4, archetype.share * 100)}%` }} />
-                  <em>
-                    {Math.round(archetype.share * 100)}% ({archetype.decks})
-                    <small className={getTrendClass(archetype.change)}>{formatTrendLabel(archetype.change)}</small>
-                  </em>
+          <section className="metagame-grid">
+            <article className="panel compact-panel">
+              <div className="section-heading split-heading">
+                <div>
+                  <p className="eyebrow">Archetype share</p>
+                  <h2>{format} snapshot</h2>
                 </div>
-              ))}
-            </div>
+                <span className="muted-copy">{data.source}</span>
+              </div>
+              <div className="meta-bars">
+                {data.archetypes.slice(0, 12).map((archetype) => (
+                  <div className="meta-bar-row" key={archetype.name}>
+                    <span>{archetype.name}</span>
+                    <i style={{ width: `${Math.max(4, archetype.share * 100)}%` }} />
+                    <em>
+                      {Math.round(archetype.share * 100)}% ({archetype.decks})
+                      <small className={getTrendClass(archetype.change)}>{formatTrendLabel(archetype.change)}</small>
+                    </em>
+                  </div>
+                ))}
+              </div>
+            </article>
+
+            <article className="panel compact-panel">
+              <p className="eyebrow">Performance weighted</p>
+              <h2>What Is Winning</h2>
+              <p className="muted-copy">
+                Separate from metagame share. This weights published finishes so stronger Challenge
+                results float upward.
+              </p>
+              <div className="list-stack">
+                {performanceDecks.length ? (
+                  performanceDecks.slice(0, 8).map((deck) => (
+                    <div className="list-row" key={deck.name}>
+                      <div>
+                        <strong>{deck.name}</strong>
+                        <span>
+                          {deck.finishes} finish{deck.finishes === 1 ? "" : "es"} tracked
+                        </span>
+                      </div>
+                      <em>{deck.score} pts</em>
+                    </div>
+                  ))
+                ) : (
+                  <div className="empty-state">
+                    <strong>No ranked finishes found yet</strong>
+                    <span>When MTGO publishes standings, this box weights archetypes by finish.</span>
+                  </div>
+                )}
+              </div>
+            </article>
           </section>
 
           <section className="metagame-grid">
@@ -282,6 +320,31 @@ function formatTrendLabel(change: number) {
     return `down ${Math.abs(percentagePoints)}%`;
   }
   return "flat 0%";
+}
+
+function buildPerformanceDecks(decks: MetagameDeck[]): PerformanceDeck[] {
+  const scores = new Map<string, { finishes: number; score: number }>();
+
+  for (const deck of decks) {
+    if (!deck.rank || deck.rank < 1) {
+      continue;
+    }
+
+    const finishScore = Math.max(1, 33 - deck.rank);
+    const current = scores.get(deck.archetype) ?? { finishes: 0, score: 0 };
+    scores.set(deck.archetype, {
+      finishes: current.finishes + 1,
+      score: current.score + finishScore
+    });
+  }
+
+  return Array.from(scores.entries())
+    .map(([name, value]) => ({
+      name,
+      finishes: value.finishes,
+      score: Math.round(value.score)
+    }))
+    .sort((a, b) => b.score - a.score || b.finishes - a.finishes || a.name.localeCompare(b.name));
 }
 
 function buildSavedDeckNotes(
