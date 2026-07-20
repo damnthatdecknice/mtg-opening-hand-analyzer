@@ -111,6 +111,11 @@ export default function HelpPage() {
             line and that card names match normal Magic decklist spelling.
           </p>
           <p>
+            When using Magic Online, upload your own .dek file for that exact deck whenever possible.
+            A random .dek with the same card names can use different card versions or artwork, which
+            makes screenshot recognition less reliable.
+          </p>
+          <p>
             Screenshots are processed in your browser. Decks and hand sessions are saved only when you
             use account features. Review the <Link href="/privacy">privacy page</Link> and{" "}
             <Link href="/terms">terms</Link> for the plain-language version.

@@ -1304,11 +1304,11 @@ export function HandAnalyzer() {
           </label>
           <div className="import-row preferred-import-row">
             <span>
-              <strong>Preferred: import MTGO .dek</strong>
-              <em>Preferred for sharper Magic Online screenshot recognition.</em>
+              <strong>Preferred: import your MTGO .dek</strong>
+              <em>Use your actual .dek file for sharper Magic Online screenshot recognition.</em>
             </span>
             <label className="secondary-button file-button">
-              Import .dek
+              Import your .dek
               <input
                 accept=".dek,text/xml,application/xml"
                 onChange={(event) => {
