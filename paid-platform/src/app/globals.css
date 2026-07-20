@@ -2526,8 +2526,8 @@ h2 {
 
 .meta-bar-row {
   display: grid;
-  grid-template-columns: minmax(180px, 0.7fr) minmax(180px, 1.3fr) 96px;
-  gap: 12px;
+  grid-template-columns: minmax(170px, 0.62fr) minmax(220px, 1.55fr) 96px;
+  gap: 16px;
   align-items: center;
   min-height: 42px;
   padding: 6px 0;
@@ -2588,7 +2588,7 @@ h2 {
 
 .meta-bar-row i {
   display: block;
-  height: 12px;
+  height: 18px;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--amber), var(--accent));
   box-shadow:
