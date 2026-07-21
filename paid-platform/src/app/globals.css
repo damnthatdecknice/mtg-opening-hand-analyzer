@@ -1358,9 +1358,64 @@ h2 {
   clip-path: var(--clip-sm);
 }
 
+.performance-row {
+  align-items: stretch;
+}
+
 .list-row strong,
 .deck-row strong {
   color: #fff5dc;
+}
+
+.performance-signal {
+  align-items: end;
+  align-self: center;
+  background: linear-gradient(135deg, rgba(255, 184, 77, 0.1), rgba(4, 18, 36, 0.82));
+  border: 1px solid rgba(255, 184, 77, 0.26);
+  clip-path: var(--clip-sm);
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+  min-width: 118px;
+  padding: 8px 12px;
+}
+
+.performance-signal small {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.performance-signal strong {
+  color: var(--amber);
+  font-size: 1.1rem;
+  font-weight: 950;
+  line-height: 1.05;
+}
+
+.performance-signal.signal-up {
+  background: linear-gradient(135deg, rgba(80, 255, 173, 0.14), rgba(4, 18, 36, 0.84));
+  border-color: rgba(80, 255, 173, 0.34);
+}
+
+.performance-signal.signal-up strong {
+  color: var(--good);
+}
+
+.performance-signal.signal-down {
+  background: linear-gradient(135deg, rgba(255, 108, 108, 0.12), rgba(4, 18, 36, 0.84));
+  border-color: rgba(255, 108, 108, 0.32);
+}
+
+.performance-signal.signal-down strong {
+  color: var(--bad);
+}
+
+.performance-signal.signal-flat strong {
+  color: var(--amber);
 }
 
 .clickable-list-row {

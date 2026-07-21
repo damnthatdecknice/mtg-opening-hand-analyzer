@@ -213,17 +213,23 @@ export function MetagamePanel() {
               </p>
               <div className="list-stack">
                 {performanceDecks.length ? (
-                  performanceDecks.slice(0, 8).map((deck) => (
-                    <div className="list-row" key={deck.name}>
-                      <div>
-                        <strong>{deck.name}</strong>
-                        <span>
-                          {deck.finishes} finish{deck.finishes === 1 ? "" : "es"} tracked
+                  performanceDecks.slice(0, 8).map((deck) => {
+                    const signal = getPerformanceSignal(deck.score);
+                    return (
+                      <div className="list-row performance-row" key={deck.name}>
+                        <div>
+                          <strong>{deck.name}</strong>
+                          <span>
+                            {deck.finishes} ranked finish{deck.finishes === 1 ? "" : "es"}
+                          </span>
+                        </div>
+                        <span className={`performance-signal ${signal.className}`}>
+                          <small>{signal.label}</small>
+                          <strong>{signal.value}</strong>
                         </span>
                       </div>
-                      <em>{deck.score.toFixed(2)}</em>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="empty-state">
                     <strong>No ranked finishes found yet</strong>
@@ -346,6 +352,25 @@ function formatTrendLabel(change: number) {
     return `down ${Math.abs(percentagePoints)}%`;
   }
   return "flat 0%";
+}
+
+function getPerformanceSignal(score: number) {
+  const delta = score - 100;
+  const value = `${delta > 0 ? "+" : ""}${delta.toFixed(2)}`;
+
+  if (delta >= 5) {
+    return { label: "Surging", value, className: "signal-up" };
+  }
+  if (delta >= 1) {
+    return { label: "Positive", value, className: "signal-up" };
+  }
+  if (delta <= -5) {
+    return { label: "Fading", value, className: "signal-down" };
+  }
+  if (delta <= -1) {
+    return { label: "Soft", value, className: "signal-down" };
+  }
+  return { label: "Neutral", value, className: "signal-flat" };
 }
 
 function buildPerformanceDecks(decks: MetagameDeck[]): PerformanceDeck[] {
