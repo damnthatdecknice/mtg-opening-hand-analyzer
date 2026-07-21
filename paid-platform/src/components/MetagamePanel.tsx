@@ -295,55 +295,53 @@ export function MetagamePanel() {
                   </div>
                 )}
               </div>
-            </article>
-          </section>
-
-          <section className="panel compact-panel">
-            <p className="eyebrow">Your saved decks</p>
-            <h2>Deck Tuning Recommendations</h2>
-            <div className="list-stack">
-              {savedDeckNotes.length ? (
-                savedDeckNotes.map((note) => (
-                  <div className="deck-tuning-card" key={`tuning-${note.deckName}`}>
-                    <div className="deck-tuning-summary">
-                      <div>
-                        <strong>{note.deckName}</strong>
-                        {note.tuning ? (
-                          <span>
-                            Compared to recent {note.tuning.shellName} Challenge shells.
-                          </span>
+              <div className="deck-tuning-section">
+                <h2>Deck Tuning Recommendations</h2>
+                <div className="list-stack">
+                  {savedDeckNotes.length ? (
+                    savedDeckNotes.map((note) => (
+                      <div className="deck-tuning-card" key={`tuning-${note.deckName}`}>
+                        <div className="deck-tuning-summary">
+                          <div>
+                            <strong>{note.deckName}</strong>
+                            {note.tuning ? (
+                              <span>
+                                Compared to recent {note.tuning.shellName} Challenge shells.
+                              </span>
+                            ) : (
+                              <span>No close Challenge stock shell found yet.</span>
+                            )}
+                          </div>
+                          {note.tuning ? (
+                            <em>{note.tuning.cardsOff} card{note.tuning.cardsOff === 1 ? "" : "s"} off</em>
+                          ) : null}
+                        </div>
+                        {note.tuning?.cardGaps.length ? (
+                          <div className="tuning-gap-list">
+                            {note.tuning.cardGaps.slice(0, 4).map((gap) => (
+                              <span key={gap.name}>
+                                Most lists play <strong>{gap.expected} {gap.name}</strong>; you have{" "}
+                                <strong>{gap.current}</strong>.
+                              </span>
+                            ))}
+                          </div>
                         ) : (
-                          <span>No close Challenge stock shell found yet.</span>
+                          <p className="muted-copy">
+                            This saved list is either already close to the current shell or needs more matching
+                            published decks before Opening Edge can make a clean recommendation.
+                          </p>
                         )}
                       </div>
-                      {note.tuning ? (
-                        <em>{note.tuning.cardsOff} card{note.tuning.cardsOff === 1 ? "" : "s"} off</em>
-                      ) : null}
+                    ))
+                  ) : (
+                    <div className="empty-state">
+                      <strong>No saved {format} decks yet</strong>
+                      <span>Save a deck in this format to compare it against recent Challenge shells.</span>
                     </div>
-                    {note.tuning?.cardGaps.length ? (
-                      <div className="tuning-gap-list">
-                        {note.tuning.cardGaps.slice(0, 4).map((gap) => (
-                          <span key={gap.name}>
-                            Most lists play <strong>{gap.expected} {gap.name}</strong>; you have{" "}
-                            <strong>{gap.current}</strong>.
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="muted-copy">
-                        This saved list is either already close to the current shell or needs more matching
-                        published decks before Opening Edge can make a clean recommendation.
-                      </p>
-                    )}
-                  </div>
-                ))
-              ) : (
-                <div className="empty-state">
-                  <strong>No saved {format} decks yet</strong>
-                  <span>Save a deck in this format to compare it against recent Challenge shells.</span>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            </article>
           </section>
 
           <section className="panel compact-panel">

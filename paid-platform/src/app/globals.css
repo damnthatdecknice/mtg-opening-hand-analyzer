@@ -1494,6 +1494,18 @@ h2 {
   white-space: nowrap;
 }
 
+.deck-tuning-section {
+  border-top: 1px solid rgba(255, 184, 77, 0.2);
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+  padding-top: 20px;
+}
+
+.deck-tuning-section h2 {
+  margin: 0;
+}
+
 .deck-tuning-card {
   border: 1px solid rgba(255, 184, 77, 0.22);
   background:
