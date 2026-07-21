@@ -31,7 +31,7 @@ type DeckTuningRecommendation = {
   shellName: string;
   cardsOff: number;
   sourceDecks: number;
-  cardGaps: Array<{ name: string; expected: number; current: number; presence: number }>;
+  cardGaps: Array<{ name: string; expected: number; current: number; winningPresence: number; baselinePresence: number }>;
 };
 
 type PerformanceDeck = {
@@ -306,21 +306,23 @@ export function MetagamePanel() {
                             <strong>{note.deckName}</strong>
                             {note.tuning ? (
                               <span>
-                                Compared to recent {note.tuning.shellName} Challenge shells.
+                                Tuned against recent winning {note.tuning.shellName} Challenge lists.
                               </span>
                             ) : (
                               <span>No close Challenge stock shell found yet.</span>
                             )}
                           </div>
                           {note.tuning ? (
-                            <em>{note.tuning.cardsOff} card{note.tuning.cardsOff === 1 ? "" : "s"} off</em>
+                            <em>
+                              {note.tuning.cardsOff} winning {note.tuning.cardsOff === 1 ? "copy" : "copies"}
+                            </em>
                           ) : null}
                         </div>
                         {note.tuning?.cardGaps.length ? (
                           <div className="tuning-gap-list">
                             {note.tuning.cardGaps.slice(0, 4).map((gap) => (
                               <span key={gap.name}>
-                                Most lists play <strong>{gap.expected} {gap.name}</strong>; you have{" "}
+                                Winning lists are on <strong>{gap.expected} {gap.name}</strong>; you have{" "}
                                 <strong>{gap.current}</strong>.
                               </span>
                             ))}
@@ -533,69 +535,101 @@ function buildDeckTuningRecommendation(
   similarDecks: Array<{ deck: MetagameDeck; shared: number }>
 ): DeckTuningRecommendation | null {
   const bestShared = similarDecks[0]?.shared ?? 0;
-  const stockDecks = similarDecks
+  const baselineDecks = similarDecks
     .filter((match) => match.shared >= Math.max(5, bestShared - 2))
-    .sort((a, b) => (a.deck.rank ?? 999) - (b.deck.rank ?? 999) || b.shared - a.shared)
-    .slice(0, 8)
+    .slice(0, 12)
     .map((match) => match.deck);
 
-  if (stockDecks.length < 2) {
+  const winningDecks = chooseWinningComparisonDecks(
+    similarDecks.filter((match) => match.shared >= Math.max(5, bestShared - 2))
+  );
+
+  if (baselineDecks.length < 2 || winningDecks.length < 2) {
     return null;
   }
 
   const savedCounts = countCardRows(savedDeckCards);
-  const cardStats = new Map<string, { copies: number; decks: number }>();
+  const baselineStats = buildMainDeckCardStats(baselineDecks);
+  const winningStats = buildMainDeckCardStats(winningDecks);
+  const gaps: DeckTuningRecommendation["cardGaps"] = [];
 
-  for (const stockDeck of stockDecks) {
+  for (const [name, stats] of Array.from(winningStats.entries())) {
+    const winningPresence = stats.decks / winningDecks.length;
+    if (winningPresence < 0.34) {
+      continue;
+    }
+    const baseline = baselineStats.get(name);
+    const baselinePresence = baseline ? baseline.decks / baselineDecks.length : 0;
+    const expected = Math.max(1, Math.round(stats.copies / winningDecks.length));
+    const current = savedCounts.get(name) ?? 0;
+    if (expected > current) {
+      gaps.push({ name, expected, current, winningPresence, baselinePresence });
+    }
+  }
+
+  const cardGaps = gaps
+    .sort((a, b) => {
+      const liftA = a.winningPresence - a.baselinePresence;
+      const liftB = b.winningPresence - b.baselinePresence;
+      return (
+        liftB - liftA ||
+        b.winningPresence - a.winningPresence ||
+        b.expected - b.current - (a.expected - a.current) ||
+        a.name.localeCompare(b.name)
+      );
+    })
+    .slice(0, 6);
+
+  return {
+    shellName: chooseStockShellName(deckName, winningDecks),
+    cardsOff: cardGaps.reduce((total, gap) => total + Math.max(0, gap.expected - gap.current), 0),
+    sourceDecks: winningDecks.length,
+    cardGaps
+  };
+}
+
+function chooseWinningComparisonDecks(matches: Array<{ deck: MetagameDeck; shared: number }>) {
+  const rankedMatches = matches
+    .filter((match) => match.deck.rank && match.deck.rank > 0)
+    .sort((a, b) => (a.deck.rank ?? 999) - (b.deck.rank ?? 999) || b.shared - a.shared);
+  const topEight = rankedMatches.filter((match) => (match.deck.rank ?? 999) <= 8).slice(0, 8);
+  if (topEight.length >= 2) {
+    return topEight.map((match) => match.deck);
+  }
+
+  const topSixteen = rankedMatches.filter((match) => (match.deck.rank ?? 999) <= 16).slice(0, 8);
+  if (topSixteen.length >= 2) {
+    return topSixteen.map((match) => match.deck);
+  }
+
+  const bestRanked = rankedMatches.slice(0, 8);
+  if (bestRanked.length >= 2) {
+    return bestRanked.map((match) => match.deck);
+  }
+
+  return matches
+    .sort((a, b) => b.shared - a.shared || a.deck.archetype.localeCompare(b.deck.archetype))
+    .slice(0, 4)
+    .map((match) => match.deck);
+}
+
+function buildMainDeckCardStats(decks: MetagameDeck[]) {
+  const stats = new Map<string, { copies: number; decks: number }>();
+  for (const deck of decks) {
     const seen = new Set<string>();
-    for (const card of stockDeck.main) {
-      const current = cardStats.get(card.name) ?? { copies: 0, decks: 0 };
-      cardStats.set(card.name, { ...current, copies: current.copies + card.qty });
+    for (const card of deck.main) {
+      const current = stats.get(card.name) ?? { copies: 0, decks: 0 };
+      stats.set(card.name, { ...current, copies: current.copies + card.qty });
       seen.add(card.name);
     }
     for (const name of Array.from(seen)) {
-      const current = cardStats.get(name);
+      const current = stats.get(name);
       if (current) {
-        cardStats.set(name, { ...current, decks: current.decks + 1 });
+        stats.set(name, { ...current, decks: current.decks + 1 });
       }
     }
   }
-
-  const stockCounts = new Map<string, number>();
-  const gaps: DeckTuningRecommendation["cardGaps"] = [];
-
-  for (const [name, stats] of Array.from(cardStats.entries())) {
-    const presence = stats.decks / stockDecks.length;
-    if (presence < 0.45) {
-      continue;
-    }
-    const expected = Math.max(1, Math.round(stats.copies / stockDecks.length));
-    const current = savedCounts.get(name) ?? 0;
-    stockCounts.set(name, expected);
-    if (expected > current) {
-      gaps.push({ name, expected, current, presence });
-    }
-  }
-
-  let cardsOff = 0;
-  for (const [name, expected] of Array.from(stockCounts.entries())) {
-    cardsOff += Math.abs(expected - (savedCounts.get(name) ?? 0));
-  }
-  for (const [name, current] of Array.from(savedCounts.entries())) {
-    if (!stockCounts.has(name)) {
-      cardsOff += current;
-    }
-  }
-  cardsOff = Math.round(cardsOff / 2);
-
-  return {
-    shellName: chooseStockShellName(deckName, stockDecks),
-    cardsOff,
-    sourceDecks: stockDecks.length,
-    cardGaps: gaps
-      .sort((a, b) => b.expected - b.current - (a.expected - a.current) || b.presence - a.presence || a.name.localeCompare(b.name))
-      .slice(0, 6)
-  };
+  return stats;
 }
 
 function countCardRows(cards: Array<{ name: string; qty: number }>) {
