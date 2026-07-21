@@ -1494,6 +1494,60 @@ h2 {
   white-space: nowrap;
 }
 
+.deck-tuning-card {
+  border: 1px solid rgba(255, 184, 77, 0.22);
+  background:
+    linear-gradient(135deg, rgba(255, 184, 77, 0.08), transparent 38%),
+    linear-gradient(135deg, rgba(4, 15, 32, 0.74), rgba(2, 8, 18, 0.64));
+  clip-path: var(--clip-sm);
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.deck-tuning-summary {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.deck-tuning-summary strong {
+  color: #ffe1a1;
+}
+
+.deck-tuning-summary span {
+  color: var(--muted);
+  display: block;
+  margin-top: 4px;
+}
+
+.deck-tuning-summary em {
+  border: 1px solid rgba(255, 184, 77, 0.42);
+  background: rgba(255, 184, 77, 0.12);
+  clip-path: var(--clip-sm);
+  color: var(--amber);
+  font-style: normal;
+  font-weight: 950;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+.tuning-gap-list {
+  display: grid;
+  gap: 8px;
+}
+
+.tuning-gap-list span {
+  border-left: 2px solid rgba(255, 184, 77, 0.58);
+  color: var(--muted);
+  padding-left: 10px;
+}
+
+.tuning-gap-list strong {
+  color: var(--text);
+}
+
 .onboarding-panel {
   display: grid;
   gap: 8px;

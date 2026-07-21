@@ -1586,7 +1586,7 @@ function Overview({ result }: { result: AnalyzerResult }) {
           <strong>{result.effectiveLandsInHand}</strong>
         </div>
         <div className="metric-card">
-          <span>Mull to 6 avg</span>
+          <span>{result.mulligan?.comparison === "free-seven" ? "Free 7 avg" : "Mull to 6 avg"}</span>
           <strong>{result.mulligan ? number(result.mulligan.average) : "n/a"}</strong>
         </div>
       </div>
@@ -2043,16 +2043,23 @@ function ManaCurve({ result }: { result: AnalyzerResult }) {
 }
 
 function Mulligan({ result }: { result: AnalyzerResult }) {
+  const freeSeven = result.mulligan?.comparison === "free-seven";
   return (
     <div className="result-stack">
       <h2>Current Hand</h2>
       <p>Hand texture score: {result.handTextureScore}/100 ({result.handTextureLabel}).</p>
-      <h2>Fresh 7, Bottom 1</h2>
+      <h2>{freeSeven ? "Commander/Brawl Free Mulligan" : "Fresh 7, Bottom 1"}</h2>
       {result.mulligan ? (
         <div className="watchout-panel">
-          <p>Simulated mulligan-to-six average: {number(result.mulligan.average)}/100; median: {result.mulligan.median}/100.</p>
+          <p>
+            {freeSeven ? "Simulated second-seven average" : "Simulated mulligan-to-six average"}:{" "}
+            {number(result.mulligan.average)}/100; median: {result.mulligan.median}/100.
+          </p>
           <p>Middle half of mulligan outcomes: {result.mulligan.p25}/100 to {result.mulligan.p75}/100.</p>
-          <p>Fresh seven then bottom one is better about {pct(result.mulligan.better)} of the time.</p>
+          <p>
+            {freeSeven ? "A second seven" : "Fresh seven then bottom one"} is better about{" "}
+            {pct(result.mulligan.better)} of the time.
+          </p>
         </div>
       ) : (
         <p>Not enough deck data to simulate a fresh seven.</p>

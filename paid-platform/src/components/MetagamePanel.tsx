@@ -23,7 +23,15 @@ type SavedDeckNote = {
   matchingArchetype?: string;
   overlappingCards: Array<{ name: string; share: number }>;
   sideboardCards: Array<{ name: string; share: number; decks: number }>;
+  tuning: DeckTuningRecommendation | null;
   note: string;
+};
+
+type DeckTuningRecommendation = {
+  shellName: string;
+  cardsOff: number;
+  sourceDecks: number;
+  cardGaps: Array<{ name: string; expected: number; current: number; presence: number }>;
 };
 
 type PerformanceDeck = {
@@ -291,6 +299,54 @@ export function MetagamePanel() {
           </section>
 
           <section className="panel compact-panel">
+            <p className="eyebrow">Your saved decks</p>
+            <h2>Deck Tuning Recommendations</h2>
+            <div className="list-stack">
+              {savedDeckNotes.length ? (
+                savedDeckNotes.map((note) => (
+                  <div className="deck-tuning-card" key={`tuning-${note.deckName}`}>
+                    <div className="deck-tuning-summary">
+                      <div>
+                        <strong>{note.deckName}</strong>
+                        {note.tuning ? (
+                          <span>
+                            Compared to recent {note.tuning.shellName} Challenge shells.
+                          </span>
+                        ) : (
+                          <span>No close Challenge stock shell found yet.</span>
+                        )}
+                      </div>
+                      {note.tuning ? (
+                        <em>{note.tuning.cardsOff} card{note.tuning.cardsOff === 1 ? "" : "s"} off</em>
+                      ) : null}
+                    </div>
+                    {note.tuning?.cardGaps.length ? (
+                      <div className="tuning-gap-list">
+                        {note.tuning.cardGaps.slice(0, 4).map((gap) => (
+                          <span key={gap.name}>
+                            Most lists play <strong>{gap.expected} {gap.name}</strong>; you have{" "}
+                            <strong>{gap.current}</strong>.
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="muted-copy">
+                        This saved list is either already close to the current shell or needs more matching
+                        published decks before Opening Edge can make a clean recommendation.
+                      </p>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <strong>No saved {format} decks yet</strong>
+                  <span>Save a deck in this format to compare it against recent Challenge shells.</span>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="panel compact-panel">
             <p className="eyebrow">Source events</p>
             <h2>Official MTGO Decklists</h2>
             <div className="list-stack">
@@ -435,7 +491,8 @@ function buildSavedDeckNotes(
     .slice(0, 4)
     .map((deck) => {
       const parsed = parseDecklist(deck.decklist);
-      const deckCards = new Set(parsed.cards.filter((card) => card.section === "main").map((card) => card.name));
+      const mainDeckCards = parsed.cards.filter((card) => card.section === "main");
+      const deckCards = new Set(mainDeckCards.map((card) => card.name));
       const allSavedCards = new Set(parsed.cards.map((card) => card.name));
       const similarDecks = findSimilarPublishedDecks(deckCards, data.decks);
       const inferredColors = inferSavedDeckColors(similarDecks);
@@ -446,6 +503,7 @@ function buildSavedDeckNotes(
         .filter((publishedDeck) => isDeckInColors(publishedDeck, inferredColors));
       const sideboardSourceDecks = similarInColorDecks.length ? similarInColorDecks : inColorDecks;
       const sideboardCards = buildSideboardSuggestions(sideboardSourceDecks, allSavedCards, inferredColors);
+      const tuning = buildDeckTuningRecommendation(deck.name, mainDeckCards, similarDecks);
       const overlappingCards = Array.from(deckCards)
         .map((card) => topCardMap.get(card.toLowerCase()))
         .filter(isMetagameCardCount)
@@ -465,9 +523,100 @@ function buildSavedDeckNotes(
         matchingArchetype,
         overlappingCards,
         sideboardCards,
+        tuning,
         note
       };
     });
+}
+
+function buildDeckTuningRecommendation(
+  deckName: string,
+  savedDeckCards: Array<{ name: string; qty: number }>,
+  similarDecks: Array<{ deck: MetagameDeck; shared: number }>
+): DeckTuningRecommendation | null {
+  const bestShared = similarDecks[0]?.shared ?? 0;
+  const stockDecks = similarDecks
+    .filter((match) => match.shared >= Math.max(5, bestShared - 2))
+    .sort((a, b) => (a.deck.rank ?? 999) - (b.deck.rank ?? 999) || b.shared - a.shared)
+    .slice(0, 8)
+    .map((match) => match.deck);
+
+  if (stockDecks.length < 2) {
+    return null;
+  }
+
+  const savedCounts = countCardRows(savedDeckCards);
+  const cardStats = new Map<string, { copies: number; decks: number }>();
+
+  for (const stockDeck of stockDecks) {
+    const seen = new Set<string>();
+    for (const card of stockDeck.main) {
+      const current = cardStats.get(card.name) ?? { copies: 0, decks: 0 };
+      cardStats.set(card.name, { ...current, copies: current.copies + card.qty });
+      seen.add(card.name);
+    }
+    for (const name of Array.from(seen)) {
+      const current = cardStats.get(name);
+      if (current) {
+        cardStats.set(name, { ...current, decks: current.decks + 1 });
+      }
+    }
+  }
+
+  const stockCounts = new Map<string, number>();
+  const gaps: DeckTuningRecommendation["cardGaps"] = [];
+
+  for (const [name, stats] of Array.from(cardStats.entries())) {
+    const presence = stats.decks / stockDecks.length;
+    if (presence < 0.45) {
+      continue;
+    }
+    const expected = Math.max(1, Math.round(stats.copies / stockDecks.length));
+    const current = savedCounts.get(name) ?? 0;
+    stockCounts.set(name, expected);
+    if (expected > current) {
+      gaps.push({ name, expected, current, presence });
+    }
+  }
+
+  let cardsOff = 0;
+  for (const [name, expected] of Array.from(stockCounts.entries())) {
+    cardsOff += Math.abs(expected - (savedCounts.get(name) ?? 0));
+  }
+  for (const [name, current] of Array.from(savedCounts.entries())) {
+    if (!stockCounts.has(name)) {
+      cardsOff += current;
+    }
+  }
+  cardsOff = Math.round(cardsOff / 2);
+
+  return {
+    shellName: chooseStockShellName(deckName, stockDecks),
+    cardsOff,
+    sourceDecks: stockDecks.length,
+    cardGaps: gaps
+      .sort((a, b) => b.expected - b.current - (a.expected - a.current) || b.presence - a.presence || a.name.localeCompare(b.name))
+      .slice(0, 6)
+  };
+}
+
+function countCardRows(cards: Array<{ name: string; qty: number }>) {
+  const counts = new Map<string, number>();
+  for (const card of cards) {
+    counts.set(card.name, (counts.get(card.name) ?? 0) + card.qty);
+  }
+  return counts;
+}
+
+function chooseStockShellName(deckName: string, stockDecks: MetagameDeck[]) {
+  const archetypeCounts = new Map<string, number>();
+  for (const deck of stockDecks) {
+    archetypeCounts.set(deck.archetype, (archetypeCounts.get(deck.archetype) ?? 0) + 1);
+  }
+  return (
+    Array.from(archetypeCounts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ??
+    deckName
+  );
 }
 
 function findSimilarPublishedDecks(deckCards: Set<string>, publishedDecks: MetagameDeck[]) {

@@ -78,6 +78,7 @@ export type MulliganSummary = {
   better: number;
   p25: number;
   p75: number;
+  comparison: "london-six" | "free-seven";
 };
 
 export type DeckProfile = {
@@ -1110,7 +1111,8 @@ function mulliganSummary(
   mainCounts: Map<string, number>,
   cardData: Map<string, CardLookup>,
   currentScore: number,
-  extraAvailableCards: string[] = []
+  extraAvailableCards: string[] = [],
+  freeSeven = false
 ): MulliganSummary | null {
   const deckCards = Array.from(mainCounts.entries()).flatMap(([name, qty]) => Array.from({ length: qty }, () => name));
   if (deckCards.length < 7) {
@@ -1129,10 +1131,14 @@ function mulliganSummary(
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
     const seven = shuffled.slice(0, 7);
-    const sixScores = seven.map((_card, index) =>
-      scoreSeven([...seven.filter((__, cardIndex) => cardIndex !== index), ...extraAvailableCards], cardData)
-    );
-    scores.push(Math.max(...sixScores));
+    if (freeSeven) {
+      scores.push(scoreSeven([...seven, ...extraAvailableCards], cardData));
+    } else {
+      const sixScores = seven.map((_card, index) =>
+        scoreSeven([...seven.filter((__, cardIndex) => cardIndex !== index), ...extraAvailableCards], cardData)
+      );
+      scores.push(Math.max(...sixScores));
+    }
   }
   scores.sort((a, b) => a - b);
   const average = scores.reduce((total, score) => total + score, 0) / scores.length;
@@ -1141,7 +1147,8 @@ function mulliganSummary(
     median: scores[Math.floor(scores.length / 2)] ?? 0,
     better: scores.filter((score) => score > currentScore).length / scores.length,
     p25: scores[Math.floor(scores.length * 0.25)] ?? 0,
-    p75: scores[Math.floor(scores.length * 0.75)] ?? 0
+    p75: scores[Math.floor(scores.length * 0.75)] ?? 0,
+    comparison: freeSeven ? "free-seven" : "london-six"
   };
 }
 
@@ -1368,7 +1375,14 @@ export function analyzeOpeningHand(
 
   const turn3 = turnProbabilities.find((row) => row.turn === 3)?.landDropWithDraw ?? 0;
   const rec = recommendation(handTextureScore, landsInHand, turn3);
-  const mulligan = mulliganSummary(mainCounts, cardData, baseHandTextureScore, commanderCards);
+  const hasCommanderFreeMulligan = isCommanderStyleFormat(options.format);
+  const mulligan = mulliganSummary(
+    mainCounts,
+    cardData,
+    baseHandTextureScore,
+    commanderCards,
+    hasCommanderFreeMulligan
+  );
   const tags: AnalyzerResult["tags"] = [
     {
       label: profile.label.toLowerCase(),
@@ -1403,7 +1417,11 @@ export function analyzeOpeningHand(
     turn3 < 0.55 && landsInHand < 3 ? "Third land by turn 3 is not especially reliable." : "",
     drawSources.length ? `Draw/look spells add about ${extraLooksByTurn(3).toFixed(1)} card(s) of expected depth by turn 3.` : "",
     landEquivalentSources.length ? `Land-equivalent source counted: ${landEquivalentSources.map((source) => source.cardName).join(", ")}.` : "",
-    mulligan && mulligan.better >= 0.45 ? `A fresh seven then bottom one scores better about ${Math.round(mulligan.better * 100)}% of the time.` : ""
+    mulligan && mulligan.better >= 0.45
+      ? mulligan.comparison === "free-seven"
+        ? `Commander/Brawl free mulligan: a second seven scores better about ${Math.round(mulligan.better * 100)}% of the time.`
+        : `A fresh seven then bottom one scores better about ${Math.round(mulligan.better * 100)}% of the time.`
+      : ""
   ].filter(Boolean);
 
   if (!landNames.length) {
@@ -1414,6 +1432,7 @@ export function analyzeOpeningHand(
   }
   if (commanderCard) {
     notes.push(`${commanderCard} is being treated as an eighth available card from the command zone.`);
+    notes.push("Commander/Brawl uses a free first mulligan, so the mulligan comparison is a second seven rather than a six.");
   }
 
   return {
