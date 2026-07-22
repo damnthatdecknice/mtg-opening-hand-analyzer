@@ -2,12 +2,18 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { MetagameResponse } from "@/lib/metagame";
+import type { MetagameDeck, MetagameResponse } from "@/lib/metagame";
 
 type SnapshotState = {
   data: MetagameResponse | null;
   error: string;
   isLoading: boolean;
+};
+
+type PerformanceDeck = {
+  name: string;
+  finishes: number;
+  score: number;
 };
 
 export function DashboardMetagameSnapshot() {
@@ -40,7 +46,7 @@ export function DashboardMetagameSnapshot() {
     void loadModernSnapshot();
   }, []);
 
-  const topArchetype = state.data?.archetypes[0];
+  const highestPpr = state.data ? buildPerformanceDecks(state.data.decks)[0] : undefined;
 
   return (
     <section className="panel dashboard-meta-snapshot">
@@ -67,10 +73,11 @@ export function DashboardMetagameSnapshot() {
       ) : state.data ? (
         <>
           <div className="snapshot-callout">
-            <span>Top deck</span>
+            <span>Highest PPR</span>
             <strong>
-              {topArchetype ? `${topArchetype.name} ${Math.round(topArchetype.share * 100)}%` : "No data yet"}
+              {highestPpr ? `${highestPpr.name} ${formatPpr(highestPpr.score)}` : "No ranked finishes yet"}
             </strong>
+            <em>Highest Proprietary Performance Rating over the past 7 days in Modern</em>
           </div>
           <div className="mini-meta-bars">
             {state.data.archetypes.slice(0, 5).map((archetype) => (
@@ -89,4 +96,60 @@ export function DashboardMetagameSnapshot() {
       ) : null}
     </section>
   );
+}
+
+function formatPpr(score: number) {
+  const delta = score - 100;
+  return `${delta > 0 ? "+" : ""}${delta.toFixed(2)}`;
+}
+
+function buildPerformanceDecks(decks: MetagameDeck[]): PerformanceDeck[] {
+  const scores = new Map<string, { deckCount: number; finishes: number; score: number }>();
+
+  for (const deck of decks) {
+    const current = scores.get(deck.archetype) ?? { deckCount: 0, finishes: 0, score: 0 };
+    scores.set(deck.archetype, {
+      ...current,
+      deckCount: current.deckCount + 1
+    });
+  }
+
+  for (const deck of decks) {
+    if (!deck.rank || deck.rank < 1) {
+      continue;
+    }
+
+    const finishScore = Math.max(1, 33 - deck.rank);
+    const current = scores.get(deck.archetype) ?? { deckCount: 0, finishes: 0, score: 0 };
+    scores.set(deck.archetype, {
+      ...current,
+      finishes: current.finishes + 1,
+      score: current.score + finishScore
+    });
+  }
+
+  const totalScore = Array.from(scores.values()).reduce((sum, value) => sum + value.score, 0);
+  const totalDecks = decks.length;
+
+  return Array.from(scores.entries())
+    .filter(([, value]) => value.finishes > 0 && totalScore > 0 && totalDecks > 0)
+    .map(([name, value]) => ({
+      name,
+      finishes: value.finishes,
+      score: buildOverperformanceRating(value.score, value.deckCount, value.finishes, totalScore, totalDecks)
+    }))
+    .sort((a, b) => b.score - a.score || b.finishes - a.finishes || a.name.localeCompare(b.name));
+}
+
+function buildOverperformanceRating(
+  score: number,
+  deckCount: number,
+  finishes: number,
+  totalScore: number,
+  totalDecks: number
+) {
+  const resultShare = score / totalScore;
+  const populationShare = deckCount / totalDecks;
+  const sampleConfidence = finishes / (finishes + 4);
+  return Math.max(1, 100 + (resultShare - populationShare) * 220 * sampleConfidence);
 }

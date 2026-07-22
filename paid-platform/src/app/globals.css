@@ -1323,7 +1323,8 @@ h2 {
 .snapshot-callout {
   border: 1px solid var(--amber-border);
   background:
-    linear-gradient(135deg, rgba(255, 184, 77, 0.14), transparent 48%),
+    radial-gradient(circle at 92% 10%, rgba(89, 216, 255, 0.22), transparent 34%),
+    linear-gradient(135deg, rgba(255, 184, 77, 0.16), transparent 48%),
     rgba(3, 10, 23, 0.74);
   clip-path: var(--clip-sm);
   display: grid;
@@ -1342,6 +1343,14 @@ h2 {
 .snapshot-callout strong {
   color: #fff5dc;
   font-size: 1.3rem;
+}
+
+.snapshot-callout em {
+  color: var(--gold);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1.35;
 }
 
 .mini-meta-bars {
@@ -1363,10 +1372,23 @@ h2 {
 }
 
 .mini-meta-row i {
-  height: 11px;
+  height: 13px;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--amber), var(--gold));
-  box-shadow: 0 0 16px rgba(255, 184, 77, 0.2);
+  background: linear-gradient(90deg, #1bc7ff, #7f8cff 48%, #ffb84d);
+  box-shadow:
+    0 0 18px rgba(27, 199, 255, 0.3),
+    0 0 14px rgba(255, 184, 77, 0.18);
+  min-width: 10px;
+  position: relative;
+}
+
+.mini-meta-row i::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent 50%);
+  pointer-events: none;
 }
 
 .mini-meta-row em {
