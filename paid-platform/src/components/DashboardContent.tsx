@@ -1,4 +1,5 @@
 import { DashboardActions } from "@/components/DashboardActions";
+import { DashboardMetagameSnapshot } from "@/components/DashboardMetagameSnapshot";
 import { DashboardOverview } from "@/components/DashboardOverview";
 import { DeckSummary } from "@/components/DeckSummary";
 
@@ -18,6 +19,7 @@ export function DashboardContent() {
 
       <div className="dashboard-grid">
         <DeckSummary />
+        <DashboardMetagameSnapshot />
       </div>
     </section>
   );

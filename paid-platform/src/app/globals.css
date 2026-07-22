@@ -1314,6 +1314,68 @@ h2 {
   grid-column: 1 / -1;
 }
 
+.dashboard-meta-snapshot {
+  display: grid;
+  gap: 16px;
+  padding: 28px;
+}
+
+.snapshot-callout {
+  border: 1px solid var(--amber-border);
+  background:
+    linear-gradient(135deg, rgba(255, 184, 77, 0.14), transparent 48%),
+    rgba(3, 10, 23, 0.74);
+  clip-path: var(--clip-sm);
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+}
+
+.snapshot-callout span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.snapshot-callout strong {
+  color: #fff5dc;
+  font-size: 1.3rem;
+}
+
+.mini-meta-bars {
+  display: grid;
+  gap: 10px;
+}
+
+.mini-meta-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.7fr) minmax(120px, 1fr) 42px;
+  gap: 10px;
+  align-items: center;
+}
+
+.mini-meta-row span {
+  color: #fff5dc;
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
+.mini-meta-row i {
+  height: 11px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--amber), var(--gold));
+  box-shadow: 0 0 16px rgba(255, 184, 77, 0.2);
+}
+
+.mini-meta-row em {
+  color: var(--gold);
+  font-style: normal;
+  font-weight: 950;
+  text-align: right;
+}
+
 .section-heading {
   margin-bottom: 18px;
 }
