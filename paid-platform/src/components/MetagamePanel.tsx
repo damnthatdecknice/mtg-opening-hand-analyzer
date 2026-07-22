@@ -40,10 +40,6 @@ type PerformanceDeck = {
   score: number;
 };
 
-type SideboardColorFilter = "All" | "W" | "U" | "B" | "R" | "G" | "Colorless";
-
-const sideboardColorFilters: SideboardColorFilter[] = ["All", "W", "U", "B", "R", "G", "Colorless"];
-
 function isMetagameCardCount(card: MetagameCardCount | undefined): card is MetagameCardCount {
   return Boolean(card);
 }
@@ -54,7 +50,6 @@ export function MetagamePanel() {
   const [windowDays, setWindowDays] = useState<MetagameWindowDays>(7);
   const [data, setData] = useState<MetagameResponse | null>(null);
   const [savedDecks, setSavedDecks] = useState<SavedDeck[]>([]);
-  const [sideboardColorFilter, setSideboardColorFilter] = useState<SideboardColorFilter>("All");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -64,8 +59,8 @@ export function MetagamePanel() {
   );
   const performanceDecks = useMemo(() => (data ? buildPerformanceDecks(data.decks) : []), [data]);
   const topSideboardCards = useMemo(
-    () => (data ? buildTopSideboardCards(data.decks, sideboardColorFilter) : []),
-    [data, sideboardColorFilter]
+    () => (data ? buildTopSideboardCards(data.decks) : []),
+    [data]
   );
   const topArchetype = data?.archetypes[0];
   const biggestRiser = data?.archetypes.reduce((best, archetype) => (archetype.change > best.change ? archetype : best), data.archetypes[0]);
@@ -166,20 +161,6 @@ export function MetagamePanel() {
             {metagameWindowOptions.map((item) => (
               <option key={item} value={item}>
                 Last {item} days
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field-stack">
-          Sideboard color
-          <select
-            className="card-select"
-            onChange={(event) => setSideboardColorFilter(event.target.value as SideboardColorFilter)}
-            value={sideboardColorFilter}
-          >
-            {sideboardColorFilters.map((color) => (
-              <option key={color} value={color}>
-                {color}
               </option>
             ))}
           </select>
@@ -293,7 +274,7 @@ export function MetagamePanel() {
                   <p className="eyebrow">Sideboard prep</p>
                   <h2>Most-played {format} sideboard cards, last {data.windowDays} days</h2>
                 </div>
-                <span className="muted-copy">Color filter: {sideboardColorFilter}</span>
+                <span className="muted-copy">All colors</span>
               </div>
               <div className="list-stack">
                 {topSideboardCards.length ? (
@@ -795,16 +776,13 @@ function buildSideboardSuggestions(decks: MetagameDeck[], savedCards: Set<string
     .slice(0, 8);
 }
 
-function buildTopSideboardCards(decks: MetagameDeck[], colorFilter: SideboardColorFilter) {
+function buildTopSideboardCards(decks: MetagameDeck[]) {
   const copies = new Map<string, number>();
   const deckPresence = new Map<string, number>();
 
   for (const deck of decks) {
     const seen = new Set<string>();
     for (const card of deck.sideboard) {
-      if (!matchesSideboardColorFilter(card, colorFilter)) {
-        continue;
-      }
       copies.set(card.name, (copies.get(card.name) ?? 0) + card.qty);
       seen.add(card.name);
     }
@@ -824,17 +802,6 @@ function buildTopSideboardCards(decks: MetagameDeck[], colorFilter: SideboardCol
       };
     })
     .sort((a, b) => b.decks - a.decks || b.copies - a.copies || a.name.localeCompare(b.name));
-}
-
-function matchesSideboardColorFilter(card: { colors?: string[] }, colorFilter: SideboardColorFilter) {
-  const colors = card.colors ?? [];
-  if (colorFilter === "All") {
-    return true;
-  }
-  if (colorFilter === "Colorless") {
-    return colors.length === 0;
-  }
-  return colors.includes(colorFilter);
 }
 
 function isCardInColors(card: { colors?: string[] }, colors: string[]) {
