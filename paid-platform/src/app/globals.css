@@ -2743,9 +2743,9 @@ h2 {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 16px;
-  width: min(760px, 100%);
+  width: min(1000px, 100%);
 }
 
 .metagame-controls label {
@@ -2758,6 +2758,29 @@ h2 {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
+}
+
+.metagame-glance {
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
+}
+
+.metagame-glance .metric-card {
+  min-height: 118px;
+}
+
+.metagame-glance .metric-card strong {
+  font-size: clamp(1.05rem, 1.7vw, 1.55rem);
+  line-height: 1.15;
+}
+
+.saved-deck-prep-panel {
+  display: grid;
+  gap: 18px;
+  width: min(1080px, 100%);
+}
+
+.metagame-deep-grid {
+  opacity: 0.94;
 }
 
 .meta-bars {
