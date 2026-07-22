@@ -79,6 +79,21 @@ export type MulliganSummary = {
   p25: number;
   p75: number;
   comparison: "london-six" | "free-seven";
+  deckContext: {
+    label: string;
+    adjustment: number;
+    note: string;
+  };
+};
+
+export type PlayDrawComparison = {
+  playScore: number;
+  drawScore: number;
+  playRecommendation: string;
+  drawRecommendation: string;
+  playTone: "good" | "neutral" | "bad";
+  drawTone: "good" | "neutral" | "bad";
+  summary: string;
 };
 
 export type DeckProfile = {
@@ -122,6 +137,7 @@ export type AnalyzerResult = {
   tags: Array<{ label: string; tone: "good" | "neutral" | "bad" }>;
   watchouts: string[];
   mulligan: MulliganSummary | null;
+  playDrawComparison: PlayDrawComparison | null;
   deckProfile: DeckProfile;
   commanderCard: string;
   landNames: string[];
@@ -1097,6 +1113,106 @@ function recommendation(score: number, lands: number, landTurn3: number) {
   return { label: "Context-Dependent", tone: "neutral" as const };
 }
 
+function recommendationPhrase(tone: "good" | "neutral" | "bad") {
+  if (tone === "good") {
+    return "a keep";
+  }
+  if (tone === "bad") {
+    return "under mulligan pressure";
+  }
+  return "borderline";
+}
+
+function playDrawScoreAdjustment(mode: PlayDraw, lands: number, profile: DeckProfile) {
+  if (mode === "play") {
+    return profile.label === "Low-curve pressure" ? 1 : 0;
+  }
+
+  let adjustment = 0;
+  if (lands <= 1) {
+    adjustment += 5;
+  } else if (lands === 2) {
+    adjustment += 2;
+  } else if (lands >= 5) {
+    adjustment -= 2;
+  }
+
+  if (profile.label === "Low-curve pressure") {
+    adjustment -= 2;
+  }
+  if (profile.label === "Control/value curve") {
+    adjustment += 2;
+  }
+  return adjustment;
+}
+
+function buildPlayDrawComparison(
+  score: number,
+  landsInHand: number,
+  librarySize: number,
+  landsRemaining: number,
+  profile: DeckProfile
+): PlayDrawComparison {
+  const scoreFor = (mode: PlayDraw) =>
+    Math.max(0, Math.min(100, score + playDrawScoreAdjustment(mode, landsInHand, profile)));
+  const turn3For = (mode: PlayDraw) =>
+    probabilityAtLeast(librarySize, landsRemaining, drawsByTurn(3, mode), Math.max(0, 3 - landsInHand));
+  const playScore = scoreFor("play");
+  const drawScore = scoreFor("draw");
+  const playRec = recommendation(playScore, landsInHand, turn3For("play"));
+  const drawRec = recommendation(drawScore, landsInHand, turn3For("draw"));
+  const playPhrase = recommendationPhrase(playRec.tone);
+  const drawPhrase = recommendationPhrase(drawRec.tone);
+  return {
+    playScore,
+    drawScore,
+    playRecommendation: playRec.label,
+    drawRecommendation: drawRec.label,
+    playTone: playRec.tone,
+    drawTone: drawRec.tone,
+    summary:
+      playRec.tone === drawRec.tone
+        ? `This looks like ${playPhrase} on both play and draw.`
+        : `This is ${playPhrase} on the play, ${drawPhrase} on the draw.`
+  };
+}
+
+function mulliganDeckContext(profile: DeckProfile, freeSeven: boolean): MulliganSummary["deckContext"] {
+  if (freeSeven) {
+    return {
+      label: "Commander/Brawl",
+      adjustment: 0,
+      note: "Commander and Brawl get a free first mulligan, so this comparison models a second seven-card hand."
+    };
+  }
+  if (profile.label === "Low-curve pressure") {
+    return {
+      label: "Low-curve pressure",
+      adjustment: -4,
+      note: "Low-curve pressure decks tend to punish card disadvantage, so the simulated six is graded a little stricter."
+    };
+  }
+  if (profile.label === "Control/value curve") {
+    return {
+      label: "Control/value",
+      adjustment: 2,
+      note: "Control and value decks can tolerate a functional six slightly better when mana and interaction are intact."
+    };
+  }
+  if (profile.label === "Ramp or big-mana curve") {
+    return {
+      label: "Ramp/big mana",
+      adjustment: -2,
+      note: "Ramp and big-mana decks care heavily about early mana development, so shaky sixes are graded cautiously."
+    };
+  }
+  return {
+    label: "Midrange",
+    adjustment: 0,
+    note: "Midrange decks usually treat mulligans close to raw hand quality, with fewer archetype-specific adjustments."
+  };
+}
+
 function scoreSeven(cards: string[], cardData: Map<string, CardLookup>) {
   const lands = cards.filter((name) => cardData.get(normalizeName(name))?.isLand).length;
   const nonlands = cards
@@ -1112,7 +1228,12 @@ function mulliganSummary(
   cardData: Map<string, CardLookup>,
   currentScore: number,
   extraAvailableCards: string[] = [],
-  freeSeven = false
+  freeSeven = false,
+  deckContext: MulliganSummary["deckContext"] = {
+    label: "Generic",
+    adjustment: 0,
+    note: "Generic mulligan comparison."
+  }
 ): MulliganSummary | null {
   const deckCards = Array.from(mainCounts.entries()).flatMap(([name, qty]) => Array.from({ length: qty }, () => name));
   if (deckCards.length < 7) {
@@ -1132,12 +1253,12 @@ function mulliganSummary(
     }
     const seven = shuffled.slice(0, 7);
     if (freeSeven) {
-      scores.push(scoreSeven([...seven, ...extraAvailableCards], cardData));
+      scores.push(Math.max(0, Math.min(100, scoreSeven([...seven, ...extraAvailableCards], cardData) + deckContext.adjustment)));
     } else {
       const sixScores = seven.map((_card, index) =>
         scoreSeven([...seven.filter((__, cardIndex) => cardIndex !== index), ...extraAvailableCards], cardData)
       );
-      scores.push(Math.max(...sixScores));
+      scores.push(Math.max(0, Math.min(100, Math.max(...sixScores) + deckContext.adjustment)));
     }
   }
   scores.sort((a, b) => a - b);
@@ -1148,7 +1269,8 @@ function mulliganSummary(
     better: scores.filter((score) => score > currentScore).length / scores.length,
     p25: scores[Math.floor(scores.length * 0.25)] ?? 0,
     p75: scores[Math.floor(scores.length * 0.75)] ?? 0,
-    comparison: freeSeven ? "free-seven" : "london-six"
+    comparison: freeSeven ? "free-seven" : "london-six",
+    deckContext
   };
 }
 
@@ -1376,12 +1498,21 @@ export function analyzeOpeningHand(
   const turn3 = turnProbabilities.find((row) => row.turn === 3)?.landDropWithDraw ?? 0;
   const rec = recommendation(handTextureScore, landsInHand, turn3);
   const hasCommanderFreeMulligan = isCommanderStyleFormat(options.format);
+  const deckMulliganContext = mulliganDeckContext(profile, hasCommanderFreeMulligan);
   const mulligan = mulliganSummary(
     mainCounts,
     cardData,
     baseHandTextureScore,
     commanderCards,
-    hasCommanderFreeMulligan
+    hasCommanderFreeMulligan,
+    deckMulliganContext
+  );
+  const playDrawComparison = buildPlayDrawComparison(
+    handTextureScore,
+    landsInHand,
+    librarySize,
+    landsRemaining,
+    profile
   );
   const tags: AnalyzerResult["tags"] = [
     {
@@ -1459,6 +1590,7 @@ export function analyzeOpeningHand(
     tags,
     watchouts,
     mulligan,
+    playDrawComparison,
     deckProfile: profile,
     commanderCard,
     landNames,

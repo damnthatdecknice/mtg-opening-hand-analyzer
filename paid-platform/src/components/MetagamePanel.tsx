@@ -40,6 +40,10 @@ type PerformanceDeck = {
   score: number;
 };
 
+type SideboardColorFilter = "All" | "W" | "U" | "B" | "R" | "G" | "Colorless";
+
+const sideboardColorFilters: SideboardColorFilter[] = ["All", "W", "U", "B", "R", "G", "Colorless"];
+
 function isMetagameCardCount(card: MetagameCardCount | undefined): card is MetagameCardCount {
   return Boolean(card);
 }
@@ -50,6 +54,7 @@ export function MetagamePanel() {
   const [windowDays, setWindowDays] = useState<MetagameWindowDays>(7);
   const [data, setData] = useState<MetagameResponse | null>(null);
   const [savedDecks, setSavedDecks] = useState<SavedDeck[]>([]);
+  const [sideboardColorFilter, setSideboardColorFilter] = useState<SideboardColorFilter>("All");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -58,6 +63,10 @@ export function MetagamePanel() {
     [data, format, savedDecks]
   );
   const performanceDecks = useMemo(() => (data ? buildPerformanceDecks(data.decks) : []), [data]);
+  const topSideboardCards = useMemo(
+    () => (data ? buildTopSideboardCards(data.decks, sideboardColorFilter) : []),
+    [data, sideboardColorFilter]
+  );
 
   useEffect(() => {
     if (entitlements.canUseDeckVault) {
@@ -242,6 +251,51 @@ export function MetagamePanel() {
                   <div className="empty-state">
                     <strong>No ranked finishes found yet</strong>
                     <span>When MTGO publishes standings, this box highlights stronger finishes.</span>
+                  </div>
+                )}
+              </div>
+            </article>
+          </section>
+
+          <section className="metagame-grid">
+            <article className="panel compact-panel top-sideboard-panel">
+              <div className="section-heading split-heading">
+                <div>
+                  <p className="eyebrow">Sideboard prep</p>
+                  <h2>Most-played {format} sideboard cards, last {data.windowDays} days</h2>
+                </div>
+                <label className="inline-select-label">
+                  Color
+                  <select
+                    className="card-select"
+                    onChange={(event) => setSideboardColorFilter(event.target.value as SideboardColorFilter)}
+                    value={sideboardColorFilter}
+                  >
+                    {sideboardColorFilters.map((color) => (
+                      <option key={color} value={color}>
+                        {color}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="list-stack">
+                {topSideboardCards.length ? (
+                  topSideboardCards.slice(0, 12).map((card) => (
+                    <div className="list-row" key={card.name}>
+                      <div>
+                        <strong>{card.name}</strong>
+                        <span>
+                          {card.decks} deck{card.decks === 1 ? "" : "s"} | {card.copies} total copies
+                        </span>
+                      </div>
+                      <em>{Math.round(card.share * 100)}%</em>
+                    </div>
+                  ))
+                ) : (
+                  <div className="empty-state">
+                    <strong>No sideboard cards found</strong>
+                    <span>Try another color or time window.</span>
                   </div>
                 )}
               </div>
@@ -721,6 +775,48 @@ function buildSideboardSuggestions(decks: MetagameDeck[], savedCards: Set<string
     })
     .sort((a, b) => b.decks - a.decks || b.count - a.count || a.name.localeCompare(b.name))
     .slice(0, 8);
+}
+
+function buildTopSideboardCards(decks: MetagameDeck[], colorFilter: SideboardColorFilter) {
+  const copies = new Map<string, number>();
+  const deckPresence = new Map<string, number>();
+
+  for (const deck of decks) {
+    const seen = new Set<string>();
+    for (const card of deck.sideboard) {
+      if (!matchesSideboardColorFilter(card, colorFilter)) {
+        continue;
+      }
+      copies.set(card.name, (copies.get(card.name) ?? 0) + card.qty);
+      seen.add(card.name);
+    }
+    for (const cardName of Array.from(seen)) {
+      deckPresence.set(cardName, (deckPresence.get(cardName) ?? 0) + 1);
+    }
+  }
+
+  return Array.from(copies.entries())
+    .map(([name, copyCount]) => {
+      const decksWithCard = deckPresence.get(name) ?? 0;
+      return {
+        name,
+        copies: copyCount,
+        decks: decksWithCard,
+        share: decks.length ? decksWithCard / decks.length : 0
+      };
+    })
+    .sort((a, b) => b.decks - a.decks || b.copies - a.copies || a.name.localeCompare(b.name));
+}
+
+function matchesSideboardColorFilter(card: { colors?: string[] }, colorFilter: SideboardColorFilter) {
+  const colors = card.colors ?? [];
+  if (colorFilter === "All") {
+    return true;
+  }
+  if (colorFilter === "Colorless") {
+    return colors.length === 0;
+  }
+  return colors.includes(colorFilter);
 }
 
 function isCardInColors(card: { colors?: string[] }, colors: string[]) {

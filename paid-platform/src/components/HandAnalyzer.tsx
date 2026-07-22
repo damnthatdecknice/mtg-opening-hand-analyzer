@@ -1622,6 +1622,26 @@ function Overview({ result }: { result: AnalyzerResult }) {
           </span>
         </div>
       </section>
+      {result.playDrawComparison ? (
+        <section className={`play-draw-card ${result.playDrawComparison.playTone}-${result.playDrawComparison.drawTone}`}>
+          <div>
+            <p className="eyebrow">Play/draw comparison</p>
+            <h2>{result.playDrawComparison.summary}</h2>
+          </div>
+          <div className="play-draw-grid">
+            <span className={result.playDrawComparison.playTone}>
+              On the play
+              <strong>{result.playDrawComparison.playRecommendation}</strong>
+              <em>{number(result.playDrawComparison.playScore)}/100</em>
+            </span>
+            <span className={result.playDrawComparison.drawTone}>
+              On the draw
+              <strong>{result.playDrawComparison.drawRecommendation}</strong>
+              <em>{number(result.playDrawComparison.drawScore)}/100</em>
+            </span>
+          </div>
+        </section>
+      ) : null}
       <section>
         <h2>Watch-outs</h2>
         <div className="watchout-panel">
@@ -2059,6 +2079,10 @@ function Mulligan({ result }: { result: AnalyzerResult }) {
           <p>
             {freeSeven ? "A second seven" : "Fresh seven then bottom one"} is better about{" "}
             {pct(result.mulligan.better)} of the time.
+          </p>
+          <p>
+            <strong>{result.mulligan.deckContext.label} context:</strong>{" "}
+            {result.mulligan.deckContext.note}
           </p>
         </div>
       ) : (

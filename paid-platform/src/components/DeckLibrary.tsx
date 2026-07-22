@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { inferDeckName, parseDecklist, parseDekImport, type DeckImportMetadata } from "@/lib/deckParser";
-import type { DeckInsert, SavedDeck } from "@/lib/decks";
+import type { DeckInsert, DeckVersion, SavedDeck } from "@/lib/decks";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
 
@@ -40,6 +40,48 @@ const deckFormats = [
   "Explorer"
 ];
 
+type ExportFormat = "arena" | "mtgo" | "plain" | "moxfield";
+
+function formatSection(cards: ReturnType<typeof parseDecklist>["cards"], section: "main" | "sideboard") {
+  return cards
+    .filter((card) => card.section === section)
+    .map((card) => `${card.qty} ${card.name}`)
+    .join("\n");
+}
+
+function exportDecklist(decklist: string, format: ExportFormat) {
+  const parsed = parseDecklist(decklist);
+  const main = formatSection(parsed.cards, "main");
+  const sideboard = formatSection(parsed.cards, "sideboard");
+
+  if (format === "plain") {
+    return [main, sideboard ? `Sideboard\n${sideboard}` : ""].filter(Boolean).join("\n\n");
+  }
+  if (format === "moxfield") {
+    return [main, sideboard ? `SIDEBOARD:\n${sideboard}` : ""].filter(Boolean).join("\n\n");
+  }
+  if (format === "mtgo") {
+    return [main, sideboard ? `Sideboard\n${sideboard}` : ""].filter(Boolean).join("\n\n");
+  }
+  return [`Deck\n${main}`, sideboard ? `Sideboard\n${sideboard}` : ""].filter(Boolean).join("\n\n");
+}
+
+function diffDecklists(oldDecklist: string, newDecklist: string) {
+  const oldCards = parseDecklist(oldDecklist).cards;
+  const newCards = parseDecklist(newDecklist).cards;
+  const oldCounts = new Map(oldCards.map((card) => [`${card.section}:${card.name}`, card.qty]));
+  const newCounts = new Map(newCards.map((card) => [`${card.section}:${card.name}`, card.qty]));
+  return Array.from(new Set([...Array.from(oldCounts.keys()), ...Array.from(newCounts.keys())]))
+    .map((key) => {
+      const [, name] = key.split(":");
+      const oldQty = oldCounts.get(key) ?? 0;
+      const newQty = newCounts.get(key) ?? 0;
+      return { name, oldQty, newQty, delta: newQty - oldQty };
+    })
+    .filter((row) => row.delta !== 0)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.name.localeCompare(b.name));
+}
+
 export function DeckLibrary() {
   const entitlements = useEntitlements();
   const [decks, setDecks] = useState<SavedDeck[]>([]);
@@ -47,6 +89,9 @@ export function DeckLibrary() {
   const [format, setFormat] = useState("Standard");
   const [decklist, setDecklist] = useState(defaultDecklist);
   const [importMetadata, setImportMetadata] = useState<DeckImportMetadata | undefined>();
+  const [editingDeck, setEditingDeck] = useState<SavedDeck | null>(null);
+  const [versions, setVersions] = useState<DeckVersion[]>([]);
+  const [selectedVersionId, setSelectedVersionId] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [message, setMessage] = useState("");
   const [isBusy, setIsBusy] = useState(false);
@@ -58,6 +103,8 @@ export function DeckLibrary() {
   );
   const activeDecks = decks.filter((deck) => !deck.is_archived);
   const visibleDecks = decks.filter((deck) => showArchived || !deck.is_archived);
+  const selectedVersion = versions.find((version) => version.id === selectedVersionId) ?? versions[0];
+  const versionDiff = selectedVersion ? diffDecklists(selectedVersion.decklist, decklist).slice(0, 12) : [];
 
   useEffect(() => {
     if (entitlements.canUseDeckVault) {
@@ -84,6 +131,45 @@ export function DeckLibrary() {
     }
 
     setDecks((data ?? []) as SavedDeck[]);
+  }
+
+  async function loadVersions(deckId: string) {
+    if (!supabase) {
+      return;
+    }
+    const { data, error } = await supabase
+      .from("deck_versions")
+      .select("*")
+      .eq("deck_id", deckId)
+      .order("version_number", { ascending: false });
+
+    if (error) {
+      setVersions([]);
+      return;
+    }
+
+    const nextVersions = (data ?? []) as DeckVersion[];
+    setVersions(nextVersions);
+    setSelectedVersionId(nextVersions[0]?.id ?? "");
+  }
+
+  function startEditing(deck: SavedDeck) {
+    setEditingDeck(deck);
+    setName(deck.name);
+    setFormat(deck.format ?? "Standard");
+    setDecklist(deck.decklist);
+    setImportMetadata(deck.parsed_json.importMetadata);
+    setMessage(`Editing ${deck.name}. Saving will create a version history entry.`);
+    void loadVersions(deck.id);
+  }
+
+  function cancelEditing() {
+    setEditingDeck(null);
+    setVersions([]);
+    setSelectedVersionId("");
+    setName("");
+    setImportMetadata(undefined);
+    setMessage("");
   }
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
@@ -124,7 +210,33 @@ export function DeckLibrary() {
     };
 
     setIsBusy(true);
-    const { error } = await supabase.from("decks").insert(deck);
+    let error;
+    if (editingDeck) {
+      const previousVersionNumber = versions[0]?.version_number ?? 0;
+      const versionResult = await supabase.from("deck_versions").insert({
+        deck_id: editingDeck.id,
+        user_id: userData.user.id,
+        version_number: previousVersionNumber + 1,
+        name: editingDeck.name,
+        format: editingDeck.format,
+        decklist: editingDeck.decklist,
+        sideboard: editingDeck.sideboard,
+        parsed_json: editingDeck.parsed_json
+      });
+      if (versionResult.error) {
+        setIsBusy(false);
+        setMessage(`Could not create deck version history: ${versionResult.error.message}`);
+        return;
+      }
+      const updateResult = await supabase
+        .from("decks")
+        .update({ ...deck, updated_at: new Date().toISOString() })
+        .eq("id", editingDeck.id);
+      error = updateResult.error;
+    } else {
+      const insertResult = await supabase.from("decks").insert(deck);
+      error = insertResult.error;
+    }
     setIsBusy(false);
 
     if (error) {
@@ -133,8 +245,22 @@ export function DeckLibrary() {
     }
 
     setName("");
-    setMessage("Deck saved.");
+    setEditingDeck(null);
+    setVersions([]);
+    setSelectedVersionId("");
+    setMessage(editingDeck ? "Deck updated. Previous 75 saved to version history." : "Deck saved.");
     await loadDecks();
+  }
+
+  async function copyExport(deck: SavedDeck, exportFormat: ExportFormat) {
+    const label =
+      exportFormat === "arena" ? "Arena" : exportFormat === "mtgo" ? "MTGO" : exportFormat === "moxfield" ? "Moxfield" : "plain text";
+    try {
+      await navigator.clipboard.writeText(exportDecklist(deck.decklist, exportFormat));
+      setMessage(`${deck.name} copied as ${label}.`);
+    } catch {
+      setMessage("Could not copy to clipboard.");
+    }
   }
 
   async function setArchived(deck: SavedDeck, isArchived: boolean) {
@@ -203,6 +329,14 @@ export function DeckLibrary() {
             Paste an Arena-style list. Put `Sideboard` on its own line when the
             sideboard starts.
           </p>
+          {editingDeck ? (
+            <div className="editing-banner">
+              <span>Editing {editingDeck.name}</span>
+              <button className="text-button" onClick={cancelEditing} type="button">
+                Cancel edit
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <form className="deck-form" onSubmit={handleSave}>
@@ -269,10 +403,64 @@ export function DeckLibrary() {
               ) : null}
             </div>
             <button className="primary-button" disabled={isBusy} type="submit">
-              {isBusy ? "Saving..." : "Save deck"}
+              {isBusy ? "Saving..." : editingDeck ? "Save new version" : "Save deck"}
             </button>
           </div>
         </form>
+
+        {editingDeck ? (
+          <section className="version-history-panel">
+            <div className="section-heading split-heading">
+              <div>
+                <p className="eyebrow">Version history</p>
+                <h2>Compare old/new 75</h2>
+              </div>
+              {versions.length ? (
+                <select
+                  className="card-select"
+                  onChange={(event) => setSelectedVersionId(event.target.value)}
+                  value={selectedVersionId}
+                >
+                  {versions.map((version) => (
+                    <option key={version.id} value={version.id}>
+                      Version {version.version_number} - {new Date(version.created_at).toLocaleDateString()}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </div>
+            {selectedVersion ? (
+              versionDiff.length ? (
+                <div className="table-wrap compact-table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Card</th>
+                        <th>Old</th>
+                        <th>New</th>
+                        <th>Change</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {versionDiff.map((row) => (
+                        <tr key={row.name}>
+                          <td>{row.name}</td>
+                          <td>{row.oldQty}</td>
+                          <td>{row.newQty}</td>
+                          <td>{row.delta > 0 ? `+${row.delta}` : row.delta}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="muted-copy">No card-count changes versus this saved version.</p>
+              )
+            ) : (
+              <p className="muted-copy">No previous versions yet. The next edit you save will create one.</p>
+            )}
+          </section>
+        ) : null}
 
         {message ? <p className="form-message">{message}</p> : null}
       </section>
@@ -304,13 +492,33 @@ export function DeckLibrary() {
                     {deck.parsed_json.importMetadata?.source === "mtgo_dek" ? " | .dek import" : ""}
                   </span>
                 </div>
-                <button
-                  className="text-button"
-                  onClick={() => setArchived(deck, !deck.is_archived)}
-                  type="button"
-                >
-                  {deck.is_archived ? "Restore" : "Archive"}
-                </button>
+                <div className="deck-row-actions">
+                  <Link className="text-button" href={`/analyzer?deckId=${deck.id}`}>
+                    Analyze
+                  </Link>
+                  <button className="text-button" onClick={() => startEditing(deck)} type="button">
+                    Edit
+                  </button>
+                  <button className="text-button" onClick={() => copyExport(deck, "arena")} type="button">
+                    Arena
+                  </button>
+                  <button className="text-button" onClick={() => copyExport(deck, "mtgo")} type="button">
+                    MTGO
+                  </button>
+                  <button className="text-button" onClick={() => copyExport(deck, "plain")} type="button">
+                    Text
+                  </button>
+                  <button className="text-button" onClick={() => copyExport(deck, "moxfield")} type="button">
+                    Moxfield
+                  </button>
+                  <button
+                    className="text-button"
+                    onClick={() => setArchived(deck, !deck.is_archived)}
+                    type="button"
+                  >
+                    {deck.is_archived ? "Restore" : "Archive"}
+                  </button>
+                </div>
               </article>
             ))
           ) : (

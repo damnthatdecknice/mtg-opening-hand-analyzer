@@ -21,3 +21,16 @@ export type DeckInsert = {
   sideboard: string | null;
   parsed_json: ParsedDeck;
 };
+
+export type DeckVersion = {
+  id: string;
+  deck_id: string;
+  user_id: string;
+  version_number: number;
+  name: string;
+  format: string | null;
+  decklist: string;
+  sideboard: string | null;
+  parsed_json: ParsedDeck;
+  created_at: string;
+};

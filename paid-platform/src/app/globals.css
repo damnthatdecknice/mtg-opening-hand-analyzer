@@ -1445,6 +1445,18 @@ h2 {
   clip-path: var(--clip-sm);
 }
 
+.deck-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.deck-row-actions .text-button {
+  min-height: 36px;
+  padding: 8px 10px;
+}
+
 .deck-row span,
 .empty-state span {
   display: block;
@@ -1462,6 +1474,19 @@ h2 {
 
 .empty-state strong {
   color: #ffe1a1;
+}
+
+.top-sideboard-panel {
+  grid-column: 1 / -1;
+}
+
+.inline-select-label {
+  display: grid;
+  gap: 6px;
+  color: #ffe1a1;
+  font-size: 0.85rem;
+  font-weight: 900;
+  min-width: 180px;
 }
 
 .suggestion-chip-row {
@@ -1735,6 +1760,29 @@ h2 {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(89, 216, 255, 0.18);
   outline: none;
+}
+
+.editing-banner,
+.version-history-panel {
+  border: 1px solid var(--amber-border);
+  background: linear-gradient(135deg, rgba(66, 39, 10, 0.34), rgba(1, 8, 18, 0.72));
+  clip-path: var(--clip-sm);
+  margin-top: 14px;
+  padding: 12px;
+}
+
+.editing-banner {
+  align-items: center;
+  color: var(--gold);
+  display: flex;
+  font-weight: 900;
+  justify-content: space-between;
+}
+
+.version-history-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
 }
 
 .deck-save-row,
@@ -2420,6 +2468,59 @@ h2 {
 .deck-context-metrics strong {
   color: var(--text);
   font-size: 1.1rem;
+}
+
+.play-draw-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.75fr);
+  gap: 16px;
+  align-items: center;
+  border: 1px solid rgba(255, 184, 77, 0.26);
+  background:
+    linear-gradient(135deg, rgba(255, 184, 77, 0.14), transparent 42%),
+    linear-gradient(135deg, rgba(4, 17, 36, 0.84), rgba(1, 8, 18, 0.78));
+  clip-path: var(--clip-md);
+  padding: 18px;
+}
+
+.play-draw-card h2 {
+  margin: 0;
+}
+
+.play-draw-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.play-draw-grid span {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(103, 194, 255, 0.16);
+  background: rgba(8, 22, 42, 0.74);
+  color: var(--muted);
+  font-weight: 850;
+  padding: 12px;
+  clip-path: var(--clip-sm);
+}
+
+.play-draw-grid strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.play-draw-grid em {
+  color: var(--gold);
+  font-style: normal;
+  font-weight: 950;
+}
+
+.play-draw-grid .good {
+  border-color: rgba(98, 230, 166, 0.36);
+}
+
+.play-draw-grid .bad {
+  border-color: rgba(255, 116, 100, 0.42);
 }
 
 .watchout-panel p,

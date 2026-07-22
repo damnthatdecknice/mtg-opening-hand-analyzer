@@ -25,6 +25,23 @@ create table if not exists public.decks (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.deck_versions (
+  id uuid primary key default gen_random_uuid(),
+  deck_id uuid not null references public.decks(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  version_number integer not null,
+  name text not null,
+  format text,
+  decklist text not null,
+  sideboard text,
+  parsed_json jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  unique (deck_id, version_number)
+);
+
+create index if not exists deck_versions_deck_id_version_idx
+  on public.deck_versions (deck_id, version_number desc);
+
 create table if not exists public.rating_entries (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -200,6 +217,7 @@ create trigger create_profile_after_signup
 
 alter table public.profiles enable row level security;
 alter table public.decks enable row level security;
+alter table public.deck_versions enable row level security;
 alter table public.rating_entries enable row level security;
 alter table public.hand_sessions enable row level security;
 alter table public.subscription_status enable row level security;
@@ -216,6 +234,12 @@ create policy "profiles are owned by users"
 drop policy if exists "decks are owned by users" on public.decks;
 create policy "decks are owned by users"
   on public.decks for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "deck versions are owned by users" on public.deck_versions;
+create policy "deck versions are owned by users"
+  on public.deck_versions for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
