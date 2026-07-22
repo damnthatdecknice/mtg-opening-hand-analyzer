@@ -2867,6 +2867,10 @@ h2 {
   opacity: 0.94;
 }
 
+.metagame-source-events {
+  width: min(1080px, 100%);
+}
+
 .meta-bars {
   display: grid;
   gap: 12px;

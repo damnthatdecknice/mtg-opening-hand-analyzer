@@ -267,38 +267,6 @@ export function MetagamePanel() {
             </article>
           </section>
 
-          <section className="metagame-grid">
-            <article className="panel compact-panel top-sideboard-panel">
-              <div className="section-heading split-heading">
-                <div>
-                  <p className="eyebrow">Sideboard prep</p>
-                  <h2>Most-played {format} sideboard cards, last {data.windowDays} days</h2>
-                </div>
-                <span className="muted-copy">All colors</span>
-              </div>
-              <div className="list-stack">
-                {topSideboardCards.length ? (
-                  topSideboardCards.slice(0, 12).map((card) => (
-                    <div className="list-row" key={card.name}>
-                      <div>
-                        <strong>{card.name}</strong>
-                        <span>
-                          {card.decks} deck{card.decks === 1 ? "" : "s"} | {card.copies} total copies
-                        </span>
-                      </div>
-                      <em>{Math.round(card.share * 100)}%</em>
-                    </div>
-                  ))
-                ) : (
-                  <div className="empty-state">
-                    <strong>No sideboard cards found</strong>
-                    <span>Try another color or time window.</span>
-                  </div>
-                )}
-              </div>
-            </article>
-          </section>
-
           <section className="panel compact-panel saved-deck-prep-panel">
             <div>
               <p className="eyebrow">Your saved decks</p>
@@ -381,7 +349,37 @@ export function MetagamePanel() {
             </div>
           </section>
 
-          <section className="metagame-grid metagame-deep-grid">
+          <section className="metagame-grid">
+            <article className="panel compact-panel">
+              <div className="section-heading split-heading">
+                <div>
+                  <p className="eyebrow">Sideboard prep</p>
+                  <h2>Most-played {format} sideboard cards, last {data.windowDays} days</h2>
+                </div>
+                <span className="muted-copy">All colors</span>
+              </div>
+              <div className="list-stack">
+                {topSideboardCards.length ? (
+                  topSideboardCards.slice(0, 12).map((card) => (
+                    <div className="list-row" key={card.name}>
+                      <div>
+                        <strong>{card.name}</strong>
+                        <span>
+                          {card.decks} deck{card.decks === 1 ? "" : "s"} | {card.copies} total copies
+                        </span>
+                      </div>
+                      <em>{Math.round(card.share * 100)}%</em>
+                    </div>
+                  ))
+                ) : (
+                  <div className="empty-state">
+                    <strong>No sideboard cards found</strong>
+                    <span>No sideboard cards were published in this snapshot.</span>
+                  </div>
+                )}
+              </div>
+            </article>
+
             <article className="panel compact-panel">
               <p className="eyebrow">Most common maindeck cards</p>
               <h2>Cards To Expect</h2>
@@ -397,25 +395,25 @@ export function MetagamePanel() {
                 ))}
               </div>
             </article>
+          </section>
 
-            <article className="panel compact-panel">
-              <p className="eyebrow">Source events</p>
-              <h2>Official MTGO Decklists</h2>
-              <div className="list-stack">
-                {data.events.map((event) => (
-                  <a className="list-row clickable-list-row" href={event.url} key={event.url} rel="noopener" target="_blank">
-                    <div>
-                      <strong>{event.name}</strong>
-                      <span>{new Date(event.date).toLocaleString()}</span>
-                    </div>
-                    <em>{event.deckCount} decks</em>
-                  </a>
-                ))}
-              </div>
-              {data.warnings.length ? (
-                <p className="muted-copy">Some MTGO pages could not be parsed: {data.warnings.slice(0, 2).join("; ")}</p>
-              ) : null}
-            </article>
+          <section className="panel compact-panel metagame-source-events">
+            <p className="eyebrow">Source events</p>
+            <h2>Official MTGO Decklists</h2>
+            <div className="list-stack">
+              {data.events.map((event) => (
+                <a className="list-row clickable-list-row" href={event.url} key={event.url} rel="noopener" target="_blank">
+                  <div>
+                    <strong>{event.name}</strong>
+                    <span>{new Date(event.date).toLocaleString()}</span>
+                  </div>
+                  <em>{event.deckCount} decks</em>
+                </a>
+              ))}
+            </div>
+            {data.warnings.length ? (
+              <p className="muted-copy">Some MTGO pages could not be parsed: {data.warnings.slice(0, 2).join("; ")}</p>
+            ) : null}
           </section>
         </>
       ) : (
