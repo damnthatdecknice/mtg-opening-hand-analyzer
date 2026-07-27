@@ -26,6 +26,16 @@ export default function RootLayout({
         <main className="app-shell">
           <AppNav />
           {children}
+          <footer className="app-footer">
+            <span>
+              Please consider supporting us on{" "}
+              <a href="https://www.patreon.com/cw/OpeningEdgeMTG" rel="noopener noreferrer" target="_blank">
+                Patreon
+              </a>
+              .
+            </span>
+            <span>BTC: bc1qjkcf58y4c80043asa97uxylwn8h8g0mu57khz5</span>
+          </footer>
         </main>
       </body>
     </html>
