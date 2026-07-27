@@ -126,6 +126,7 @@ export type AnalyzerResult = {
   averageManaValue: number;
   handTextureScore: number;
   baseHandTextureScore: number;
+  castabilityTextureAdjustment: number;
   handTextureLabel: string;
   recommendation: string;
   recommendationTone: "good" | "neutral" | "bad";
@@ -1646,6 +1647,7 @@ export function analyzeOpeningHand(
     averageManaValue,
     handTextureScore,
     baseHandTextureScore,
+    castabilityTextureAdjustment: castabilityAdjustment.adjustment,
     handTextureLabel: textureLabel(handTextureScore),
     recommendation: rec.label,
     recommendationTone: rec.tone,

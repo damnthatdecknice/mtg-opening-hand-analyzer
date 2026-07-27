@@ -995,6 +995,24 @@ h2 {
   font-size: 1.8rem;
 }
 
+.metric-impact {
+  display: block;
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  margin-top: 6px;
+  text-transform: uppercase;
+}
+
+.metric-impact.neutral {
+  color: var(--muted);
+}
+
+.metric-impact.bad {
+  color: var(--danger);
+}
+
 .pillar-grid {
   grid-column: 1 / -1;
   display: grid;
