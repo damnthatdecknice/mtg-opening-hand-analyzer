@@ -1442,6 +1442,14 @@ h2 {
   clip-path: var(--clip-sm);
 }
 
+button.list-row {
+  width: 100%;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
 .performance-row {
   align-items: stretch;
 }
@@ -1515,6 +1523,13 @@ h2 {
   background: rgba(39, 27, 12, 0.34);
   outline: none;
   transform: translateY(-1px);
+}
+
+.selected-list-row {
+  border-color: rgba(255, 184, 77, 0.68);
+  box-shadow:
+    0 0 0 1px rgba(255, 184, 77, 0.16),
+    0 0 24px rgba(255, 184, 77, 0.1);
 }
 
 .deck-row {
@@ -2996,9 +3011,93 @@ h2 {
   padding: 6px 0;
 }
 
+button.meta-bar-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.clickable-meta-row {
+  border: 1px solid transparent;
+  padding: 8px 10px;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.clickable-meta-row:hover,
+.clickable-meta-row:focus-visible {
+  border-color: rgba(255, 184, 77, 0.42);
+  background: linear-gradient(90deg, rgba(255, 184, 77, 0.08), rgba(5, 19, 38, 0.26));
+  outline: none;
+  transform: translateX(2px);
+}
+
+.selected-meta-row {
+  border-color: rgba(255, 184, 77, 0.64);
+  background: linear-gradient(90deg, rgba(255, 184, 77, 0.12), rgba(5, 19, 38, 0.34));
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+
 .meta-bar-row span {
   color: #fff5dc;
   font-weight: 900;
+}
+
+.metagame-featured-list {
+  width: min(1080px, 100%);
+}
+
+.decklist-preview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.decklist-preview-column {
+  border: 1px solid rgba(255, 184, 77, 0.18);
+  background: linear-gradient(135deg, rgba(3, 10, 23, 0.82), rgba(7, 19, 34, 0.7));
+  clip-path: var(--clip-sm);
+  padding: 16px;
+}
+
+.decklist-preview-column h3 {
+  margin: 0 0 12px;
+  color: var(--amber);
+  font-size: 0.94rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.decklist-preview-rows {
+  columns: 2 220px;
+  column-gap: 28px;
+}
+
+.decklist-preview-rows div {
+  break-inside: avoid;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.decklist-preview-rows strong {
+  color: var(--gold);
+  font-weight: 950;
+}
+
+.decklist-preview-rows span {
+  color: var(--text);
+  font-weight: 760;
+  line-height: 1.3;
 }
 
 .archetype-admin-control {

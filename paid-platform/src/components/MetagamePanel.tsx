@@ -52,6 +52,7 @@ export function MetagamePanel() {
   const [savedDecks, setSavedDecks] = useState<SavedDeck[]>([]);
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedArchetype, setSelectedArchetype] = useState("");
 
   const savedDeckNotes = useMemo(
     () => (data ? buildSavedDeckNotes(savedDecks, data, format) : []),
@@ -61,6 +62,10 @@ export function MetagamePanel() {
   const topSideboardCards = useMemo(
     () => (data ? buildTopSideboardCards(data.decks) : []),
     [data]
+  );
+  const selectedDeck = useMemo(
+    () => (data && selectedArchetype ? chooseRecentWinningDeck(data.decks, selectedArchetype) : null),
+    [data, selectedArchetype]
   );
   const topArchetype = data?.archetypes[0];
   const biggestRiser = data?.archetypes.reduce((best, archetype) => (archetype.change > best.change ? archetype : best), data.archetypes[0]);
@@ -103,8 +108,10 @@ export function MetagamePanel() {
         throw new Error(payload.error ?? "Could not load metagame data.");
       }
       setData(payload as MetagameResponse);
+      setSelectedArchetype("");
     } catch (error) {
       setData(null);
+      setSelectedArchetype("");
       setMessage(error instanceof Error ? error.message : "Could not load metagame data.");
     } finally {
       setIsLoading(false);
@@ -217,14 +224,21 @@ export function MetagamePanel() {
               </div>
               <div className="meta-bars">
                 {data.archetypes.slice(0, 12).map((archetype) => (
-                  <div className="meta-bar-row" key={archetype.name}>
+                  <button
+                    className={`meta-bar-row clickable-meta-row ${
+                      selectedArchetype === archetype.name ? "selected-meta-row" : ""
+                    }`}
+                    key={archetype.name}
+                    onClick={() => setSelectedArchetype(archetype.name)}
+                    type="button"
+                  >
                     <span>{archetype.name}</span>
                     <i style={{ width: `${Math.max(4, Math.min(100, archetype.share * 200))}%` }} />
                     <em>
                       {Math.round(archetype.share * 100)}% ({archetype.decks})
                       <small className={getTrendClass(archetype.change)}>{formatTrendLabel(archetype.change)}</small>
                     </em>
-                  </div>
+                  </button>
                 ))}
               </div>
             </article>
@@ -243,7 +257,14 @@ export function MetagamePanel() {
                   performanceDecks.slice(0, 8).map((deck) => {
                     const signal = getPerformanceSignal(deck.score);
                     return (
-                      <div className="list-row performance-row" key={deck.name}>
+                      <button
+                        className={`list-row performance-row clickable-list-row ${
+                          selectedArchetype === deck.name ? "selected-list-row" : ""
+                        }`}
+                        key={deck.name}
+                        onClick={() => setSelectedArchetype(deck.name)}
+                        type="button"
+                      >
                         <div>
                           <strong>{deck.name}</strong>
                           <span>
@@ -254,7 +275,7 @@ export function MetagamePanel() {
                           <small>{signal.label}</small>
                           <strong>{signal.value}</strong>
                         </span>
-                      </div>
+                      </button>
                     );
                   })
                 ) : (
@@ -266,6 +287,35 @@ export function MetagamePanel() {
               </div>
             </article>
           </section>
+
+          {selectedDeck ? (
+            <section className="panel compact-panel metagame-featured-list">
+              <div className="section-heading split-heading">
+                <div>
+                  <p className="eyebrow">Recent winning list</p>
+                  <h2>{selectedDeck.archetype}</h2>
+                  <p className="muted-copy">
+                    {selectedDeck.player} | {selectedDeck.eventName} |{" "}
+                    {new Date(selectedDeck.eventDate).toLocaleDateString()}
+                    {selectedDeck.rank ? ` | Rank ${selectedDeck.rank}` : ""}
+                  </p>
+                </div>
+                <a className="text-button" href={selectedDeck.sourceUrl} rel="noopener" target="_blank">
+                  Source
+                </a>
+              </div>
+              <div className="decklist-preview-grid">
+                <DecklistColumn title="Main Deck" cards={selectedDeck.main} />
+                <DecklistColumn title="Sideboard" cards={selectedDeck.sideboard} />
+              </div>
+            </section>
+          ) : selectedArchetype ? (
+            <section className="panel compact-panel metagame-featured-list">
+              <p className="eyebrow">Recent winning list</p>
+              <h2>{selectedArchetype}</h2>
+              <p className="muted-copy">No parsed list is available for this archetype in the selected window.</p>
+            </section>
+          ) : null}
 
           <section className="panel compact-panel saved-deck-prep-panel">
             <div>
@@ -429,6 +479,32 @@ export function MetagamePanel() {
   );
 }
 
+function DecklistColumn({
+  title,
+  cards
+}: {
+  title: string;
+  cards: Array<{ name: string; qty: number }>;
+}) {
+  return (
+    <div className="decklist-preview-column">
+      <h3>{title}</h3>
+      {cards.length ? (
+        <div className="decklist-preview-rows">
+          {cards.map((card) => (
+            <div key={`${title}-${card.name}`}>
+              <strong>{card.qty}</strong>
+              <span>{card.name}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="muted-copy">No cards published for this section.</p>
+      )}
+    </div>
+  );
+}
+
 function formatTrend(change: number) {
   const percentagePoints = Math.round(change * 100);
   if (percentagePoints > 0) {
@@ -529,6 +605,28 @@ function buildOverperformanceRating(
   const populationShare = deckCount / totalDecks;
   const sampleConfidence = finishes / (finishes + 4);
   return Math.max(1, 100 + (resultShare - populationShare) * 220 * sampleConfidence);
+}
+
+function chooseRecentWinningDeck(decks: MetagameDeck[], archetype: string) {
+  const archetypeDecks = decks.filter((deck) => deck.archetype === archetype);
+  if (!archetypeDecks.length) {
+    return null;
+  }
+
+  return [...archetypeDecks].sort((a, b) => {
+    const dateDelta = Date.parse(b.eventDate) - Date.parse(a.eventDate);
+    if (dateDelta !== 0) {
+      return dateDelta;
+    }
+
+    const rankA = a.rank ?? 999;
+    const rankB = b.rank ?? 999;
+    if (rankA !== rankB) {
+      return rankA - rankB;
+    }
+
+    return a.player.localeCompare(b.player);
+  })[0];
 }
 
 function buildSavedDeckNotes(
