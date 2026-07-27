@@ -630,6 +630,29 @@ function probabilityWithFractionalLooks(
   return low * (1 - fraction) + high * fraction;
 }
 
+function probabilityWithFractionalLooksAndRemovedSuccesses(
+  population: number,
+  successes: number,
+  naturalDraws: number,
+  extraLooks: number,
+  minimumHits: number,
+  removedSuccesses: number
+) {
+  const lowerRemoved = Math.floor(Math.max(0, removedSuccesses));
+  const removedFraction = Math.max(0, removedSuccesses) - lowerRemoved;
+  const calculate = (removed: number) =>
+    probabilityWithFractionalLooks(
+      Math.max(0, population - removed),
+      Math.max(0, successes - removed),
+      naturalDraws,
+      extraLooks,
+      minimumHits
+    );
+  const low = calculate(lowerRemoved);
+  const high = calculate(lowerRemoved + 1);
+  return low * (1 - removedFraction) + high * removedFraction;
+}
+
 function drawsByTurn(turn: number, playDraw: PlayDraw) {
   return playDraw === "play" ? Math.max(0, turn - 1) : turn;
 }
@@ -768,6 +791,22 @@ function canPay(cost: string, sources: ManaSource[]) {
   return remainingSources >= requirements.generic;
 }
 
+function castabilityCost(card: CardLookup) {
+  if (card.manaCost) {
+    return card.manaCost;
+  }
+  if (card.manaValue <= 0) {
+    return "";
+  }
+  const requiredColors = Array.from(new Set(card.colors.map((color) => color.toUpperCase()).filter(Boolean)));
+  if (!requiredColors.length) {
+    return `{${Math.ceil(card.manaValue)}}`;
+  }
+  const coloredSymbols = requiredColors.slice(0, Math.ceil(card.manaValue)).map((color) => `{${color}}`).join("");
+  const generic = Math.max(0, Math.ceil(card.manaValue) - requiredColors.length);
+  return `${generic ? `{${generic}}` : ""}${coloredSymbols}`;
+}
+
 function chooseBestLand(availableLands: Array<{ id: number; card: CardLookup }>, currentSources: ManaSource[], turn: number) {
   let best = availableLands[0] ?? null;
   let bestScore = -1;
@@ -885,7 +924,7 @@ function castabilityMonteCarlo(
         if (entry.card.isLand || usedValueSpellIds.has(entry.id)) {
           continue;
         }
-        const cost = entry.card.manaCost || (entry.card.manaValue > 0 ? `{${Math.ceil(entry.card.manaValue)}}` : "");
+        const cost = castabilityCost(entry.card);
         if (!canPay(cost, usableSources)) {
           continue;
         }
@@ -906,7 +945,7 @@ function castabilityMonteCarlo(
 
       usableSources = sources.filter((source) => source.availableTurn <= turn);
       for (const spell of spells) {
-        const cost = spell.manaCost || (spell.manaValue > 0 ? `{${Math.ceil(spell.manaValue)}}` : "");
+        const cost = castabilityCost(spell);
         if (canPay(cost, usableSources)) {
           successes.get(spell.name)![turn - 1] += 1;
         }
@@ -1463,10 +1502,28 @@ export function analyzeOpeningHand(
       return total + seen * castChance;
     }, 0);
 
+  const castChanceByTurn = (cardName: string, turn: number) => {
+    const castRow = castability.find((row) => row.cardName === cardName);
+    if (!castRow || turn <= 0) {
+      return 0;
+    }
+    if (turn === 1) {
+      return castRow.turn1;
+    }
+    if (turn === 2) {
+      return castRow.turn2;
+    }
+    return castRow.turn3;
+  };
+  const libraryLandRampSources = rampSources.filter((source) => source.sourceType === "Land ramp");
+  const rampLandsRemovedByTurn = (turn: number) =>
+    libraryLandRampSources.reduce((total, source) => total + castChanceByTurn(source.cardName, turn - 1), 0);
+
   const turnProbabilities = Array.from({ length: 7 }, (_, index) => {
     const turn = index + 2;
     const naturalDraws = drawsByTurn(turn, playDraw);
     const extraLooks = extraLooksByTurn(turn);
+    const rampLandsRemoved = rampLandsRemovedByTurn(turn);
     const neededForDrop = Math.max(0, turn - landsInHand);
     const neededForEffectiveDrop = Math.max(0, turn - effectiveLandsInHand);
     return {
@@ -1474,9 +1531,23 @@ export function analyzeOpeningHand(
       naturalDraws,
       extraLooks,
       nextLandNatural: probabilityAtLeast(librarySize, landsRemaining, naturalDraws, 1),
-      nextLandWithDraw: probabilityWithFractionalLooks(librarySize, landsRemaining, naturalDraws, extraLooks, 1),
+      nextLandWithDraw: probabilityWithFractionalLooksAndRemovedSuccesses(
+        librarySize,
+        landsRemaining,
+        naturalDraws,
+        extraLooks,
+        1,
+        rampLandsRemoved
+      ),
       landDropNatural: probabilityAtLeast(librarySize, landsRemaining, naturalDraws, neededForDrop),
-      landDropWithDraw: probabilityWithFractionalLooks(librarySize, landsRemaining, naturalDraws, extraLooks, neededForDrop),
+      landDropWithDraw: probabilityWithFractionalLooksAndRemovedSuccesses(
+        librarySize,
+        landsRemaining,
+        naturalDraws,
+        extraLooks,
+        neededForDrop,
+        rampLandsRemoved
+      ),
       effectiveLandDrop: probabilityAtLeast(librarySize, effectiveLandsRemaining, naturalDraws, neededForEffectiveDrop)
     };
   });
