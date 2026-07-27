@@ -255,4 +255,29 @@ const deterministicB = scoreHandDeckRelative({
 
 assert.deepEqual(deterministicA, deterministicB, "seeded deck-relative analysis is deterministic");
 
+const londonSixBaseline = scoreHandDeckRelative({
+  mainCounts: redAggroDeck,
+  handNames: ["Mountain", "Mountain", "Monastery Swiftspear", "Lightning Strike", "Phoenix Chick", "Four Drop", "Mountain"],
+  cardData: redAggroCards,
+  playDraw: "play",
+  profileLabel: "Low-curve pressure",
+  seed: "mulligan-mode",
+  settings: fastSettings
+});
+const freeSevenBaseline = scoreHandDeckRelative({
+  mainCounts: redAggroDeck,
+  handNames: ["Mountain", "Mountain", "Monastery Swiftspear", "Lightning Strike", "Phoenix Chick", "Four Drop", "Mountain"],
+  cardData: redAggroCards,
+  playDraw: "play",
+  profileLabel: "Low-curve pressure",
+  freeMulligan: true,
+  seed: "mulligan-mode",
+  settings: fastSettings
+});
+
+assert.ok(
+  (freeSevenBaseline.mulliganExpectedValue ?? 0) >= (londonSixBaseline.mulliganExpectedValue ?? 0),
+  "free-mulligan formats compare against a fresh seven instead of a London six"
+);
+
 console.log("handScoring tests passed");

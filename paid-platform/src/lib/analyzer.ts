@@ -1596,18 +1596,19 @@ export function analyzeOpeningHand(
     turn4LandDrop: turn4,
     hasCastableRamp
   });
+  const hasCommanderFreeMulligan = isCommanderStyleFormat(options.format);
   const deckRelativeScore = scoreHandDeckRelative({
     mainCounts,
     handNames: analysisHand,
     cardData,
     playDraw,
     format: options.format,
-    profileLabel: profile.label
+    profileLabel: profile.label,
+    freeMulligan: hasCommanderFreeMulligan
   });
   const handTextureScore = deckRelativeScore.score;
   const rec = recommendationFromModel(deckRelativeScore.keepRecommendation);
   const hasEarlyCastabilityConcern = castability.some((row) => row.manaValue <= 2 && row.turn2 < 0.55);
-  const hasCommanderFreeMulligan = isCommanderStyleFormat(options.format);
   const deckMulliganContext = mulliganDeckContext(profile, hasCommanderFreeMulligan);
   const mulligan = mulliganSummary(
     mainCounts,

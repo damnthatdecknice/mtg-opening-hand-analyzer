@@ -131,6 +131,7 @@ export type DeckRelativeScoreInput = {
   playDraw: "play" | "draw";
   format?: string;
   profileLabel?: string;
+  freeMulligan?: boolean;
   seed?: string;
   settings?: Partial<HandScoringSettings>;
 };
@@ -814,7 +815,14 @@ function optimizeBottomForSix(hand: string[], deck: SimCard[], playDraw: "play" 
   return best;
 }
 
-function mulliganExpectedValue(deck: SimCard[], playDraw: "play" | "draw", settings: HandScoringSettings, seed: string, profileLabel?: string) {
+function mulliganExpectedValue(
+  deck: SimCard[],
+  playDraw: "play" | "draw",
+  settings: HandScoringSettings,
+  seed: string,
+  profileLabel?: string,
+  freeMulligan = false
+) {
   const values: number[] = [];
   const reducedSettings = {
     ...settings,
@@ -823,7 +831,14 @@ function mulliganExpectedValue(deck: SimCard[], playDraw: "play" | "draw", setti
   for (let sample = 0; sample < settings.mulliganHands; sample += 1) {
     const random = mulberry32(stableHash(`${seed}:mull:${sample}`));
     const seven = sampleOpeningHand(deck, random);
-    values.push(optimizeBottomForSix(seven, deck, playDraw, reducedSettings, `${seed}:mull:${sample}`, profileLabel));
+    if (freeMulligan) {
+      values.push(
+        evaluateHandUtility(deck, seven, playDraw, reducedSettings, `${seed}:free-seven:${sample}`, profileLabel)
+          .riskAdjustedUtility
+      );
+    } else {
+      values.push(optimizeBottomForSix(seven, deck, playDraw, reducedSettings, `${seed}:mull:${sample}`, profileLabel));
+    }
   }
   return values.reduce((total, value) => total + value, 0) / Math.max(1, values.length);
 }
@@ -831,9 +846,9 @@ function mulliganExpectedValue(deck: SimCard[], playDraw: "play" | "draw", setti
 function recommendationFromEv(score: number, keepEv: number, mulliganEv: number | undefined, catastrophicRate: number): KeepRecommendation {
   if (mulliganEv !== undefined) {
     const edge = keepEv - mulliganEv;
-    if (edge >= 0.1 && score >= 78) return "strong_keep";
-    if (edge >= 0.025) return "keep";
-    if (edge > -0.025) return "borderline";
+    if (edge >= 0.08 && score >= 75) return "strong_keep";
+    if (edge >= -0.005 && score >= 55) return "keep";
+    if (edge > -0.04) return "borderline";
     if (edge > -0.1) return "mulligan";
     return "strong_mulligan";
   }
@@ -877,7 +892,7 @@ export function scoreHandDeckRelative(input: DeckRelativeScoreInput): DeckRelati
   const below = baseline.filter((value) => value < observed.riskAdjustedUtility).length;
   const percentile = clamp((below + 0.5) / (baseline.length + 1), 0, 1);
   const score = clamp(Math.round(1 + 99 * percentile), 1, 100);
-  const mulliganEv = mulliganExpectedValue(deck, input.playDraw, settings, seed, input.profileLabel);
+  const mulliganEv = mulliganExpectedValue(deck, input.playDraw, settings, seed, input.profileLabel, input.freeMulligan);
   const keepAdvantage = observed.riskAdjustedUtility - mulliganEv;
   const keepRecommendation = recommendationFromEv(score, observed.riskAdjustedUtility, mulliganEv, observed.catastrophicFailureRate);
   const { hand } = removeHandFromLibrary(deck, input.handNames);
@@ -889,7 +904,11 @@ export function scoreHandDeckRelative(input: DeckRelativeScoreInput): DeckRelati
     line.components.colorAccess < 0.55 ? "Colored mana does not line up with the hand's early requirements." : "",
     line.components.development < 0.5 ? "Mana development is below this deck's expected curve." : "",
     line.components.strandedPenalty > 0.45 ? "A large share of the hand remains stranded through the early turns." : "",
-    keepAdvantage < -0.025 ? "The simulated mulligan-to-six comparison is better than keeping this hand." : ""
+    keepAdvantage < -0.025
+      ? input.freeMulligan
+        ? "The simulated free mulligan to a fresh seven is better than keeping this hand."
+        : "The simulated mulligan-to-six comparison is better than keeping this hand."
+      : ""
   ].filter(Boolean);
   const factors: DeckRelativeScoreResult["factors"] = [
     { label: "development", value: line.components.development, tone: line.components.development >= 0.7 ? "good" : line.components.development < 0.45 ? "bad" : "neutral" },
