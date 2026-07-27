@@ -3,8 +3,11 @@ import { buildManaCurveAnalysis } from "@/lib/manaCurve";
 import {
   castabilityScoreAdjustment,
   manaSufficiencyAdjustment,
+  solveManaPayment,
   scoreHandDeckRelative,
+  type DeckRelativeScoreResult,
   type KeepRecommendation,
+  type ManaColor,
   type ScoreAdjustment
 } from "./handScoring";
 
@@ -109,6 +112,8 @@ export type PlayDrawComparison = {
   summary: string;
 };
 
+export type ScoreFactor = DeckRelativeScoreResult["factors"][number];
+
 export type DeckProfile = {
   label: string;
   landCount: number;
@@ -145,6 +150,8 @@ export type AnalyzerResult = {
   keepExpectedValue: number;
   mulliganExpectedValue?: number;
   keepAdvantage?: number;
+  severeFailureProbability: number;
+  scoreFactors: ScoreFactor[];
   handTextureLabel: string;
   recommendation: string;
   recommendationTone: "good" | "neutral" | "bad";
@@ -799,20 +806,16 @@ function sourceProfile(card: CardLookup): Omit<ManaSource, "availableTurn"> {
 }
 
 function canPay(cost: string, sources: ManaSource[]) {
-  const requirements = parsedManaRequirements(cost);
-  const sourceColors = sources.map((source) => source.colors);
-  const used = new Set<number>();
-
-  for (const color of requirements.requiredColors) {
-    const sourceIndex = sourceColors.findIndex((colors, index) => !used.has(index) && colors.includes(color));
-    if (sourceIndex < 0) {
-      return false;
-    }
-    used.add(sourceIndex);
-  }
-
-  const remainingSources = sourceColors.length - used.size;
-  return remainingSources >= requirements.generic;
+  return solveManaPayment(
+    cost,
+    manaValueFromCost(cost),
+    sources.map((source) => ({
+      name: source.name,
+      colors: source.colors.filter((color): color is ManaColor =>
+        (["W", "U", "B", "R", "G", "C"] as string[]).includes(color)
+      )
+    }))
+  ).canPay;
 }
 
 function castabilityCost(card: CardLookup) {
@@ -1291,6 +1294,28 @@ function buildPlayDrawComparison(
   };
 }
 
+function buildModelPlayDrawComparison(
+  playScore: ReturnType<typeof scoreHandDeckRelative>,
+  drawScore: ReturnType<typeof scoreHandDeckRelative>
+): PlayDrawComparison {
+  const playRec = recommendationFromModel(playScore.keepRecommendation);
+  const drawRec = recommendationFromModel(drawScore.keepRecommendation);
+  const playPhrase = recommendationPhrase(playRec.tone);
+  const drawPhrase = recommendationPhrase(drawRec.tone);
+  return {
+    playScore: playScore.score,
+    drawScore: drawScore.score,
+    playRecommendation: playRec.label,
+    drawRecommendation: drawRec.label,
+    playTone: playRec.tone,
+    drawTone: drawRec.tone,
+    summary:
+      playRec.tone === drawRec.tone
+        ? `This looks like ${playPhrase} on both play and draw.`
+        : `This is ${playPhrase} on the play, ${drawPhrase} on the draw.`
+  };
+}
+
 function mulliganDeckContext(profile: DeckProfile, freeSeven: boolean): MulliganSummary["deckContext"] {
   if (freeSeven) {
     return {
@@ -1657,12 +1682,7 @@ export function analyzeOpeningHand(
     profileLabel: profile.label,
     freeMulligan: hasCommanderFreeMulligan
   });
-  const handTextureScore = riskAdjustedTextureScore(
-    deckRelativeScore.score,
-    profile,
-    castabilityAdjustment,
-    manaAdjustment
-  );
+  const handTextureScore = deckRelativeScore.score;
   const hasEarlyCastabilityConcern = castability.some((row) => row.manaValue <= 2 && row.turn2 < 0.55);
   const deckMulliganContext = mulliganDeckContext(profile, hasCommanderFreeMulligan);
   const mulligan = mulliganSummary(
@@ -1673,21 +1693,26 @@ export function analyzeOpeningHand(
     hasCommanderFreeMulligan,
     deckMulliganContext
   );
-  const rec = recommendationFromRiskContext(
-    deckRelativeScore.keepRecommendation,
-    handTextureScore,
-    mulligan,
-    profile,
-    castabilityAdjustment,
-    manaAdjustment
-  );
-  const playDrawComparison = buildPlayDrawComparison(
-    handTextureScore,
-    landsInHand,
-    librarySize,
-    landsRemaining,
-    profile
-  );
+  const rec = recommendationFromModel(deckRelativeScore.keepRecommendation);
+  const playScore = playDraw === "play" ? deckRelativeScore : scoreHandDeckRelative({
+    mainCounts,
+    handNames: analysisHand,
+    cardData,
+    playDraw: "play",
+    format: options.format,
+    profileLabel: profile.label,
+    freeMulligan: hasCommanderFreeMulligan
+  });
+  const drawScore = playDraw === "draw" ? deckRelativeScore : scoreHandDeckRelative({
+    mainCounts,
+    handNames: analysisHand,
+    cardData,
+    playDraw: "draw",
+    format: options.format,
+    profileLabel: profile.label,
+    freeMulligan: hasCommanderFreeMulligan
+  });
+  const playDrawComparison = buildModelPlayDrawComparison(playScore, drawScore);
   const tags: AnalyzerResult["tags"] = [
     {
       label: profile.label.toLowerCase(),
@@ -1762,6 +1787,8 @@ export function analyzeOpeningHand(
     keepExpectedValue: deckRelativeScore.keepExpectedValue,
     mulliganExpectedValue: deckRelativeScore.mulliganExpectedValue,
     keepAdvantage: deckRelativeScore.keepAdvantage,
+    severeFailureProbability: deckRelativeScore.utility.catastrophicFailureRate,
+    scoreFactors: deckRelativeScore.factors,
     handTextureLabel: textureLabel(handTextureScore),
     recommendation: rec.label,
     recommendationTone: rec.tone,

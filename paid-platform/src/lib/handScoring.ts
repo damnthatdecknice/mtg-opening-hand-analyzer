@@ -191,6 +191,19 @@ type SimSource = {
   temporary?: boolean;
 };
 
+export type ManaPaymentSource = {
+  id?: string;
+  name: string;
+  colors: ManaColor[];
+};
+
+export type ManaPaymentResult = {
+  canPay: boolean;
+  spentSourceIndexes: number[];
+  remainingSourceIndexes: number[];
+  approximationNotes: string[];
+};
+
 const BASELINE_CACHE = new Map<string, number[]>();
 
 function stableHash(text: string) {
@@ -321,6 +334,124 @@ function genericCostFromManaCost(manaCost: string | undefined, manaValue: number
     }
   }
   return generic;
+}
+
+function manaRequirements(manaCost: string | undefined, manaValue: number) {
+  const requiredPips: ManaColor[][] = [];
+  const approximationNotes = new Set<string>();
+  let generic = 0;
+
+  for (const symbol of manaSymbols(manaCost)) {
+    if (/^\d+$/.test(symbol)) {
+      generic += Number(symbol);
+      continue;
+    }
+    if (symbol === "X") {
+      approximationNotes.add("X was evaluated as zero for opening-hand castability.");
+      continue;
+    }
+    if (symbol === "C") {
+      requiredPips.push(["C"]);
+      continue;
+    }
+    if (symbol === "S") {
+      approximationNotes.add("Snow mana was approximated as colorless-capable mana.");
+      requiredPips.push(["C"]);
+      continue;
+    }
+    if (symbol.includes("/")) {
+      const parts = symbol.split("/");
+      const phyrexian = parts.includes("P");
+      const hybridColors = parts.filter((part): part is ManaColor =>
+        (["W", "U", "B", "R", "G", "C"] as string[]).includes(part)
+      );
+      const numericHybrid = parts.find((part) => /^\d+$/.test(part));
+      if (phyrexian) {
+        approximationNotes.add("Phyrexian mana may be paid with life; mana payment is conservative.");
+      }
+      if (hybridColors.length) {
+        requiredPips.push(Array.from(new Set(hybridColors)));
+      } else if (numericHybrid) {
+        generic += Number(numericHybrid);
+      }
+      continue;
+    }
+    const color = symbol.match(/[WUBRGC]/)?.[0] as ManaColor | undefined;
+    if (color) {
+      requiredPips.push([color]);
+      continue;
+    }
+    approximationNotes.add(`Unsupported mana symbol {${symbol}} was approximated using mana value.`);
+  }
+
+  if (!manaCost || !manaSymbols(manaCost).length) {
+    generic = Math.max(0, Math.ceil(manaValue));
+  }
+
+  return { requiredPips, generic, approximationNotes: Array.from(approximationNotes) };
+}
+
+export function solveManaPayment(
+  manaCost: string | undefined,
+  manaValue: number,
+  sources: ManaPaymentSource[]
+): ManaPaymentResult {
+  const { requiredPips, generic, approximationNotes } = manaRequirements(manaCost, manaValue);
+  const indexed = sources.map((source, index) => ({ source, index }));
+  const orderedPips = [...requiredPips].sort(
+    (a, b) =>
+      indexed.filter(({ source }) => a.some((color) => source.colors.includes(color))).length -
+      indexed.filter(({ source }) => b.some((color) => source.colors.includes(color))).length
+  );
+
+  const assignRequired = (pipIndex: number, spent: Set<number>): Set<number> | null => {
+    if (pipIndex >= orderedPips.length) {
+      return spent;
+    }
+    const pip = orderedPips[pipIndex] ?? [];
+    for (const { source, index } of indexed) {
+      if (spent.has(index) || !pip.some((color) => source.colors.includes(color))) {
+        continue;
+      }
+      const nextSpent = new Set(spent);
+      nextSpent.add(index);
+      const result = assignRequired(pipIndex + 1, nextSpent);
+      if (result) {
+        return result;
+      }
+    }
+    return null;
+  };
+
+  const requiredSpent = assignRequired(0, new Set());
+  if (!requiredSpent) {
+    return {
+      canPay: false,
+      spentSourceIndexes: [],
+      remainingSourceIndexes: sources.map((_, index) => index),
+      approximationNotes
+    };
+  }
+
+  const remainingAfterRequired = sources
+    .map((_, index) => index)
+    .filter((index) => !requiredSpent.has(index));
+  if (remainingAfterRequired.length < generic) {
+    return {
+      canPay: false,
+      spentSourceIndexes: Array.from(requiredSpent),
+      remainingSourceIndexes: remainingAfterRequired,
+      approximationNotes
+    };
+  }
+
+  const spentSourceIndexes = [...Array.from(requiredSpent), ...remainingAfterRequired.slice(0, generic)];
+  return {
+    canPay: true,
+    spentSourceIndexes,
+    remainingSourceIndexes: sources.map((_, index) => index).filter((index) => !spentSourceIndexes.includes(index)),
+    approximationNotes
+  };
 }
 
 function sourceOptions(card: AnalysisCardInput): ManaProductionOption[] {
@@ -462,20 +593,11 @@ function canPayAnalysis(card: AnalysisCard, sources: SimSource[], manaBudget = s
   if (card.isLand) {
     return false;
   }
-  const manaValue = Math.ceil(card.manaValue);
-  if (manaValue > manaBudget) {
-    return false;
-  }
-  const pips = card.coloredPips;
-  for (const color of ["W", "U", "B", "R", "G"] as ManaColor[]) {
-    const needed = pips[color] ?? 0;
-    if (!needed) continue;
-    const sourceCount = sources.filter((source) => source.colors.includes(color)).length;
-    if (sourceCount < needed) {
-      return false;
-    }
-  }
-  return true;
+  return solveManaPayment(card.manaCost, card.manaValue, sources.slice(0, manaBudget)).canPay;
+}
+
+function payForSpell(card: AnalysisCard, sources: SimSource[]) {
+  return solveManaPayment(card.manaCost, card.manaValue, sources);
 }
 
 function chooseLandForLine(lands: SimCard[], sources: SimSource[], turn: number, spells: SimCard[]) {
@@ -591,8 +713,8 @@ function evaluateDrawLine(openingHand: SimCard[], drawnCards: SimCard[], deck: S
       });
 
     for (const spell of castOrder) {
-      const cost = Math.max(0, Math.ceil(spell.manaValue));
-      if (!canPayAnalysis(spell, availableSources, manaBudget) || cost > manaBudget) {
+      const payment = payForSpell(spell, availableSources);
+      if (!payment.canPay) {
         continue;
       }
       const tooEarly = turn + 1 < (spell.earliestUsefulTurn ?? 1) && !spell.roles.includes("ramp");
@@ -600,15 +722,15 @@ function evaluateDrawLine(openingHand: SimCard[], drawnCards: SimCard[], deck: S
         continue;
       }
       castCards.add(spell.copyId);
-      spent += Math.max(1, cost);
-      manaBudget -= cost;
+      spent += payment.spentSourceIndexes.length;
+      availableSources = payment.remainingSourceIndexes.map((index) => availableSources[index]).filter(Boolean);
+      manaBudget = availableSources.length;
       for (const role of spell.roles) {
         roleCoverage[role] = (roleCoverage[role] ?? 0) + 1;
       }
       if (spell.ramp && spell.ramp.kind !== "ritual" && spell.ramp.kind !== "cost_reducer") {
         const colors = spell.roles.includes("ramp") ? (["C"] as ManaColor[]) : (["C"] as ManaColor[]);
         sources.push({ name: spell.name, colors, availableTurn: turn + 1 });
-        availableSources = sources.filter((source) => source.availableTurn <= turn);
       }
     }
     manaSpentByTurn.push(spent);

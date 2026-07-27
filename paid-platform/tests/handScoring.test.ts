@@ -3,8 +3,10 @@ import {
   castabilityScoreAdjustment,
   manaSufficiencyAdjustment,
   recommendationFromEv,
+  solveManaPayment,
   scoreHandDeckRelative,
-  type AnalysisCardInput
+  type AnalysisCardInput,
+  type ManaPaymentSource
 } from "../src/lib/handScoring";
 
 function normalizeName(value: string) {
@@ -154,6 +156,60 @@ const stableThreeLand = manaSufficiencyAdjustment({
 
 assert.equal(stableThreeLand.adjustment, 0, "hands meeting the curve's mana requirement are not penalized");
 assert.equal(stableThreeLand.cap, 100, "stable mana does not cap texture");
+
+const singleIzzetSource: ManaPaymentSource[] = [{ name: "Steam Vents", colors: ["U", "R"] }];
+assert.equal(
+  solveManaPayment("{U}{R}", 2, singleIzzetSource).canPay,
+  false,
+  "one dual land cannot pay two different colored pips in the same spell"
+);
+assert.equal(
+  solveManaPayment("{U}{R}", 2, [
+    { name: "Steam Vents", colors: ["U", "R"] },
+    { name: "Spirebluff Canal", colors: ["U", "R"] }
+  ]).canPay,
+  true,
+  "two dual lands can pay a two-color spell"
+);
+assert.equal(
+  solveManaPayment("{R}{R}", 2, [
+    { name: "Mountain", colors: ["R"] },
+    { name: "Steam Vents", colors: ["U", "R"] }
+  ]).canPay,
+  true,
+  "double-colored requirements need two valid sources"
+);
+assert.equal(
+  solveManaPayment("{R}{R}", 2, [
+    { name: "Mountain", colors: ["R"] },
+    { name: "Island", colors: ["U"] }
+  ]).canPay,
+  false,
+  "a wrong-color source cannot satisfy a second colored pip"
+);
+assert.equal(
+  solveManaPayment("{1}{R}", 2, [
+    { name: "Mountain", colors: ["R"] },
+    { name: "Plains", colors: ["W"] }
+  ]).canPay,
+  true,
+  "generic mana uses remaining sources after colored costs are paid"
+);
+assert.equal(
+  solveManaPayment("{1}{R}", 2, [{ name: "Mountain", colors: ["R"] }]).canPay,
+  false,
+  "a land spent on colored mana cannot also pay generic mana"
+);
+assert.equal(
+  solveManaPayment("{C}", 1, [{ name: "Island", colors: ["U"] }]).canPay,
+  false,
+  "explicit colorless mana requires a colorless-capable source"
+);
+assert.equal(
+  solveManaPayment("{C}", 1, [{ name: "Wastes", colors: ["C"] }]).canPay,
+  true,
+  "explicit colorless mana accepts a colorless source"
+);
 
 const redAggroCards = cardMap([
   card({ name: "Mountain", typeLine: "Basic Land — Mountain", oracleText: "{T}: Add {R}.", producedMana: ["R"], isLand: true }),

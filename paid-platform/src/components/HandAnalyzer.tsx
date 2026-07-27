@@ -1567,43 +1567,55 @@ function Overview({ result }: { result: AnalyzerResult }) {
         <p className="eyebrow">Recommendation</p>
         <h2>{result.recommendation}</h2>
         <p>
-          {result.handTextureLabel} texture, {result.effectiveLandsInHand} effective land
-          source(s), and {pct(result.turnProbabilities[1]?.landDropWithDraw ?? 0)} to
-          make the third land drop by turn 3 with draw/look spells included.
+          Opening Hand Score {result.handTextureScore}/100. This is an approximate
+          deck-relative percentile: the hand is scoring better than about{" "}
+          {pct(result.deckRelativePercentile)} of sampled opening hands from this same deck.
         </p>
       </div>
       <div className="dashboard-metrics analyzer-metrics">
         <div className="metric-card">
-          <span>Hand texture</span>
+          <span>Opening Hand Score</span>
           <strong>{result.handTextureScore}</strong>
-          <em
-            className={
-              result.castabilityTextureAdjustment < 0 || result.manaTextureAdjustment < 0
-                ? "metric-impact bad"
-                : "metric-impact neutral"
-            }
-          >
-            {[
-              result.manaTextureAdjustment < 0 ? `${result.manaTextureAdjustment} mana` : "",
-              result.castabilityTextureAdjustment < 0 ? `${result.castabilityTextureAdjustment} castability` : ""
-            ]
-              .filter(Boolean)
-              .join(" / ") || "mana stable"}
+          <em className="metric-impact neutral">deck-relative percentile</em>
+        </div>
+        <div className="metric-card">
+          <span>Severe failure risk</span>
+          <strong>{pct(result.severeFailureProbability)}</strong>
+          <em className={result.severeFailureProbability >= 0.35 ? "metric-impact bad" : "metric-impact neutral"}>
+            simulated fail states
           </em>
         </div>
         <div className="metric-card">
-          <span>Lands in hand</span>
-          <strong>{result.landsInHand}</strong>
+          <span>Keep EV</span>
+          <strong>{number(result.keepExpectedValue)}</strong>
         </div>
         <div className="metric-card">
-          <span>Effective sources</span>
-          <strong>{result.effectiveLandsInHand}</strong>
-        </div>
-        <div className="metric-card">
-          <span>{result.mulligan?.comparison === "free-seven" ? "Free 7 avg" : "Mull to 6 avg"}</span>
-          <strong>{result.mulligan ? number(result.mulligan.average) : "n/a"}</strong>
+          <span>{result.mulligan?.comparison === "free-seven" ? "Free 7 EV diff" : "Mulligan EV diff"}</span>
+          <strong>
+            {result.keepAdvantage === undefined
+              ? "n/a"
+              : `${result.keepAdvantage >= 0 ? "+" : ""}${number(result.keepAdvantage)}`}
+          </strong>
         </div>
       </div>
+      <section className="deck-context-card neutral">
+        <div>
+          <p className="eyebrow">Why this score</p>
+          <h2>Top model factors</h2>
+          <p>
+            These factors describe what moved the simulation; they are not point values that
+            add up to the percentile score.
+          </p>
+        </div>
+        <div className="deck-context-metrics">
+          {result.scoreFactors.slice(0, 5).map((factor) => (
+            <span className={factor.tone} key={factor.label}>
+              {factor.label}
+              <strong>{pct(factor.value)}</strong>
+            </span>
+          ))}
+        </div>
+      </section>
       <div className="tag-row">
         {result.tags.map((tag) => (
           <span className={`hand-tag ${tag.tone}`} key={tag.label}>
@@ -1629,10 +1641,6 @@ function Overview({ result }: { result: AnalyzerResult }) {
           <span>
             Deck avg MV
             <strong>{number(result.deckProfile.averageManaValue)}</strong>
-          </span>
-          <span>
-            Score impact
-            <strong>{result.deckProfile.scoreAdjustment > 0 ? "+" : ""}{result.deckProfile.scoreAdjustment}</strong>
           </span>
         </div>
       </section>
@@ -2020,6 +2028,14 @@ function DeepData({ result }: { result: AnalyzerResult }) {
           {result.notes.map((note) => <p key={note}>{note}</p>)}
         </div>
       ) : null}
+      <section className="watchout-panel">
+        <h2>Model information</h2>
+        <p>Scoring version: {result.scoringVersion}</p>
+        <p>
+          Opening Hand Score is the deck-relative percentile score. Legacy mana,
+          curve, and castability diagnostics are kept for explanation only.
+        </p>
+      </section>
     </div>
   );
 }
@@ -2081,7 +2097,10 @@ function Mulligan({ result }: { result: AnalyzerResult }) {
   return (
     <div className="result-stack">
       <h2>Current Hand</h2>
-      <p>Hand texture score: {result.handTextureScore}/100 ({result.handTextureLabel}).</p>
+      <p>
+        Opening Hand Score: {result.handTextureScore}/100. This is the deck-relative
+        percentile score from {result.scoringVersion}.
+      </p>
       <h2>{freeSeven ? "Commander/Brawl Free Mulligan" : "Fresh 7, Bottom 1"}</h2>
       {result.mulligan ? (
         <div className="watchout-panel">
