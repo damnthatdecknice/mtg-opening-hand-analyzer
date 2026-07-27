@@ -74,7 +74,7 @@ const roomCards = data([
     "Enchantment - Room",
     [
       { name: "Roaring Furnace", manaValue: 2, typeLine: "Enchantment - Room" },
-      { name: "Steaming Sauna", manaValue: 7, typeLine: "Enchantment - Room" }
+      { name: "Steaming Sauna", manaValue: 5, typeLine: "Enchantment - Room" }
     ],
     ["U", "R"]
   ),
@@ -207,14 +207,15 @@ const roomAnalysis = buildManaCurveAnalysis(
   { format: "Standard" }
 );
 assert.equal(roomAnalysis.curve.find((row) => row.manaValue === "2")?.spells, 2, "split rooms count the cheap face");
-assert.equal(roomAnalysis.curve.find((row) => row.manaValue === "7+")?.spells, 2, "split rooms count the expensive face");
+assert.equal(roomAnalysis.curve.find((row) => row.manaValue === "5")?.spells, 2, "split rooms count the expensive face");
+assert.equal(roomAnalysis.curve.find((row) => row.manaValue === "7+")?.spells, 0, "split rooms do not also count the combined mana value");
 assert.deepEqual(
   roomAnalysis.curve.find((row) => row.manaValue === "2")?.cards.enchantments,
   [{ name: "Roaring Furnace", qty: 2 }],
   "curve buckets retain card names for hover tooltips"
 );
 assert.deepEqual(
-  roomAnalysis.curve.find((row) => row.manaValue === "7+")?.cards.enchantments,
+  roomAnalysis.curve.find((row) => row.manaValue === "5")?.cards.enchantments,
   [{ name: "Steaming Sauna", qty: 2 }],
   "split card tooltips use the face name in each bucket"
 );

@@ -286,7 +286,7 @@ function curveEntriesForCard(entry: ParsedDeckCard, card: ManaCurveCardData | un
   }
 
   const nonlandFaces = (card.faces ?? []).filter((face) => !/\bland\b/i.test(face.typeLine));
-  const shouldSplitFaces = entry.name.includes("//") && nonlandFaces.length >= 2 && !card.isLand;
+  const shouldSplitFaces = nonlandFaces.length >= 2 && !card.isLand;
   if (!shouldSplitFaces) {
     return [{ qty: entry.qty, card }];
   }
