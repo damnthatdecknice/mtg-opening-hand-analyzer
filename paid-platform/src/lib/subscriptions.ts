@@ -8,24 +8,31 @@ export type SubscriptionTier = {
   features: string[];
 };
 
+export const OPEN_BETA_ACCESS = true;
+
 export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
   {
     id: "free",
     label: "Free",
     price: "$0/month",
-    description: "Try the core opener workflow with a weekly use limit.",
+    description: OPEN_BETA_ACCESS
+      ? "Open beta access to the core Opening Edge workspace."
+      : "Try the core opener workflow with a weekly use limit.",
     features: [
-      "10 opening-hand analyses per week",
+      OPEN_BETA_ACCESS ? "Unlimited opening-hand analyses during open beta" : "10 opening-hand analyses per week",
       "Screenshot intake",
       "Manual seven-card confirmation",
-      "Overview and deep-data results"
+      "Overview and deep-data results",
+      ...(OPEN_BETA_ACCESS ? ["Saved decks, mana curve, and metagame tools during open beta"] : [])
     ]
   },
   {
     id: "deck_pro",
     label: "Deck Pro",
-    price: "$5/month",
-    description: "Unlock the decklist vault and remembered deck workflow.",
+    price: OPEN_BETA_ACCESS ? "$5/month later" : "$5/month",
+    description: OPEN_BETA_ACCESS
+      ? "Planned paid tier for saved deck workflows after open beta."
+      : "Unlock the decklist vault and remembered deck workflow.",
     features: [
       "Everything in Free",
       "Unlimited opening-hand analyses",
@@ -37,7 +44,7 @@ export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
   {
     id: "grinder",
     label: "Grinder",
-    price: "$12/month",
+    price: OPEN_BETA_ACCESS ? "$12/month later" : "$12/month",
     description: "Future competitive workspace tier for history and tracking.",
     features: [
       "Everything in Deck Pro",
@@ -95,5 +102,9 @@ export function getTier(tierId: SubscriptionTierId) {
 }
 
 export function canUseDeckVault(tierId: SubscriptionTierId) {
-  return tierId === "deck_pro" || tierId === "grinder" || tierId === "permanent";
+  return OPEN_BETA_ACCESS || tierId === "deck_pro" || tierId === "grinder" || tierId === "permanent";
+}
+
+export function canUseUnlimitedAnalyzer(tierId: SubscriptionTierId) {
+  return OPEN_BETA_ACCESS || tierId === "deck_pro" || tierId === "grinder" || tierId === "permanent";
 }

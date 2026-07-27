@@ -182,7 +182,7 @@ export function DeckLibrary() {
     }
 
     if (!entitlements.canUseDeckVault) {
-      setMessage("Saved decklists unlock with the $5/month Deck Pro tier.");
+      setMessage("Saved decklists are disabled for this account state. During open beta, they should be included.");
       return;
     }
 
@@ -309,11 +309,11 @@ export function DeckLibrary() {
   return (
     !entitlements.canUseDeckVault && !entitlements.isLoading ? (
       <section className="panel locked-feature-panel">
-        <p className="eyebrow">Deck Pro</p>
-        <h1>Decklists unlock at $5/month</h1>
+        <p className="eyebrow">Deck vault</p>
+        <h1>Saved decks are unavailable</h1>
         <p>
-          The analyzer stays available on Free. Saving decks, managing the deck
-          vault, and loading remembered decklists are Deck Pro features.
+          Saved decks are included during open beta. If you see this message,
+          your account access could not be verified.
         </p>
         <Link className="primary-button" href="/pricing">
           View tiers

@@ -42,7 +42,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         <p className="eyebrow">Setup needed</p>
         <h1>Connect Supabase to unlock accounts</h1>
         <p>
-          The paid dashboard is protected and ready, but the app needs Supabase
+          The account workspace is ready, but the app needs Supabase
           keys in `.env.local` before sign-in can work.
         </p>
         <Link className="primary-button" href="/login">
@@ -66,7 +66,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       <section className="panel auth-required">
         <p className="eyebrow">Protected workspace</p>
         <h1>Sign in to view your dashboard</h1>
-        <p>Saved decks, session history, and subscriptions belong behind user accounts.</p>
+        <p>Saved decks, session history, preferences, and beta access belong behind user accounts.</p>
         <div className="action-row">
           <Link className="primary-button" href="/login">
             Sign in

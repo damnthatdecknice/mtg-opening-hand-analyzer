@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import {
+  OPEN_BETA_ACCESS,
   canUseDeckVault,
+  canUseUnlimitedAnalyzer,
   getTier,
   isPermanentSubscriberEmail,
   tierFromSubscription,
@@ -17,6 +19,8 @@ type EntitlementState = {
   tierId: SubscriptionTierId;
   tierLabel: string;
   canUseDeckVault: boolean;
+  canUseUnlimitedAnalyzer: boolean;
+  isOpenBeta: boolean;
   isPermanent: boolean;
 };
 
@@ -28,7 +32,9 @@ const initialState: EntitlementState = {
   rank: "basic",
   tierId: "free",
   tierLabel: freeTier.label,
-  canUseDeckVault: false,
+  canUseDeckVault: canUseDeckVault("free"),
+  canUseUnlimitedAnalyzer: canUseUnlimitedAnalyzer("free"),
+  isOpenBeta: OPEN_BETA_ACCESS,
   isPermanent: false
 };
 
@@ -41,6 +47,8 @@ function stateForTier(tierId: SubscriptionTierId, overrides: Partial<Entitlement
     tierId,
     tierLabel: tier.label,
     canUseDeckVault: canUseDeckVault(tierId),
+    canUseUnlimitedAnalyzer: canUseUnlimitedAnalyzer(tierId),
+    isOpenBeta: OPEN_BETA_ACCESS,
     isPermanent: tierId === "permanent",
     ...overrides
   };

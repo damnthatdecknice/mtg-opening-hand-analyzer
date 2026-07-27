@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { SUBSCRIPTION_TIERS } from "@/lib/subscriptions";
+import { OPEN_BETA_ACCESS, SUBSCRIPTION_TIERS } from "@/lib/subscriptions";
 import { useEntitlements } from "@/components/useEntitlements";
 
 export function PricingPanel() {
@@ -13,8 +13,9 @@ export function PricingPanel() {
         <p className="eyebrow">Subscription tiers</p>
         <h1>Choose Your Workspace</h1>
         <p>
-          Free includes 10 analyzer uses per week. Deck Pro unlocks unlimited
-          analysis, saved decklists, and the remembered deck workflow for competitive testing.
+          {OPEN_BETA_ACCESS
+            ? "Opening Edge is in open beta, so every account can use the analyzer, saved decks, mana curve, and metagame tools while we prepare billing for a later launch."
+            : "Free includes 10 analyzer uses per week. Deck Pro unlocks unlimited analysis, saved decklists, and the remembered deck workflow for competitive testing."}
         </p>
       </header>
 
@@ -33,7 +34,9 @@ export function PricingPanel() {
                   <li key={feature}>{feature}</li>
                 ))}
               </ul>
-              {isCurrent ? (
+              {OPEN_BETA_ACCESS && tier.id !== "free" ? (
+                <span className="plan-pill">Included during beta</span>
+              ) : isCurrent ? (
                 <span className="plan-pill">
                   {entitlements.isPermanent ? "Permanent access" : "Current plan"}
                 </span>
@@ -54,8 +57,9 @@ export function PricingPanel() {
       <section className="panel compact-panel pricing-note">
         <p className="eyebrow">Billing note</p>
         <p>
-          Stripe checkout is the next wiring step. For now, permanent/test access
-          is handled inside the app entitlement layer.
+          {OPEN_BETA_ACCESS
+            ? "Payment is intentionally disabled during open beta. The tier and entitlement architecture remains in place so Stripe checkout can be wired in when Opening Edge is ready to go paid."
+            : "Stripe checkout is the next wiring step. For now, permanent/test access is handled inside the app entitlement layer."}
         </p>
         <Link className="text-link" href="/analyzer">
           Back to analyzer

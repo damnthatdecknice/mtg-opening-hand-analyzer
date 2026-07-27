@@ -56,8 +56,8 @@ export function DeckSummary() {
         {error ? <p className="form-message">{error}</p> : null}
         {!entitlements.canUseDeckVault && !entitlements.isLoading ? (
           <div className="empty-state">
-            <strong>Deck Pro feature</strong>
-            <span>Saved decks unlock with the $5/month tier.</span>
+            <strong>Deck vault unavailable</strong>
+            <span>Saved decks are included during open beta once account access is verified.</span>
           </div>
         ) : decks.length ? (
           decks.map((deck) => (

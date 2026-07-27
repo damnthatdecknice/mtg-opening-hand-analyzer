@@ -1035,7 +1035,7 @@ export function HandAnalyzer() {
       return false;
     }
 
-    if (entitlements.tierId !== "free") {
+    if (entitlements.canUseUnlimitedAnalyzer) {
       return true;
     }
 
@@ -1064,7 +1064,7 @@ export function HandAnalyzer() {
     const used = count ?? 0;
     if (used >= freeWeeklyAnalyzerLimit) {
       setMessage(
-        `Free accounts include ${freeWeeklyAnalyzerLimit} opening-hand analyses every 7 days. You have used ${used}/${freeWeeklyAnalyzerLimit}. Upgrade to Pro for unlimited analyzer use.`
+        `This account has used ${used}/${freeWeeklyAnalyzerLimit} weekly analyses. Open beta access should remove this limit; refresh or sign in again if it appears.`
       );
       return false;
     }
@@ -1243,10 +1243,10 @@ export function HandAnalyzer() {
           </div>
           {!entitlements.canUseDeckVault && !entitlements.isLoading ? (
             <div className="onboarding-panel">
-              <strong>Saved decks unlock with Deck Pro</strong>
+              <strong>Saved deck access unavailable</strong>
               <span>
-                Free users can paste a deck and run 10 analyses every 7 days.
-                Unlimited analysis, the saved deck dropdown, and deck vault are part of the $5/month tier.
+                Saved decks are included during open beta once account access is verified.
+                You can still paste a decklist here and analyze a hand.
               </span>
             </div>
           ) : entitlements.canUseDeckVault && !savedDecks.length ? (

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getAuthFallbackUser } from "@/lib/authFallback";
+import { OPEN_BETA_ACCESS } from "@/lib/subscriptions";
 import { supabase } from "@/lib/supabase";
 
 type DashboardState = {
@@ -15,7 +16,7 @@ type DashboardState = {
 const initialState: DashboardState = {
   deckCount: 0,
   handCount: 0,
-  planLabel: "Free",
+  planLabel: OPEN_BETA_ACCESS ? "Open Beta" : "Free",
   error: "",
   isLoading: true
 };
@@ -27,7 +28,7 @@ function planLabelFromRank(rank?: string | null) {
   if (rank === "pro") {
     return "Pro";
   }
-  return "Free";
+  return OPEN_BETA_ACCESS ? "Open Beta" : "Free";
 }
 
 export function DashboardOverview() {
