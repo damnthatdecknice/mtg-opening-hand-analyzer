@@ -1,6 +1,6 @@
 import { parseDecklist, type ParsedDeckCard } from "@/lib/deckParser";
 import { buildManaCurveAnalysis } from "@/lib/manaCurve";
-import { castabilityScoreAdjustment, manaSufficiencyAdjustment } from "./handScoring";
+import { castabilityScoreAdjustment, manaSufficiencyAdjustment, scoreHandDeckRelative } from "./handScoring";
 
 export type PlayDraw = "play" | "draw";
 
@@ -128,6 +128,13 @@ export type AnalyzerResult = {
   baseHandTextureScore: number;
   castabilityTextureAdjustment: number;
   manaTextureAdjustment: number;
+  deckRelativePercentile: number;
+  riskAdjustedUtility: number;
+  scoreConfidence: number;
+  scoringVersion: string;
+  keepExpectedValue: number;
+  mulliganExpectedValue?: number;
+  keepAdvantage?: number;
   handTextureLabel: string;
   recommendation: string;
   recommendationTone: "good" | "neutral" | "bad";
@@ -1159,6 +1166,16 @@ function recommendation(score: number, lands: number, landTurn3: number) {
   return { label: "Context-Dependent", tone: "neutral" as const };
 }
 
+function recommendationFromModel(modelRecommendation: ReturnType<typeof scoreHandDeckRelative>["keepRecommendation"]) {
+  if (modelRecommendation === "strong_keep" || modelRecommendation === "keep") {
+    return { label: "Keep Lean", tone: "good" as const };
+  }
+  if (modelRecommendation === "mulligan" || modelRecommendation === "strong_mulligan") {
+    return { label: "Mulligan Pressure", tone: "bad" as const };
+  }
+  return { label: "Context-Dependent", tone: "neutral" as const };
+}
+
 function recommendationPhrase(tone: "good" | "neutral" | "bad") {
   if (tone === "good") {
     return "a keep";
@@ -1579,9 +1596,16 @@ export function analyzeOpeningHand(
     turn4LandDrop: turn4,
     hasCastableRamp
   });
-  const uncappedTextureScore = baseHandTextureScore + profile.scoreAdjustment + castabilityAdjustment.adjustment + manaAdjustment.adjustment;
-  const handTextureScore = Math.max(0, Math.min(manaAdjustment.cap, uncappedTextureScore));
-  const rec = recommendation(handTextureScore, landsInHand, turn3);
+  const deckRelativeScore = scoreHandDeckRelative({
+    mainCounts,
+    handNames: analysisHand,
+    cardData,
+    playDraw,
+    format: options.format,
+    profileLabel: profile.label
+  });
+  const handTextureScore = deckRelativeScore.score;
+  const rec = recommendationFromModel(deckRelativeScore.keepRecommendation);
   const hasEarlyCastabilityConcern = castability.some((row) => row.manaValue <= 2 && row.turn2 < 0.55);
   const hasCommanderFreeMulligan = isCommanderStyleFormat(options.format);
   const deckMulliganContext = mulliganDeckContext(profile, hasCommanderFreeMulligan);
@@ -1634,6 +1658,7 @@ export function analyzeOpeningHand(
     turn3 < 0.55 && landsInHand < 3 ? "Third land by turn 3 is not especially reliable." : "",
     castabilityAdjustment.note,
     manaAdjustment.note,
+    ...deckRelativeScore.warnings,
     drawSources.length ? `Draw/look spells add about ${extraLooksByTurn(3).toFixed(1)} card(s) of expected depth by turn 3.` : "",
     landEquivalentSources.length ? `Land-equivalent source counted: ${landEquivalentSources.map((source) => source.cardName).join(", ")}.` : "",
     mulligan && mulligan.better >= 0.45
@@ -1666,6 +1691,13 @@ export function analyzeOpeningHand(
     baseHandTextureScore,
     castabilityTextureAdjustment: castabilityAdjustment.adjustment,
     manaTextureAdjustment: manaAdjustment.adjustment,
+    deckRelativePercentile: deckRelativeScore.percentile,
+    riskAdjustedUtility: deckRelativeScore.utility.riskAdjustedUtility,
+    scoreConfidence: deckRelativeScore.confidence,
+    scoringVersion: deckRelativeScore.scoringVersion,
+    keepExpectedValue: deckRelativeScore.keepExpectedValue,
+    mulliganExpectedValue: deckRelativeScore.mulliganExpectedValue,
+    keepAdvantage: deckRelativeScore.keepAdvantage,
     handTextureLabel: textureLabel(handTextureScore),
     recommendation: rec.label,
     recommendationTone: rec.tone,

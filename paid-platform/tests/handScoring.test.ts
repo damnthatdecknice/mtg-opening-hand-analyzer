@@ -1,5 +1,43 @@
 import assert from "node:assert/strict";
-import { castabilityScoreAdjustment, manaSufficiencyAdjustment } from "../src/lib/handScoring";
+import {
+  castabilityScoreAdjustment,
+  manaSufficiencyAdjustment,
+  scoreHandDeckRelative,
+  type AnalysisCardInput
+} from "../src/lib/handScoring";
+
+function normalizeName(value: string) {
+  return value.trim().toLowerCase().replace(/[’]/g, "'").replace(/\s+/g, " ");
+}
+
+function card(input: Partial<AnalysisCardInput> & Pick<AnalysisCardInput, "name">): AnalysisCardInput {
+  return {
+    manaCost: "",
+    manaValue: 0,
+    typeLine: "Land",
+    oracleText: "",
+    colors: [],
+    producedMana: [],
+    isLand: false,
+    ...input
+  };
+}
+
+function cardMap(cards: AnalysisCardInput[]) {
+  return new Map(cards.map((entry) => [normalizeName(entry.name), entry]));
+}
+
+function counts(entries: Array<[string, number]>) {
+  return new Map(entries);
+}
+
+const fastSettings = {
+  baselineHands: 90,
+  handSimulations: 24,
+  mulliganHands: 24,
+  drawsPerBaselineHand: 12,
+  analysisHorizon: 5
+};
 
 const colorLocked = castabilityScoreAdjustment([
   { manaValue: 1, turn2: 0.03, turn3: 0.08 },
@@ -99,5 +137,122 @@ const stableThreeLand = manaSufficiencyAdjustment({
 
 assert.equal(stableThreeLand.adjustment, 0, "hands meeting the curve's mana requirement are not penalized");
 assert.equal(stableThreeLand.cap, 100, "stable mana does not cap texture");
+
+const redAggroCards = cardMap([
+  card({ name: "Mountain", typeLine: "Basic Land — Mountain", oracleText: "{T}: Add {R}.", producedMana: ["R"], isLand: true }),
+  card({ name: "Plains", typeLine: "Basic Land — Plains", oracleText: "{T}: Add {W}.", producedMana: ["W"], isLand: true }),
+  card({ name: "Monastery Swiftspear", manaCost: "{R}", manaValue: 1, typeLine: "Creature — Human Monk", oracleText: "Haste. Prowess." }),
+  card({ name: "Lightning Strike", manaCost: "{1}{R}", manaValue: 2, typeLine: "Instant", oracleText: "Lightning Strike deals 3 damage to any target." }),
+  card({ name: "Phoenix Chick", manaCost: "{R}", manaValue: 1, typeLine: "Creature — Phoenix", oracleText: "Flying, haste." }),
+  card({ name: "Four Drop", manaCost: "{3}{R}", manaValue: 4, typeLine: "Creature", oracleText: "A large threat." })
+]);
+
+const redAggroDeck = counts([
+  ["Mountain", 20],
+  ["Monastery Swiftspear", 4],
+  ["Lightning Strike", 4],
+  ["Phoenix Chick", 4],
+  ["Four Drop", 4],
+  ["Plains", 24]
+]);
+
+const correctColor = scoreHandDeckRelative({
+  mainCounts: redAggroDeck,
+  handNames: ["Mountain", "Mountain", "Monastery Swiftspear", "Lightning Strike", "Phoenix Chick", "Four Drop", "Mountain"],
+  cardData: redAggroCards,
+  playDraw: "play",
+  profileLabel: "Low-curve pressure",
+  seed: "correct-color",
+  settings: fastSettings
+});
+
+const wrongColor = scoreHandDeckRelative({
+  mainCounts: redAggroDeck,
+  handNames: ["Plains", "Plains", "Monastery Swiftspear", "Lightning Strike", "Phoenix Chick", "Four Drop", "Plains"],
+  cardData: redAggroCards,
+  playDraw: "play",
+  profileLabel: "Low-curve pressure",
+  seed: "wrong-color",
+  settings: fastSettings
+});
+
+assert.ok(correctColor.score > wrongColor.score, "correct-color sources score higher than the same land count in wrong colors");
+assert.ok(wrongColor.utility.catastrophicFailureRate > correctColor.utility.catastrophicFailureRate, "wrong-color hands carry higher fail-state risk");
+
+const balanced = scoreHandDeckRelative({
+  mainCounts: redAggroDeck,
+  handNames: ["Mountain", "Mountain", "Mountain", "Monastery Swiftspear", "Lightning Strike", "Phoenix Chick", "Four Drop"],
+  cardData: redAggroCards,
+  playDraw: "draw",
+  profileLabel: "Low-curve pressure",
+  seed: "balanced",
+  settings: fastSettings
+});
+
+const zeroLand = scoreHandDeckRelative({
+  mainCounts: redAggroDeck,
+  handNames: ["Monastery Swiftspear", "Lightning Strike", "Phoenix Chick", "Four Drop", "Monastery Swiftspear", "Lightning Strike", "Phoenix Chick"],
+  cardData: redAggroCards,
+  playDraw: "draw",
+  profileLabel: "Low-curve pressure",
+  seed: "zero-land",
+  settings: fastSettings
+});
+
+assert.ok(balanced.score > zeroLand.score, "balanced land plus spell hands score above zero-land hands");
+
+const rampCards = cardMap([
+  card({ name: "Forest", typeLine: "Basic Land — Forest", oracleText: "{T}: Add {G}.", producedMana: ["G"], isLand: true }),
+  card({ name: "Llanowar Elves", manaCost: "{G}", manaValue: 1, typeLine: "Creature — Elf Druid", oracleText: "{T}: Add {G}." }),
+  card({ name: "Colossal Payoff", manaCost: "{5}{G}", manaValue: 6, typeLine: "Creature", oracleText: "A payoff for having lots of mana." }),
+  card({ name: "Small Bear", manaCost: "{1}{G}", manaValue: 2, typeLine: "Creature", oracleText: "A normal creature." })
+]);
+const rampDeck = counts([
+  ["Forest", 24],
+  ["Llanowar Elves", 4],
+  ["Colossal Payoff", 8],
+  ["Small Bear", 24]
+]);
+const rampWithPayoff = scoreHandDeckRelative({
+  mainCounts: rampDeck,
+  handNames: ["Forest", "Forest", "Llanowar Elves", "Colossal Payoff", "Small Bear", "Small Bear", "Forest"],
+  cardData: rampCards,
+  playDraw: "play",
+  profileLabel: "Ramp or big-mana curve",
+  seed: "ramp-payoff",
+  settings: fastSettings
+});
+const rampNoPayoff = scoreHandDeckRelative({
+  mainCounts: rampDeck,
+  handNames: ["Forest", "Forest", "Llanowar Elves", "Small Bear", "Small Bear", "Small Bear", "Forest"],
+  cardData: rampCards,
+  playDraw: "play",
+  profileLabel: "Ramp or big-mana curve",
+  seed: "ramp-no-payoff",
+  settings: fastSettings
+});
+
+assert.ok(rampWithPayoff.score >= rampNoPayoff.score, "ramp is worth more when it accelerates a relevant payoff");
+
+const deterministicA = scoreHandDeckRelative({
+  mainCounts: redAggroDeck,
+  handNames: ["Mountain", "Mountain", "Monastery Swiftspear", "Lightning Strike", "Phoenix Chick", "Four Drop", "Mountain"],
+  cardData: redAggroCards,
+  playDraw: "play",
+  profileLabel: "Low-curve pressure",
+  seed: "deterministic",
+  settings: fastSettings
+});
+const deterministicB = scoreHandDeckRelative({
+  mainCounts: redAggroDeck,
+  handNames: ["Mountain", "Mountain", "Monastery Swiftspear", "Lightning Strike", "Phoenix Chick", "Four Drop", "Mountain"],
+  cardData: redAggroCards,
+  playDraw: "play",
+  profileLabel: "Low-curve pressure",
+  seed: "deterministic",
+  settings: fastSettings
+});
+
+assert.deepEqual(deterministicA, deterministicB, "seeded deck-relative analysis is deterministic");
 
 console.log("handScoring tests passed");
