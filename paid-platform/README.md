@@ -43,6 +43,15 @@ into `.env.local`, then run the SQL in `supabase/schema.sql`.
 The schema creates private per-user tables and row-level security policies.
 Decklists are readable and writable only by the signed-in owner.
 
+## Bug Reports
+
+The `/bug-report` form posts to `/api/bug-report`. Email delivery is disabled
+until these server-only environment variables are configured:
+
+- `RESEND_API_KEY`
+- `BUG_REPORT_TO_EMAIL`
+- `BUG_REPORT_FROM_EMAIL` (optional; defaults to Resend's onboarding sender)
+
 ## Product Boundary
 
 The paid app should own:

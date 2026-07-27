@@ -14,6 +14,7 @@ const navItems = [
   { href: "/mana-curve", label: "Mana Curve", deckProOnly: true },
   { href: "/metagame", label: "Metagame", deckProOnly: true },
   { href: "/help", label: "How To" },
+  { href: "/bug-report", label: "Bug Report" },
   { href: "/settings", label: "Settings" },
   { href: "/login", label: "Sign In" }
 ];

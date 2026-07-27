@@ -1776,7 +1776,8 @@ button.list-row {
   font-weight: 800;
 }
 
-.auth-form input {
+.auth-form input,
+.auth-form textarea {
   min-height: 48px;
   border: 1px solid rgba(103, 194, 255, 0.24);
   border-radius: 0;
@@ -1787,10 +1788,27 @@ button.list-row {
   clip-path: var(--clip-sm);
 }
 
-.auth-form input:focus {
+.auth-form textarea {
+  line-height: 1.55;
+  min-height: 180px;
+  padding: 14px;
+  resize: vertical;
+}
+
+.auth-form input:focus,
+.auth-form textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(89, 216, 255, 0.18);
   outline: none;
+}
+
+.bug-report-page {
+  display: grid;
+  gap: 22px;
+}
+
+.bug-report-panel {
+  max-width: 860px;
 }
 
 .setup-note,
