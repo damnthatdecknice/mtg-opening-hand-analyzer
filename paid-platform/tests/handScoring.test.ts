@@ -51,8 +51,39 @@ const oneLandWithRamp = manaSufficiencyAdjustment({
   hasCastableRamp: true
 });
 
-assert.equal(oneLandWithRamp.adjustment, -12, "castable ramp can soften but not erase one-land risk");
-assert.equal(oneLandWithRamp.cap, 64, "one-land ramp hands remain capped");
+assert.equal(oneLandWithRamp.adjustment, -22, "castable ramp can soften but not erase one-land risk");
+assert.equal(oneLandWithRamp.cap, 54, "one-land ramp hands remain capped below clean keep texture");
+
+const twoLandHighCurve = manaSufficiencyAdjustment({
+  landsInHand: 2,
+  effectiveLandsInHand: 2,
+  profileLabel: "Ramp or big-mana curve",
+  curveTop: 5,
+  averageManaValue: 3.15,
+  turn2LandDrop: 1,
+  turn3LandDrop: 0.64,
+  turn4LandDrop: 0.62,
+  hasCastableRamp: false
+});
+
+assert.equal(twoLandHighCurve.adjustment, -18, "two-land hands are penalized when the deck averages over 3 mana value");
+assert.equal(twoLandHighCurve.cap, 58, "two-land high-curve hands are capped unless they have strong help");
+assert.match(twoLandHighCurve.note, /averages over 3/, "high-curve two-land risk is explained");
+
+const twoLandHighCurveWithRamp = manaSufficiencyAdjustment({
+  landsInHand: 2,
+  effectiveLandsInHand: 3,
+  profileLabel: "Ramp or big-mana curve",
+  curveTop: 5,
+  averageManaValue: 3.15,
+  turn2LandDrop: 1,
+  turn3LandDrop: 0.74,
+  turn4LandDrop: 0.78,
+  hasCastableRamp: true
+});
+
+assert.equal(twoLandHighCurveWithRamp.adjustment, -10, "castable ramp only partially softens high-curve two-land hands");
+assert.equal(twoLandHighCurveWithRamp.cap, 66, "high-curve two-land ramp hands are still capped below premium texture");
 
 const stableThreeLand = manaSufficiencyAdjustment({
   landsInHand: 3,

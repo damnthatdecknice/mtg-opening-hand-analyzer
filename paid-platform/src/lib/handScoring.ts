@@ -89,9 +89,9 @@ export function manaSufficiencyAdjustment(input: ManaSufficiencyInput): ScoreAdj
   if (input.landsInHand === 1) {
     if (input.hasCastableRamp && input.turn3LandDrop >= 0.58) {
       return {
-        adjustment: isManaHungry ? -18 : -12,
-        cap: isManaHungry ? 58 : 64,
-        note: "One-land hands are still fragile; castable ramp and land-drop odds are keeping this from being an automatic mulligan."
+        adjustment: isManaHungry ? -28 : -22,
+        cap: isManaHungry ? 48 : 54,
+        note: "One land plus ramp is still a fragile opener; castable ramp only keeps this from being an automatic mulligan."
       };
     }
 
@@ -107,6 +107,22 @@ export function manaSufficiencyAdjustment(input: ManaSufficiencyInput): ScoreAdj
       adjustment: -28,
       cap: 52,
       note: "One-land hands need exceptional help; this hand is being capped for mana risk."
+    };
+  }
+
+  if (input.landsInHand === 2 && input.averageManaValue > 3) {
+    if (input.turn4LandDrop < 0.7 || !input.hasCastableRamp) {
+      return {
+        adjustment: -18,
+        cap: 58,
+        note: `This deck averages over 3 mana value, so a two-land hand needs strong help; fourth land by turn 4 is ${Math.round(input.turn4LandDrop * 100)}%.`
+      };
+    }
+
+    return {
+      adjustment: -10,
+      cap: 66,
+      note: "This deck averages over 3 mana value, so a two-land hand is still being taxed even with ramp support."
     };
   }
 
