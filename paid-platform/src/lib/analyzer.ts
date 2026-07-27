@@ -1,8 +1,18 @@
 import { parseDecklist, type ParsedDeckCard } from "@/lib/deckParser";
 import { buildManaCurveAnalysis } from "@/lib/manaCurve";
-import { castabilityScoreAdjustment, manaSufficiencyAdjustment, scoreHandDeckRelative } from "./handScoring";
+import {
+  castabilityScoreAdjustment,
+  manaSufficiencyAdjustment,
+  scoreHandDeckRelative,
+  type KeepRecommendation,
+  type ScoreAdjustment
+} from "./handScoring";
 
 export type PlayDraw = "play" | "draw";
+
+function clampScore(value: number) {
+  return Math.max(1, Math.min(100, Math.round(value)));
+}
 
 export type CardLookup = {
   name: string;
@@ -1176,6 +1186,47 @@ function recommendationFromModel(modelRecommendation: ReturnType<typeof scoreHan
   return { label: "Context-Dependent", tone: "neutral" as const };
 }
 
+function riskAdjustedTextureScore(
+  rawScore: number,
+  profile: DeckProfile,
+  castabilityAdjustment: ReturnType<typeof castabilityScoreAdjustment>,
+  manaAdjustment: ScoreAdjustment
+) {
+  const curvePenalty = Math.min(0, profile.scoreAdjustment);
+  const smallCurveBonus = Math.min(3, Math.max(0, profile.scoreAdjustment));
+  const adjusted = rawScore + curvePenalty + smallCurveBonus + castabilityAdjustment.adjustment + manaAdjustment.adjustment;
+  return Math.min(clampScore(adjusted), manaAdjustment.cap);
+}
+
+function recommendationFromRiskContext(
+  modelRecommendation: KeepRecommendation,
+  score: number,
+  mulligan: MulliganSummary | null,
+  profile: DeckProfile,
+  castabilityAdjustment: ReturnType<typeof castabilityScoreAdjustment>,
+  manaAdjustment: ScoreAdjustment
+) {
+  if (manaAdjustment.cap <= 52 || castabilityAdjustment.adjustment <= -28) {
+    return { label: "Mulligan Pressure", tone: "bad" as const };
+  }
+
+  if (mulligan) {
+    const scoreVsMulligan = score - mulligan.average;
+    if (scoreVsMulligan <= -6 || mulligan.better >= 0.62) {
+      return { label: "Mulligan Pressure", tone: "bad" as const };
+    }
+    if (scoreVsMulligan < 3 || mulligan.better >= 0.48) {
+      return { label: "Context-Dependent", tone: "neutral" as const };
+    }
+  }
+
+  if (profile.scoreAdjustment <= -12 && score < 76) {
+    return { label: "Context-Dependent", tone: "neutral" as const };
+  }
+
+  return recommendationFromModel(modelRecommendation);
+}
+
 function recommendationPhrase(tone: "good" | "neutral" | "bad") {
   if (tone === "good") {
     return "a keep";
@@ -1606,8 +1657,12 @@ export function analyzeOpeningHand(
     profileLabel: profile.label,
     freeMulligan: hasCommanderFreeMulligan
   });
-  const handTextureScore = deckRelativeScore.score;
-  const rec = recommendationFromModel(deckRelativeScore.keepRecommendation);
+  const handTextureScore = riskAdjustedTextureScore(
+    deckRelativeScore.score,
+    profile,
+    castabilityAdjustment,
+    manaAdjustment
+  );
   const hasEarlyCastabilityConcern = castability.some((row) => row.manaValue <= 2 && row.turn2 < 0.55);
   const deckMulliganContext = mulliganDeckContext(profile, hasCommanderFreeMulligan);
   const mulligan = mulliganSummary(
@@ -1617,6 +1672,14 @@ export function analyzeOpeningHand(
     commanderCards,
     hasCommanderFreeMulligan,
     deckMulliganContext
+  );
+  const rec = recommendationFromRiskContext(
+    deckRelativeScore.keepRecommendation,
+    handTextureScore,
+    mulligan,
+    profile,
+    castabilityAdjustment,
+    manaAdjustment
   );
   const playDrawComparison = buildPlayDrawComparison(
     handTextureScore,

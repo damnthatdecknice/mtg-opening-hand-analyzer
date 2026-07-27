@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   castabilityScoreAdjustment,
   manaSufficiencyAdjustment,
+  recommendationFromEv,
   scoreHandDeckRelative,
   type AnalysisCardInput
 } from "../src/lib/handScoring";
@@ -60,6 +61,22 @@ const playable = castabilityScoreAdjustment([
 ]);
 
 assert.equal(playable.adjustment, 0, "castable hands are not penalized");
+
+assert.equal(
+  recommendationFromEv(72, 0.61, 0.68, 0.18),
+  "mulligan",
+  "hands meaningfully below the simulated mulligan EV are not keep leans"
+);
+assert.equal(
+  recommendationFromEv(72, 0.67, 0.68, 0.18),
+  "borderline",
+  "hands around the simulated mulligan EV are context-dependent"
+);
+assert.equal(
+  recommendationFromEv(72, 0.71, 0.68, 0.18),
+  "keep",
+  "hands above the simulated mulligan EV can be keep leans"
+);
 
 const oneLandBigMana = manaSufficiencyAdjustment({
   landsInHand: 1,

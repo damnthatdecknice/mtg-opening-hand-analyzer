@@ -843,13 +843,13 @@ function mulliganExpectedValue(
   return values.reduce((total, value) => total + value, 0) / Math.max(1, values.length);
 }
 
-function recommendationFromEv(score: number, keepEv: number, mulliganEv: number | undefined, catastrophicRate: number): KeepRecommendation {
+export function recommendationFromEv(score: number, keepEv: number, mulliganEv: number | undefined, catastrophicRate: number): KeepRecommendation {
   if (mulliganEv !== undefined) {
     const edge = keepEv - mulliganEv;
-    if (edge >= 0.08 && score >= 75) return "strong_keep";
-    if (edge >= -0.005 && score >= 55) return "keep";
-    if (edge > -0.04) return "borderline";
-    if (edge > -0.1) return "mulligan";
+    if (edge >= 0.08 && score >= 78 && catastrophicRate < 0.35) return "strong_keep";
+    if (edge >= 0.018 && score >= 60 && catastrophicRate < 0.55) return "keep";
+    if (edge > -0.018 && score >= 45) return "borderline";
+    if (edge > -0.08) return "mulligan";
     return "strong_mulligan";
   }
   if (catastrophicRate >= 0.7 || score <= 25) return "strong_mulligan";
