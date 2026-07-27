@@ -1,4 +1,5 @@
 import { parseDecklist, type ParsedDeckCard } from "@/lib/deckParser";
+import { buildManaCurveAnalysis } from "@/lib/manaCurve";
 
 export type PlayDraw = "play" | "draw";
 
@@ -18,6 +19,7 @@ export type CardLookup = {
   artCropUrl: string;
   artCropUrls: string[];
   mtgoIds: number[];
+  legalities?: Record<string, string>;
   isLand: boolean;
   isMultiface: boolean;
 };
@@ -156,6 +158,7 @@ type ScryfallCard = {
   oracle_text?: string;
   colors?: string[];
   produced_mana?: string[];
+  legalities?: Record<string, string>;
   prints_search_uri?: string;
   image_uris?: {
     small?: string;
@@ -356,6 +359,7 @@ function mapScryfallCard(card: ScryfallCard): CardLookup {
       )
     ),
     mtgoIds: [card.mtgo_id, card.mtgo_foil_id].filter((id): id is number => Boolean(id)),
+    legalities: card.legalities,
     isLand: typeLine.toLowerCase().includes("land"),
     isMultiface: Boolean(card.card_faces?.length)
   };
@@ -1552,19 +1556,7 @@ export function analyzeOpeningHand(
     };
   });
 
-  const curveBuckets = new Map<string, number>();
-  for (const [name, qty] of Array.from(mainCounts.entries())) {
-    const card = cardData.get(normalizeName(name));
-    if (!card || card.isLand) {
-      continue;
-    }
-    const bucket = card.manaValue >= 7 ? "7+" : String(Math.floor(card.manaValue));
-    curveBuckets.set(bucket, (curveBuckets.get(bucket) ?? 0) + qty);
-  }
-  const curve = ["0", "1", "2", "3", "4", "5", "6", "7+"].map((manaValue) => ({
-    manaValue,
-    spells: curveBuckets.get(manaValue) ?? 0
-  }));
+  const curve = buildManaCurveAnalysis(decklist, cardData, { format: options.format, scope: "main" }).curve;
 
   const turn3 = turnProbabilities.find((row) => row.turn === 3)?.landDropWithDraw ?? 0;
   const rec = recommendation(handTextureScore, landsInHand, turn3);

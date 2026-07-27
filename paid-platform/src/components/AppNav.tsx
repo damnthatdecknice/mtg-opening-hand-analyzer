@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase";
 const navItems = [
   { href: "/analyzer", label: "Analyzer" },
   { href: "/decks", label: "Save a Deck", deckProOnly: true },
+  { href: "/mana-curve", label: "Mana Curve", deckProOnly: true },
   { href: "/metagame", label: "Metagame", deckProOnly: true },
   { href: "/pricing", label: "Pricing" },
   { href: "/help", label: "How To" },
