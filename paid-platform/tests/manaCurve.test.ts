@@ -208,6 +208,16 @@ const roomAnalysis = buildManaCurveAnalysis(
 );
 assert.equal(roomAnalysis.curve.find((row) => row.manaValue === "2")?.spells, 2, "split rooms count the cheap face");
 assert.equal(roomAnalysis.curve.find((row) => row.manaValue === "7+")?.spells, 2, "split rooms count the expensive face");
+assert.deepEqual(
+  roomAnalysis.curve.find((row) => row.manaValue === "2")?.cards.enchantments,
+  [{ name: "Roaring Furnace", qty: 2 }],
+  "curve buckets retain card names for hover tooltips"
+);
+assert.deepEqual(
+  roomAnalysis.curve.find((row) => row.manaValue === "7+")?.cards.enchantments,
+  [{ name: "Steaming Sauna", qty: 2 }],
+  "split card tooltips use the face name in each bucket"
+);
 assert.equal(roomAnalysis.spellCount, 4, "split nonland cards are represented as separate curve faces");
 assert.equal(roomAnalysis.landCount, 4, "split face handling does not disturb land counting");
 assert.equal(roomAnalysis.typeBreakdown.enchantments, 4, "split room faces retain their primary type");

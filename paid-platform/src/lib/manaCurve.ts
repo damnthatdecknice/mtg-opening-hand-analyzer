@@ -32,6 +32,7 @@ export type ManaCurveRow = {
   manaValue: ManaCurveBucket;
   spells: number;
   types: Record<CardTypeKey, number>;
+  cards: Record<CardTypeKey, Array<{ name: string; qty: number }>>;
 };
 
 export type ManaCurveObservation = {
@@ -101,6 +102,29 @@ function emptyTypeCounts(): Record<CardTypeKey, number> {
     lands: 0,
     other: 0
   };
+}
+
+function emptyTypeCards(): Record<CardTypeKey, Array<{ name: string; qty: number }>> {
+  return {
+    creatures: [],
+    instants: [],
+    sorceries: [],
+    artifacts: [],
+    enchantments: [],
+    planeswalkers: [],
+    battles: [],
+    lands: [],
+    other: []
+  };
+}
+
+function addCardToBucket(cards: Array<{ name: string; qty: number }>, name: string, qty: number) {
+  const existing = cards.find((card) => normalizeName(card.name) === normalizeName(name));
+  if (existing) {
+    existing.qty += qty;
+    return;
+  }
+  cards.push({ name, qty });
 }
 
 function bucketForManaValue(manaValue: number): ManaCurveBucket {
@@ -538,7 +562,10 @@ export function buildManaCurveAnalysis(
   const sideboardCards = selectedCards(parsed.cards, "sideboard");
   const analysisCards = selectedCards(parsed.cards, scope);
   const curveMap = new Map<ManaCurveBucket, ManaCurveRow>(
-    manaCurveBuckets.map((manaValue) => [manaValue, { manaValue, spells: 0, types: emptyTypeCounts() }])
+    manaCurveBuckets.map((manaValue) => [
+      manaValue,
+      { manaValue, spells: 0, types: emptyTypeCounts(), cards: emptyTypeCards() }
+    ])
   );
   const typeBreakdown = emptyTypeCounts();
   const spellValues: Array<{ value: number; qty: number }> = [];
@@ -562,6 +589,7 @@ export function buildManaCurveAnalysis(
       const row = curveMap.get(bucket)!;
       row.spells += curveEntry.qty;
       row.types[type] += curveEntry.qty;
+      addCardToBucket(row.cards[type], curveCard?.name ?? entry.name, curveEntry.qty);
       spellCount += curveEntry.qty;
       totalManaValue += manaValue * curveEntry.qty;
       spellValues.push({ value: manaValue, qty: curveEntry.qty });

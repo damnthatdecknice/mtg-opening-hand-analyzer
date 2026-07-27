@@ -284,11 +284,13 @@ function CurvePanel({ analysis }: { analysis: ManaCurveAnalysis }) {
             <span className="stacked-curve-track" style={{ width: `${(row.spells / max) * 100}%` }}>
               {stackTypes.map((type) => {
                 const count = row.types[type];
+                const tooltip = formatCurveTooltip(typeLabels[type], row.cards[type]);
                 return count ? (
                   <i
-                    aria-label={`${typeLabels[type]} ${count}`}
+                    aria-label={tooltip}
                     key={type}
                     style={{ background: typeColors[type], width: `${(count / Math.max(1, row.spells)) * 100}%` }}
+                    title={tooltip}
                   />
                 ) : null;
               })}
@@ -300,6 +302,17 @@ function CurvePanel({ analysis }: { analysis: ManaCurveAnalysis }) {
       <p className="muted-copy">Lands are excluded from the spell curve and counted separately.</p>
     </section>
   );
+}
+
+function formatCurveTooltip(typeLabel: string, cards: Array<{ name: string; qty: number }>) {
+  const cardText = cards.length
+    ? cards
+        .slice()
+        .sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name))
+        .map((card) => `${card.name} x${card.qty}`)
+        .join(", ")
+    : "No cards";
+  return `${typeLabel}: ${cardText}`;
 }
 
 function TypeBreakdownPanel({ analysis }: { analysis: ManaCurveAnalysis }) {
