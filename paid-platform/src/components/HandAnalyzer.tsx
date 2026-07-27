@@ -1576,10 +1576,19 @@ function Overview({ result }: { result: AnalyzerResult }) {
         <div className="metric-card">
           <span>Hand texture</span>
           <strong>{result.handTextureScore}</strong>
-          <em className={result.castabilityTextureAdjustment < 0 ? "metric-impact bad" : "metric-impact neutral"}>
-            {result.castabilityTextureAdjustment < 0
-              ? `${result.castabilityTextureAdjustment} castability`
-              : "castability neutral"}
+          <em
+            className={
+              result.castabilityTextureAdjustment < 0 || result.manaTextureAdjustment < 0
+                ? "metric-impact bad"
+                : "metric-impact neutral"
+            }
+          >
+            {[
+              result.manaTextureAdjustment < 0 ? `${result.manaTextureAdjustment} mana` : "",
+              result.castabilityTextureAdjustment < 0 ? `${result.castabilityTextureAdjustment} castability` : ""
+            ]
+              .filter(Boolean)
+              .join(" / ") || "mana stable"}
           </em>
         </div>
         <div className="metric-card">

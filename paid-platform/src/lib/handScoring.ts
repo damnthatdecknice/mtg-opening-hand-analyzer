@@ -1,7 +1,27 @@
 export type CastabilityScoreRow = {
+  cardName?: string;
   manaValue: number;
+  turn1?: number;
   turn2: number;
   turn3: number;
+};
+
+export type ManaSufficiencyInput = {
+  landsInHand: number;
+  effectiveLandsInHand: number;
+  profileLabel: string;
+  curveTop: number;
+  averageManaValue: number;
+  turn2LandDrop: number;
+  turn3LandDrop: number;
+  turn4LandDrop: number;
+  hasCastableRamp: boolean;
+};
+
+export type ScoreAdjustment = {
+  adjustment: number;
+  cap: number;
+  note: string;
 };
 
 export function castabilityScoreAdjustment(castability: CastabilityScoreRow[]) {
@@ -46,4 +66,73 @@ export function castabilityScoreAdjustment(castability: CastabilityScoreRow[]) {
   }
 
   return { adjustment: 0, note: "" };
+}
+
+export function manaSufficiencyAdjustment(input: ManaSufficiencyInput): ScoreAdjustment {
+  const isLowCurve = input.profileLabel === "Low-curve pressure";
+  const isManaHungry =
+    input.profileLabel === "Ramp or big-mana curve" ||
+    input.profileLabel === "Control/value curve" ||
+    input.curveTop >= 4 ||
+    input.averageManaValue >= 2.8;
+  const requiredEarlyMana = isLowCurve ? 2 : isManaHungry ? 3 : 2;
+  const hasEnoughRawMana = input.effectiveLandsInHand >= requiredEarlyMana;
+
+  if (input.landsInHand === 0) {
+    return {
+      adjustment: -45,
+      cap: 18,
+      note: "No-land hands are not functional without an unusual free-mana plan."
+    };
+  }
+
+  if (input.landsInHand === 1) {
+    if (input.hasCastableRamp && input.turn3LandDrop >= 0.58) {
+      return {
+        adjustment: isManaHungry ? -18 : -12,
+        cap: isManaHungry ? 58 : 64,
+        note: "One-land hands are still fragile; castable ramp and land-drop odds are keeping this from being an automatic mulligan."
+      };
+    }
+
+    if (isManaHungry || input.turn3LandDrop < 0.45) {
+      return {
+        adjustment: -38,
+        cap: 42,
+        note: `This hand is below the deck's mana requirement: one land with ${Math.round(input.turn3LandDrop * 100)}% to make the third land drop by turn 3.`
+      };
+    }
+
+    return {
+      adjustment: -28,
+      cap: 52,
+      note: "One-land hands need exceptional help; this hand is being capped for mana risk."
+    };
+  }
+
+  if (!hasEnoughRawMana && input.turn3LandDrop < 0.55) {
+    return {
+      adjustment: -18,
+      cap: 58,
+      note: `This hand is short of the deck's preferred early mana and only ${Math.round(input.turn3LandDrop * 100)}% to make the third land drop by turn 3.`
+    };
+  }
+
+  if (isManaHungry && input.effectiveLandsInHand === 2 && !input.hasCastableRamp && input.turn4LandDrop < 0.6) {
+    return {
+      adjustment: -14,
+      cap: 62,
+      note: `This curve wants stable fourth-mana development; the fourth land by turn 4 is only ${Math.round(input.turn4LandDrop * 100)}%.`
+    };
+  }
+
+  if (input.landsInHand === 2 && input.turn2LandDrop < 0.72 && input.turn3LandDrop < 0.62) {
+    return {
+      adjustment: -8,
+      cap: 68,
+      note: "The hand has two lands, but follow-up land drops are still below a comfortable range."
+    };
+  }
+
+  return { adjustment: 0, cap: 100, note: "" };
 }

@@ -1,6 +1,6 @@
 import { parseDecklist, type ParsedDeckCard } from "@/lib/deckParser";
 import { buildManaCurveAnalysis } from "@/lib/manaCurve";
-import { castabilityScoreAdjustment } from "./handScoring";
+import { castabilityScoreAdjustment, manaSufficiencyAdjustment } from "./handScoring";
 
 export type PlayDraw = "play" | "draw";
 
@@ -127,6 +127,7 @@ export type AnalyzerResult = {
   handTextureScore: number;
   baseHandTextureScore: number;
   castabilityTextureAdjustment: number;
+  manaTextureAdjustment: number;
   handTextureLabel: string;
   recommendation: string;
   recommendationTone: "good" | "neutral" | "bad";
@@ -1481,10 +1482,6 @@ export function analyzeOpeningHand(
   const profile = deckProfile(mainCounts, cardData, landsInHand, effectiveLandsInHand);
   const castability = castabilityMonteCarlo(analysisHand, library, cardData, playDraw);
   const castabilityAdjustment = castabilityScoreAdjustment(castability);
-  const handTextureScore = Math.max(
-    0,
-    Math.min(100, baseHandTextureScore + profile.scoreAdjustment + castabilityAdjustment.adjustment)
-  );
   const drawSources = handCards
     .map((card) => ({ card, depth: drawDepth(card) }))
     .filter(({ depth }) => depth.drawn > 0 || depth.seen > 0)
@@ -1564,7 +1561,26 @@ export function analyzeOpeningHand(
 
   const curve = buildManaCurveAnalysis(decklist, cardData, { format: options.format, scope: "main" }).curve;
 
+  const turn2 = turnProbabilities.find((row) => row.turn === 2);
   const turn3 = turnProbabilities.find((row) => row.turn === 3)?.landDropWithDraw ?? 0;
+  const turn4 = turnProbabilities.find((row) => row.turn === 4)?.landDropWithDraw ?? 0;
+  const hasCastableRamp = rampSources.some((source) => {
+    const castRow = castability.find((row) => row.cardName === source.cardName);
+    return Boolean(castRow && Math.max(castRow.turn1, castRow.turn2) >= 0.55);
+  });
+  const manaAdjustment = manaSufficiencyAdjustment({
+    landsInHand,
+    effectiveLandsInHand,
+    profileLabel: profile.label,
+    curveTop: profile.curveTop,
+    averageManaValue: profile.averageManaValue,
+    turn2LandDrop: turn2?.landDropWithDraw ?? 0,
+    turn3LandDrop: turn3,
+    turn4LandDrop: turn4,
+    hasCastableRamp
+  });
+  const uncappedTextureScore = baseHandTextureScore + profile.scoreAdjustment + castabilityAdjustment.adjustment + manaAdjustment.adjustment;
+  const handTextureScore = Math.max(0, Math.min(manaAdjustment.cap, uncappedTextureScore));
   const rec = recommendation(handTextureScore, landsInHand, turn3);
   const hasEarlyCastabilityConcern = castability.some((row) => row.manaValue <= 2 && row.turn2 < 0.55);
   const hasCommanderFreeMulligan = isCommanderStyleFormat(options.format);
@@ -1617,6 +1633,7 @@ export function analyzeOpeningHand(
     landsInHand > 4 ? "High land count: this hand may flood without card velocity." : "",
     turn3 < 0.55 && landsInHand < 3 ? "Third land by turn 3 is not especially reliable." : "",
     castabilityAdjustment.note,
+    manaAdjustment.note,
     drawSources.length ? `Draw/look spells add about ${extraLooksByTurn(3).toFixed(1)} card(s) of expected depth by turn 3.` : "",
     landEquivalentSources.length ? `Land-equivalent source counted: ${landEquivalentSources.map((source) => source.cardName).join(", ")}.` : "",
     mulligan && mulligan.better >= 0.45
@@ -1648,6 +1665,7 @@ export function analyzeOpeningHand(
     handTextureScore,
     baseHandTextureScore,
     castabilityTextureAdjustment: castabilityAdjustment.adjustment,
+    manaTextureAdjustment: manaAdjustment.adjustment,
     handTextureLabel: textureLabel(handTextureScore),
     recommendation: rec.label,
     recommendationTone: rec.tone,
