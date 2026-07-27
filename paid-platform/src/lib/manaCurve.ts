@@ -23,6 +23,7 @@ export type ManaCurveCardData = {
   manaCost?: string;
   typeLine: string;
   colors?: string[];
+  faces?: Array<{ name: string; manaCost?: string; manaValue: number; typeLine: string; oracleText?: string }>;
   isLand: boolean;
   legalities?: Record<string, string>;
 };
@@ -255,6 +256,30 @@ function cardRole(card: ManaCurveCardData | undefined) {
   return "Structural slot";
 }
 
+function curveEntriesForCard(entry: ParsedDeckCard, card: ManaCurveCardData | undefined) {
+  if (!card) {
+    return [{ qty: entry.qty, card }];
+  }
+
+  const nonlandFaces = (card.faces ?? []).filter((face) => !/\bland\b/i.test(face.typeLine));
+  const shouldSplitFaces = entry.name.includes("//") && nonlandFaces.length >= 2 && !card.isLand;
+  if (!shouldSplitFaces) {
+    return [{ qty: entry.qty, card }];
+  }
+
+  return nonlandFaces.map((face) => ({
+    qty: entry.qty,
+    card: {
+      ...card,
+      name: face.name || card.name,
+      manaCost: face.manaCost ?? "",
+      manaValue: Math.max(0, face.manaValue ?? 0),
+      typeLine: face.typeLine || card.typeLine,
+      oracleText: face.oracleText ?? ""
+    }
+  }));
+}
+
 function buildObservations(
   mainCards: ParsedDeckCard[],
   analysisCards: ParsedDeckCard[],
@@ -348,12 +373,23 @@ function buildObservations(
 
 function findSimilarTournamentDecks(mainCards: ParsedDeckCard[], metagameDecks: MetagameDeck[] = []) {
   const savedCards = new Set(mainCards.map((card) => normalizeName(card.name)));
+  const savedFaceNames = new Set(
+    mainCards
+      .flatMap((card) => card.name.split("//").map((name) => normalizeName(name)))
+      .filter(Boolean)
+  );
   return metagameDecks
     .map((deck) => ({
       deck,
-      shared: deck.main.filter((card) => savedCards.has(normalizeName(card.name))).length
+      shared: deck.main.filter((card) => {
+        const normalized = normalizeName(card.name);
+        if (savedCards.has(normalized)) {
+          return true;
+        }
+        return card.name.split("//").some((face) => savedFaceNames.has(normalizeName(face)));
+      }).length
     }))
-    .filter((match) => match.shared >= 3)
+    .filter((match) => match.shared >= 2)
     .sort((a, b) => {
       const rankA = a.deck.rank ?? 999;
       const rankB = b.deck.rank ?? 999;
@@ -512,21 +548,24 @@ export function buildManaCurveAnalysis(
 
   for (const entry of analysisCards) {
     const card = cardData.get(normalizeName(entry.name));
-    const type = card ? primaryCardType(card) : "other";
-    typeBreakdown[type] += entry.qty;
-    if (type === "lands") {
-      landCount += entry.qty;
-      continue;
-    }
+    for (const curveEntry of curveEntriesForCard(entry, card)) {
+      const curveCard = curveEntry.card;
+      const type = curveCard ? primaryCardType(curveCard) : "other";
+      typeBreakdown[type] += curveEntry.qty;
+      if (type === "lands") {
+        landCount += curveEntry.qty;
+        continue;
+      }
 
-    const manaValue = Math.max(0, card?.manaValue ?? 0);
-    const bucket = bucketForManaValue(manaValue);
-    const row = curveMap.get(bucket)!;
-    row.spells += entry.qty;
-    row.types[type] += entry.qty;
-    spellCount += entry.qty;
-    totalManaValue += manaValue * entry.qty;
-    spellValues.push({ value: manaValue, qty: entry.qty });
+      const manaValue = Math.max(0, curveCard?.manaValue ?? 0);
+      const bucket = bucketForManaValue(manaValue);
+      const row = curveMap.get(bucket)!;
+      row.spells += curveEntry.qty;
+      row.types[type] += curveEntry.qty;
+      spellCount += curveEntry.qty;
+      totalManaValue += manaValue * curveEntry.qty;
+      spellValues.push({ value: manaValue, qty: curveEntry.qty });
+    }
   }
 
   const colors = deckColors(mainCards, cardData);

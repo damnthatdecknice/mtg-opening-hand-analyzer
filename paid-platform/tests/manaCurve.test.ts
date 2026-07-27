@@ -24,6 +24,24 @@ function card(
   };
 }
 
+function splitCard(
+  name: string,
+  typeLine: string,
+  faces: Array<{ name: string; manaValue: number; typeLine: string }>,
+  colors: string[] = [],
+  legalities: Record<string, string> = { modern: "legal", pioneer: "legal", standard: "legal" }
+): ManaCurveCardData {
+  return {
+    name,
+    manaValue: faces.reduce((sum, face) => sum + face.manaValue, 0),
+    typeLine,
+    colors,
+    faces,
+    isLand: /\bland\b/i.test(typeLine),
+    legalities
+  };
+}
+
 function data(cards: ManaCurveCardData[]) {
   return new Map(cards.map((entry) => [entry.name.toLowerCase(), entry]));
 }
@@ -48,6 +66,19 @@ const baseCards = data([
   card("Opt", 1, "Instant", ["U"]),
   card("Tournament Bolt", 1, "Instant", ["R"]),
   card("Off Color Charm", 2, "Instant", ["G"])
+]);
+
+const roomCards = data([
+  splitCard(
+    "Roaring Furnace // Steaming Sauna",
+    "Enchantment - Room",
+    [
+      { name: "Roaring Furnace", manaValue: 2, typeLine: "Enchantment - Room" },
+      { name: "Steaming Sauna", manaValue: 7, typeLine: "Enchantment - Room" }
+    ],
+    ["U", "R"]
+  ),
+  card("Steam Vents", 0, "Land - Island Mountain")
 ]);
 
 const decklist = `Deck
@@ -167,5 +198,18 @@ Sideboard
   { format: "Modern" }
 );
 assert.ok(!maxedOpt.suggestions.some((row) => row.cardName === "Opt"), "recommendations respect normal copy limits");
+
+const roomAnalysis = buildManaCurveAnalysis(
+  `Deck
+2 Roaring Furnace // Steaming Sauna
+4 Steam Vents`,
+  roomCards,
+  { format: "Standard" }
+);
+assert.equal(roomAnalysis.curve.find((row) => row.manaValue === "2")?.spells, 2, "split rooms count the cheap face");
+assert.equal(roomAnalysis.curve.find((row) => row.manaValue === "7+")?.spells, 2, "split rooms count the expensive face");
+assert.equal(roomAnalysis.spellCount, 4, "split nonland cards are represented as separate curve faces");
+assert.equal(roomAnalysis.landCount, 4, "split face handling does not disturb land counting");
+assert.equal(roomAnalysis.typeBreakdown.enchantments, 4, "split room faces retain their primary type");
 
 console.log("manaCurve tests passed");

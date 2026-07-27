@@ -2867,6 +2867,27 @@ button.list-row {
   width: min(1120px, 100%);
 }
 
+.mana-curve-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.04fr) minmax(340px, 0.96fr);
+  gap: 18px;
+  align-items: start;
+  width: min(1180px, 100%);
+}
+
+.mana-curve-page .panel {
+  padding: 28px;
+}
+
+.mana-curve-page .section-heading {
+  margin-bottom: 24px;
+}
+
+.mana-curve-page .eyebrow {
+  display: block;
+  margin-bottom: 8px;
+}
+
 .mana-curve-wide-panel {
   width: 100%;
 }
@@ -2888,6 +2909,19 @@ button.list-row {
   height: 100%;
   border-radius: 0;
   box-shadow: none;
+}
+
+.mana-curve-page .curve-row {
+  grid-template-columns: 38px minmax(260px, 1fr) 38px;
+  gap: 16px;
+}
+
+.mana-curve-page .curve-row div {
+  min-width: 0;
+}
+
+.mana-curve-page .curve-row strong {
+  justify-self: end;
 }
 
 .type-breakdown-grid {
@@ -3291,6 +3325,7 @@ button.meta-bar-row {
   .source-grid,
   .deck-page-grid,
   .metagame-grid,
+  .mana-curve-grid,
   .curve-metrics,
   .form-row {
     grid-template-columns: 1fr;

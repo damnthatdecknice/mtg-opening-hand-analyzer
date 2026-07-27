@@ -243,12 +243,12 @@ export function ManaCurveDashboard() {
             </div>
           </section>
 
-          <section className="metagame-grid">
+          <section className="mana-curve-grid">
             <CurvePanel analysis={analysis} />
             <TypeBreakdownPanel analysis={analysis} />
           </section>
 
-          <section className="metagame-grid">
+          <section className="mana-curve-grid">
             <ObservationPanel analysis={analysis} />
             <SuggestionPanel analysis={analysis} hasMetagame={Boolean(metagameDecks.length)} />
           </section>
@@ -343,11 +343,17 @@ function ObservationPanel({ analysis }: { analysis: ManaCurveAnalysis }) {
 }
 
 function SuggestionPanel({ analysis, hasMetagame }: { analysis: ManaCurveAnalysis; hasMetagame: boolean }) {
+  const hasTournamentSuggestion = analysis.suggestions.some((suggestion) => suggestion.source === "similar-tournament-decks");
   return (
     <section className="panel">
       <div className="section-heading">
         <p className="eyebrow">Suggestions</p>
-        <h2>{hasMetagame ? "Similar Challenge Shells" : "Structural Roles"}</h2>
+        <h2>{hasTournamentSuggestion ? "Similar Challenge Shells" : hasMetagame ? "Tournament Data Loaded" : "Structural Roles"}</h2>
+        {hasMetagame && !hasTournamentSuggestion ? (
+          <p className="muted-copy">
+            Recent tournament lists are loaded, but no legal color-compatible card gaps survived filtering for this deck.
+          </p>
+        ) : null}
       </div>
       <div className="list-stack">
         {analysis.suggestions.length ? (
