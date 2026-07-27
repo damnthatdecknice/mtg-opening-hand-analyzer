@@ -290,8 +290,10 @@ function CurvePanel({ analysis }: { analysis: ManaCurveAnalysis }) {
                     aria-label={tooltip}
                     key={type}
                     style={{ background: typeColors[type], width: `${(count / Math.max(1, row.spells)) * 100}%` }}
-                    title={tooltip}
-                  />
+                    tabIndex={0}
+                  >
+                    <span className="curve-segment-tooltip">{tooltip}</span>
+                  </i>
                 ) : null;
               })}
             </span>

@@ -2894,13 +2894,15 @@ button.list-row {
 
 .stacked-curve-row div {
   height: 22px;
+  overflow: visible;
 }
 
 .stacked-curve-track {
   display: flex;
   height: 100%;
   min-width: 8px;
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
   border-radius: inherit;
 }
 
@@ -2909,6 +2911,66 @@ button.list-row {
   height: 100%;
   border-radius: 0;
   box-shadow: none;
+  cursor: help;
+  position: relative;
+}
+
+.stacked-curve-track i:first-child {
+  border-bottom-left-radius: inherit;
+  border-top-left-radius: inherit;
+}
+
+.stacked-curve-track i:last-child {
+  border-bottom-right-radius: inherit;
+  border-top-right-radius: inherit;
+}
+
+.curve-segment-tooltip {
+  background:
+    linear-gradient(135deg, rgba(255, 198, 91, 0.13), transparent 38%),
+    var(--panel);
+  border: 1px solid rgba(255, 208, 132, 0.46);
+  bottom: calc(100% + 10px);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.42), 0 0 20px rgba(255, 179, 58, 0.11);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 800;
+  left: 50%;
+  line-height: 1.35;
+  max-width: min(340px, 72vw);
+  min-width: 180px;
+  opacity: 0;
+  padding: 10px 12px;
+  pointer-events: none;
+  position: absolute;
+  text-align: left;
+  transform: translate(-50%, 6px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  visibility: hidden;
+  white-space: normal;
+  width: max-content;
+  z-index: 20;
+}
+
+.curve-segment-tooltip::after {
+  background: var(--panel);
+  border-bottom: 1px solid rgba(255, 208, 132, 0.46);
+  border-right: 1px solid rgba(255, 208, 132, 0.46);
+  bottom: -5px;
+  content: "";
+  height: 9px;
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%) rotate(45deg);
+  width: 9px;
+}
+
+.stacked-curve-track i:hover .curve-segment-tooltip,
+.stacked-curve-track i:focus-visible .curve-segment-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  visibility: visible;
 }
 
 .mana-curve-page .curve-row {
