@@ -1,5 +1,6 @@
 import { parseDecklist, type ParsedDeckCard } from "@/lib/deckParser";
 import { buildManaCurveAnalysis } from "@/lib/manaCurve";
+import { castabilityScoreAdjustment } from "./handScoring";
 
 export type PlayDraw = "play" | "draw";
 
@@ -1477,8 +1478,12 @@ export function analyzeOpeningHand(
   const earlySpellCount = nonlands.filter((card) => card.manaValue <= 2).length;
   const baseHandTextureScore = textureScore(landsInHand, effectiveLandsInHand, averageManaValue, earlySpellCount);
   const profile = deckProfile(mainCounts, cardData, landsInHand, effectiveLandsInHand);
-  const handTextureScore = Math.max(0, Math.min(100, baseHandTextureScore + profile.scoreAdjustment));
   const castability = castabilityMonteCarlo(analysisHand, library, cardData, playDraw);
+  const castabilityAdjustment = castabilityScoreAdjustment(castability);
+  const handTextureScore = Math.max(
+    0,
+    Math.min(100, baseHandTextureScore + profile.scoreAdjustment + castabilityAdjustment.adjustment)
+  );
   const drawSources = handCards
     .map((card) => ({ card, depth: drawDepth(card) }))
     .filter(({ depth }) => depth.drawn > 0 || depth.seen > 0)
@@ -1560,12 +1565,13 @@ export function analyzeOpeningHand(
 
   const turn3 = turnProbabilities.find((row) => row.turn === 3)?.landDropWithDraw ?? 0;
   const rec = recommendation(handTextureScore, landsInHand, turn3);
+  const hasEarlyCastabilityConcern = castability.some((row) => row.manaValue <= 2 && row.turn2 < 0.55);
   const hasCommanderFreeMulligan = isCommanderStyleFormat(options.format);
   const deckMulliganContext = mulliganDeckContext(profile, hasCommanderFreeMulligan);
   const mulligan = mulliganSummary(
     mainCounts,
     cardData,
-    baseHandTextureScore,
+    handTextureScore,
     commanderCards,
     hasCommanderFreeMulligan,
     deckMulliganContext
@@ -1595,8 +1601,8 @@ export function analyzeOpeningHand(
       tone: rampSources.length ? "good" : "neutral"
     },
     {
-      label: castability.some((row) => row.manaValue <= 2 && row.turn2 < 0.55) ? "castability concern" : "early spells castable",
-      tone: castability.some((row) => row.manaValue <= 2 && row.turn2 < 0.55) ? "bad" : "good"
+      label: hasEarlyCastabilityConcern ? "castability concern" : "early spells castable",
+      tone: hasEarlyCastabilityConcern ? "bad" : "good"
     },
     {
       label: profile.scoreAdjustment > 0 ? "curve likes this mana" : profile.scoreAdjustment < 0 ? "curve dislikes this mana" : "curve-neutral mana",
@@ -1609,6 +1615,7 @@ export function analyzeOpeningHand(
     landsInHand < 2 ? "Low land count: this hand needs help quickly." : "",
     landsInHand > 4 ? "High land count: this hand may flood without card velocity." : "",
     turn3 < 0.55 && landsInHand < 3 ? "Third land by turn 3 is not especially reliable." : "",
+    castabilityAdjustment.note,
     drawSources.length ? `Draw/look spells add about ${extraLooksByTurn(3).toFixed(1)} card(s) of expected depth by turn 3.` : "",
     landEquivalentSources.length ? `Land-equivalent source counted: ${landEquivalentSources.map((source) => source.cardName).join(", ")}.` : "",
     mulligan && mulligan.better >= 0.45

@@ -8,5 +8,5 @@
     "noEmit": false,
     "incremental": false
   },
-  "include": ["src/lib/deckParser.ts", "src/lib/manaCurve.ts", "src/lib/metagame.ts", "tests/**/*.ts"]
+  "include": ["src/lib/deckParser.ts", "src/lib/handScoring.ts", "src/lib/manaCurve.ts", "src/lib/metagame.ts", "tests/**/*.ts"]
 }
