@@ -1826,6 +1826,10 @@ button.list-row {
   width: min(820px, 100%);
 }
 
+.hero-grid + .app-footer {
+  display: none;
+}
+
 .compact-first-deck,
 .first-deck-skeleton {
   width: min(680px, 100%);

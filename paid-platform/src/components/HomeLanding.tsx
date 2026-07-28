@@ -8,21 +8,6 @@ import { FirstDeckOnboarding } from "@/components/FirstDeckOnboarding";
 import { clearAuthFallback } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
 
-const pillars = [
-  {
-    title: "Add your deck",
-    body: "Paste an Arena-style list or import your MTGO .dek so analysis uses the deck you are actually playing."
-  },
-  {
-    title: "Analyze the seven",
-    body: "Enter the hand manually or review screenshot recognition before any recommendation is generated."
-  },
-  {
-    title: "Review the risks",
-    body: "See land-drop odds, castability, failure conditions, play/draw context, and mulligan comparison."
-  }
-];
-
 export function HomeLanding() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -109,15 +94,6 @@ export function HomeLanding() {
         requestedAction={onboardingAction}
         onRequestedActionHandled={() => setOnboardingAction("none")}
       />
-
-      <div className="pillar-grid">
-        {pillars.map((pillar) => (
-          <article className="panel compact-panel" key={pillar.title}>
-            <h2>{pillar.title}</h2>
-            <p>{pillar.body}</p>
-          </article>
-        ))}
-      </div>
     </section>
   );
 }
