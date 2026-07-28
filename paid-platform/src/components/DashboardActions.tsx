@@ -11,7 +11,7 @@ export function DashboardActions() {
       {entitlements.canUseDeckVault ? (
         <>
           <Link className="primary-button" href="/decks">
-            Get Started - Save a Deck
+            Get Started - Import a Deck
           </Link>
           <Link className="secondary-button" href="/analyzer">
             Analyze a Hand
