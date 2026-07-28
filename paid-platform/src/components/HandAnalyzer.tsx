@@ -14,8 +14,8 @@ import {
   parseDekImport,
   type DeckImportMetadata
 } from "@/lib/deckParser";
+import { selectAnalyzerDeck } from "@/lib/analyzerRouting";
 import type { SavedDeck } from "@/lib/decks";
-import { getAuthFallbackUser } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
 
@@ -101,6 +101,7 @@ const deckFormats = [
   "Pioneer",
   "Modern",
   "Legacy",
+  "Pauper",
   "Draft",
   "Commander",
   "Brawl",
@@ -730,14 +731,14 @@ export function HandAnalyzer() {
   const entitlements = useEntitlements();
   const [workflowTab, setWorkflowTab] = useState<WorkflowTab>("deck");
   const [resultTab, setResultTab] = useState<ResultTab>("overview");
-  const [decklist, setDecklist] = useState(sampleDeck);
+  const [decklist, setDecklist] = useState("");
   const [deckImportMetadata, setDeckImportMetadata] = useState<DeckImportMetadata | undefined>();
   const [deckFormat, setDeckFormat] = useState("Standard");
   const [savedDecks, setSavedDecks] = useState<SavedDeck[]>([]);
   const [selectedDeckId, setSelectedDeckId] = useState("custom");
   const [isLoadingDecks, setIsLoadingDecks] = useState(false);
-  const [handText, setHandText] = useState(sampleHand);
-  const [confirmedHand, setConfirmedHand] = useState(sampleHand.split(/\r?\n/));
+  const [handText, setHandText] = useState("");
+  const [confirmedHand, setConfirmedHand] = useState<string[]>([]);
   const [playDraw, setPlayDraw] = useState<PlayDraw>("play");
   const [screenshotSource, setScreenshotSource] = useState<ScreenshotSource>("mtgo");
   const [screenshotSrc, setScreenshotSrc] = useState("");
@@ -756,6 +757,21 @@ export function HandAnalyzer() {
     () => handText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
     [handText]
   );
+
+  useEffect(() => {
+    const sampleRequested =
+      typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("sample") === "1" : false;
+    if (!sampleRequested) {
+      return;
+    }
+
+    setDecklist(sampleDeck);
+    setHandText(sampleHand);
+    setConfirmedHand(sampleHand.split(/\r?\n/));
+    setSelectedDeckId("custom");
+    setDeckImportMetadata(undefined);
+    setMessage("Loaded a sample deck and opening hand for demonstration. Nothing is saved unless you choose to save your own deck.");
+  }, []);
 
   useEffect(() => {
     async function loadSavedDecks() {
@@ -778,22 +794,38 @@ export function HandAnalyzer() {
 
       const decks = (data ?? []) as SavedDeck[];
       setSavedDecks(decks);
+      const sampleRequested =
+        typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("sample") === "1" : false;
+      if (sampleRequested) {
+        return;
+      }
       const requestedId =
         typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("deck") : "";
       const rememberedId = window.localStorage.getItem(lastDeckStorageKey);
-      const requestedDeck = decks.find((deck) => deck.id === requestedId);
-      const rememberedDeck = decks.find((deck) => deck.id === rememberedId);
-      const initialDeck = requestedDeck ?? rememberedDeck ?? decks[0];
+      const selection = selectAnalyzerDeck({
+        decks,
+        rememberedDeckId: rememberedId,
+        requestedDeckId: requestedId
+      });
+      const initialDeck = selection.deck;
 
       if (initialDeck) {
         setSelectedDeckId(initialDeck.id);
         setDecklist(initialDeck.decklist);
         setDeckImportMetadata(initialDeck.parsed_json.importMetadata);
         setDeckFormat(initialDeck.format ?? "Standard");
-        window.localStorage.setItem(lastDeckStorageKey, initialDeck.id);
-        if (requestedDeck) {
-          setMessage(`Loaded ${requestedDeck.name}.`);
+        if (selection.shouldRemember) {
+          window.localStorage.setItem(lastDeckStorageKey, initialDeck.id);
         }
+        if (requestedId) {
+          setMessage(`Loaded ${initialDeck.name}.`);
+        }
+      } else if (selection.message) {
+        setSelectedDeckId("custom");
+        setDecklist("");
+        setDeckImportMetadata(undefined);
+        window.localStorage.removeItem(lastDeckStorageKey);
+        setMessage(selection.message);
       }
     }
 
@@ -1026,7 +1058,7 @@ export function HandAnalyzer() {
     }
 
     const sessionResponse = await supabase.auth.getSession();
-    return sessionResponse.data.session?.user.id ?? getAuthFallbackUser()?.id ?? "";
+    return sessionResponse.data.session?.user.id ?? "";
   }
 
   async function canRunAnalyzerThisWeek() {
@@ -1167,10 +1199,10 @@ export function HandAnalyzer() {
   function renderResultTabs() {
     const tabs: Array<{ id: ResultTab; label: string }> = [
       { id: "overview", label: "Overview" },
-      { id: "deep", label: "Deep Data" },
+      { id: "deep", label: "Probability Details" },
       { id: "curve", label: "Mana Curve" },
       { id: "mulligan", label: "Mulligan" },
-      { id: "other", label: "Other" }
+      { id: "other", label: "Model Notes" }
     ];
     return (
       <div className="tool-tabs result-tabs">
@@ -1205,7 +1237,7 @@ export function HandAnalyzer() {
       {workflowTab === "deck" ? (
         <section className="panel analyzer-input-panel narrow-tool-panel">
           <div className="section-heading">
-            <p className="eyebrow">Deck matrix</p>
+            <p className="eyebrow">Choose Your Deck</p>
             {entitlements.canUseDeckVault ? (
               <label className="field-stack deck-picker">
                 Saved deck
@@ -1326,7 +1358,7 @@ export function HandAnalyzer() {
       {workflowTab === "hand" ? (
         <section className="panel analyzer-input-panel narrow-tool-panel">
           <div className="section-heading">
-            <p className="eyebrow">Manual override</p>
+            <p className="eyebrow">Enter Your Hand</p>
             <h2>Confirm Opening Hand</h2>
             <p>Paste seven names or correct the seven dropdowns directly.</p>
           </div>
@@ -1383,7 +1415,7 @@ export function HandAnalyzer() {
       {workflowTab === "screenshot" ? (
         <section className="panel analyzer-input-panel">
           <div className="section-heading">
-            <p className="eyebrow">Vision stack</p>
+            <p className="eyebrow">Screenshot Recognition</p>
             <h2>Screenshot Recognition</h2>
             <p>
               Capture the MTGO/Arena window with browser permission, or paste,
@@ -1586,11 +1618,15 @@ function Overview({ result }: { result: AnalyzerResult }) {
           </em>
         </div>
         <div className="metric-card">
-          <span>Keep EV</span>
+          <span>Keep expected value</span>
           <strong>{number(result.keepExpectedValue)}</strong>
         </div>
         <div className="metric-card">
-          <span>{result.mulligan?.comparison === "free-seven" ? "Free 7 EV diff" : "Mulligan EV diff"}</span>
+          <span>
+            {result.mulligan?.comparison === "free-seven"
+              ? "Free seven expected-value edge"
+              : "Mulligan expected-value edge"}
+          </span>
           <strong>
             {result.keepAdvantage === undefined
               ? "n/a"
@@ -2032,7 +2068,7 @@ function DeepData({ result }: { result: AnalyzerResult }) {
         <h2>Model information</h2>
         <p>Scoring version: {result.scoringVersion}</p>
         <p>
-          Opening Hand Score is the deck-relative percentile score. Legacy mana,
+          Opening Hand Score is the deck-relative percentile score. Mana,
           curve, and castability diagnostics are kept for explanation only.
         </p>
       </section>

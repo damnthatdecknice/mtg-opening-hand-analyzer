@@ -27,7 +27,7 @@ function card(
 function splitCard(
   name: string,
   typeLine: string,
-  faces: Array<{ name: string; manaValue: number; typeLine: string }>,
+  faces: Array<{ name: string; manaValue: number; typeLine: string; manaCost?: string }>,
   colors: string[] = [],
   legalities: Record<string, string> = { modern: "legal", pioneer: "legal", standard: "legal" }
 ): ManaCurveCardData {
@@ -73,11 +73,28 @@ const roomCards = data([
     "Roaring Furnace // Steaming Sauna",
     "Enchantment - Room",
     [
-      { name: "Roaring Furnace", manaValue: 2, typeLine: "Enchantment - Room" },
-      { name: "Steaming Sauna", manaValue: 5, typeLine: "Enchantment - Room" }
+      { name: "Roaring Furnace", manaValue: 7, manaCost: "{1}{R}", typeLine: "Enchantment - Room" },
+      { name: "Steaming Sauna", manaValue: 7, manaCost: "{4}{U}", typeLine: "Enchantment - Room" }
     ],
     ["U", "R"]
   ),
+  card("Steam Vents", 0, "Land - Island Mountain")
+]);
+
+const staleRoomCards = data([
+  {
+    name: "Roaring Furnace // Steaming Sauna",
+    manaValue: 7,
+    manaCost: "{1}{R} // {4}{U}",
+    typeLine: "Enchantment - Room",
+    colors: ["U", "R"],
+    faces: [
+      { name: "Roaring Furnace", manaValue: 7, typeLine: "Enchantment - Room" },
+      { name: "Steaming Sauna", manaValue: 7, typeLine: "Enchantment - Room" }
+    ],
+    isLand: false,
+    legalities: { modern: "legal", pioneer: "legal", standard: "legal" }
+  },
   card("Steam Vents", 0, "Land - Island Mountain")
 ]);
 
@@ -219,8 +236,24 @@ assert.deepEqual(
   [{ name: "Steaming Sauna", qty: 2 }],
   "split card tooltips use the face name in each bucket"
 );
-assert.equal(roomAnalysis.spellCount, 4, "split nonland cards are represented as separate curve faces");
+assert.equal(roomAnalysis.spellCount, 2, "split nonland cards count once as physical spell cards");
+assert.equal(roomAnalysis.physicalSpellCount, 2, "physical spell count is explicit");
+assert.equal(roomAnalysis.castModeCount, 4, "split nonland cards are represented as separate cast modes");
 assert.equal(roomAnalysis.landCount, 4, "split face handling does not disturb land counting");
-assert.equal(roomAnalysis.typeBreakdown.enchantments, 4, "split room faces retain their primary type");
+assert.equal(roomAnalysis.typeBreakdown.enchantments, 2, "physical type breakdown counts Room cards once");
+assert.equal(roomAnalysis.physicalTypeBreakdown.enchantments, 2, "physical type breakdown is explicit");
+assert.equal(roomAnalysis.castModeAverageManaValue.toFixed(2), "3.50", "cast-mode average can differ from physical average");
+assert.equal(roomAnalysis.averageManaValue.toFixed(2), "2.00", "physical average uses the lowest castable mode for modal cards");
+
+const staleRoomAnalysis = buildManaCurveAnalysis(
+  `Deck
+4 Roaring Furnace // Steaming Sauna
+4 Steam Vents`,
+  staleRoomCards,
+  { format: "Standard" }
+);
+assert.equal(staleRoomAnalysis.curve.find((row) => row.manaValue === "2")?.spells, 4, "stale split face cmc still uses parent split cost for cheap face");
+assert.equal(staleRoomAnalysis.curve.find((row) => row.manaValue === "5")?.spells, 4, "stale split face cmc still uses parent split cost for expensive face");
+assert.equal(staleRoomAnalysis.curve.find((row) => row.manaValue === "7+")?.spells, 0, "stale split face cmc never creates a parent 7+ bucket");
 
 console.log("manaCurve tests passed");

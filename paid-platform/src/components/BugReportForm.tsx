@@ -84,7 +84,7 @@ export function BugReportForm() {
       <section className="panel bug-report-panel">
         <p className="eyebrow">Report details</p>
         <h2>What went wrong?</h2>
-        <form className="auth-form bug-report-form" onSubmit={handleSubmit}>
+        <form className="bug-report-form" onSubmit={handleSubmit}>
           <label>
             Your email
             <input

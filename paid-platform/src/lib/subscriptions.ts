@@ -55,32 +55,24 @@ export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
   }
 ];
 
-const permanentSubscriberEmails = new Set(["gotthisforsoi@gmail.com"]);
-const permanentSubscriberHandles = new Set(["gotthisforsoi"]);
-
-export function isPermanentSubscriberEmail(email?: string | null) {
-  const normalized = email?.trim().toLowerCase();
-  if (!normalized) {
-    return false;
-  }
-
-  const handle = normalized.split("@")[0] ?? normalized;
-  return permanentSubscriberEmails.has(normalized) || permanentSubscriberHandles.has(handle);
-}
-
 export function tierFromSubscription(status?: string | null, priceId?: string | null): SubscriptionTierId {
   const normalizedStatus = status?.trim().toLowerCase() ?? "";
   const normalizedPrice = priceId?.trim().toLowerCase() ?? "";
 
-  if (["grinder", "premium", "enterprise"].includes(normalizedStatus) || normalizedPrice.includes("grinder")) {
+  const recognizedPrices: Record<string, SubscriptionTierId> = {
+    deck_pro: "deck_pro",
+    grinder: "grinder"
+  };
+
+  if (recognizedPrices[normalizedPrice]) {
+    return recognizedPrices[normalizedPrice];
+  }
+
+  if (["grinder", "premium", "enterprise"].includes(normalizedStatus)) {
     return "grinder";
   }
 
-  if (
-    ["deck_pro", "pro", "active", "trialing", "paid"].includes(normalizedStatus) ||
-    normalizedPrice.includes("deck") ||
-    normalizedPrice.includes("5")
-  ) {
+  if (["deck_pro", "pro", "active", "trialing", "paid"].includes(normalizedStatus)) {
     return "deck_pro";
   }
 

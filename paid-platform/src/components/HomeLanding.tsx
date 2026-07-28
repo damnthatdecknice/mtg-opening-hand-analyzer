@@ -5,26 +5,26 @@ import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { AccountBar } from "@/components/AccountBar";
 import { DashboardContent } from "@/components/DashboardContent";
-import { clearAuthFallback, getAuthFallbackUser, type AuthFallbackUser } from "@/lib/authFallback";
+import { clearAuthFallback } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
 
 const pillars = [
   {
-    title: "Saved Decks",
-    body: "Store tuned lists, sideboards, and format notes without changing the beta tester workflow."
+    title: "Add your deck",
+    body: "Paste an Arena-style list or import your MTGO .dek so analysis uses the deck you are actually playing."
   },
   {
-    title: "Session History",
-    body: "Keep confirmed hands, mulligan decisions, ratings, and post-match notes tied to the player account."
+    title: "Analyze the seven",
+    body: "Enter the hand manually or review screenshot recognition before any recommendation is generated."
   },
   {
-    title: "Subscription Ready",
-    body: "Build auth and entitlements first, then connect Stripe once the product is worth charging for."
+    title: "Review the risks",
+    body: "See land-drop odds, castability, failure conditions, play/draw context, and mulligan comparison."
   }
 ];
 
 export function HomeLanding() {
-  const [user, setUser] = useState<User | AuthFallbackUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -34,12 +34,12 @@ export function HomeLanding() {
     }
 
     supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? getAuthFallbackUser());
+      setUser(data.session?.user ?? null);
       setIsLoading(false);
     });
 
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? getAuthFallbackUser());
+      setUser(session?.user ?? null);
       setIsLoading(false);
     });
 
@@ -73,44 +73,40 @@ export function HomeLanding() {
   return (
     <section className="hero-grid">
       <div className="panel hero-panel">
-        <p className="eyebrow">Competitive opener lab</p>
-        <h1>Opening Edge</h1>
+        <p className="eyebrow">Opening Edge</p>
+        <h1>Prepare Better. Mulligan Smarter.</h1>
         <p className="lede">
-          Competitive Magic opening-hand analysis with saved decks, screenshot intake,
-          metagame context, and subscription-ready player workspaces.
+          Analyze a seven-card opening hand against your exact decklist. See keepability,
+          castability, land-drop odds, failure risks, and whether a mulligan is likely to
+          improve your position.
         </p>
         <div className="action-row">
-          <Link className="primary-button" href="/login">
-            Sign in
-          </Link>
-          <Link className="secondary-button" href="/analyzer">
-            Analyze a hand
+          <Link className="primary-button" href="/analyzer?sample=1">
+            Try a Sample Analysis
           </Link>
           <Link className="secondary-button" href="/signup">
-            Create account
+            Create Free Account
           </Link>
-          <a className="secondary-button" href="#plan">
-            See product plan
-          </a>
         </div>
+        <p className="muted-copy">Opening Edge is in open beta. Results are advisory estimates, not guarantees.</p>
       </div>
 
       <div className="status-stack">
         <div className="metric-card">
-          <span>Current mode</span>
-          <strong>Foundation</strong>
+          <span>Example score</span>
+          <strong>74/100</strong>
         </div>
         <div className="metric-card">
-          <span>Beta safety</span>
-          <strong>Separate</strong>
+          <span>Recommendation</span>
+          <strong>Keep Lean</strong>
         </div>
         <div className="metric-card">
-          <span>Initial cost</span>
-          <strong>$0 path</strong>
+          <span>Main risk</span>
+          <strong>Third land</strong>
         </div>
       </div>
 
-      <div id="plan" className="pillar-grid">
+      <div className="pillar-grid">
         {pillars.map((pillar) => (
           <article className="panel compact-panel" key={pillar.title}>
             <h2>{pillar.title}</h2>

@@ -53,12 +53,21 @@ export type ManaCurveAnalysis = {
   scope: "main" | "main+sideboard" | "sideboard";
   format: string;
   totalCards: number;
+  physicalSpellCount: number;
   spellCount: number;
   landCount: number;
+  castModeCount: number;
   averageManaValue: number;
   medianManaValue: number;
+  averageManaValueBasis: "physical-lowest-castable-mode";
+  medianManaValueBasis: "physical-lowest-castable-mode";
+  castModeAverageManaValue: number;
+  castModeMedianManaValue: number;
   curve: ManaCurveRow[];
+  castModeCurve: ManaCurveRow[];
+  physicalTypeBreakdown: Record<CardTypeKey, number>;
   typeBreakdown: Record<CardTypeKey, number>;
+  modalSourceCount: number;
   colors: string[];
   oneOfCount: number;
   observations: ManaCurveObservation[];
@@ -77,6 +86,7 @@ const formatLegalities: Record<string, string> = {
   pioneer: "pioneer",
   modern: "modern",
   legacy: "legacy",
+  pauper: "pauper",
   vintage: "vintage",
   historic: "historic",
   explorer: "explorer",
@@ -133,6 +143,19 @@ function bucketForManaValue(manaValue: number): ManaCurveBucket {
   }
   const floored = Math.max(0, Math.floor(manaValue));
   return String(Math.min(6, floored)) as ManaCurveBucket;
+}
+
+function manaValueFromCost(cost = "") {
+  const symbols = Array.from(cost.matchAll(/\{([^}]+)\}/g)).map((match) => match[1] ?? "");
+  return symbols.reduce((total, symbol) => {
+    if (/^\d+$/.test(symbol)) {
+      return total + Number(symbol);
+    }
+    if (symbol.toUpperCase() === "X") {
+      return total;
+    }
+    return total + 1;
+  }, 0);
 }
 
 export function primaryCardType(card: Pick<ManaCurveCardData, "typeLine" | "isLand">): CardTypeKey {
@@ -280,7 +303,7 @@ function cardRole(card: ManaCurveCardData | undefined) {
   return "Structural slot";
 }
 
-function curveEntriesForCard(entry: ParsedDeckCard, card: ManaCurveCardData | undefined) {
+function castModeEntriesForCard(entry: ParsedDeckCard, card: ManaCurveCardData | undefined) {
   if (!card) {
     return [{ qty: entry.qty, card }];
   }
@@ -291,17 +314,50 @@ function curveEntriesForCard(entry: ParsedDeckCard, card: ManaCurveCardData | un
     return [{ qty: entry.qty, card }];
   }
 
-  return nonlandFaces.map((face) => ({
-    qty: entry.qty,
-    card: {
-      ...card,
-      name: face.name || card.name,
-      manaCost: face.manaCost ?? "",
-      manaValue: Math.max(0, face.manaValue ?? 0),
-      typeLine: face.typeLine || card.typeLine,
-      oracleText: face.oracleText ?? ""
-    }
-  }));
+  const splitCosts = card.manaCost?.includes("//") ? card.manaCost.split("//").map((cost) => cost.trim()) : [];
+  return nonlandFaces.map((face, index) => {
+    const faceCost = face.manaCost || splitCosts[index] || "";
+    return {
+      qty: entry.qty,
+      card: {
+        ...card,
+        name: face.name || card.name,
+        manaCost: faceCost,
+        manaValue: Math.max(0, faceCost ? manaValueFromCost(faceCost) : face.manaValue ?? 0),
+        typeLine: face.typeLine || card.typeLine,
+        oracleText: face.oracleText ?? ""
+      }
+    };
+  });
+}
+
+function physicalManaValueForCard(card: ManaCurveCardData | undefined) {
+  if (!card) {
+    return 0;
+  }
+  if (card.isLand) {
+    return 0;
+  }
+
+  const nonlandModes = castModeEntriesForCard({ name: card.name, qty: 1, section: "main" }, card)
+    .map((entry) => entry.card)
+    .filter((entry): entry is ManaCurveCardData => Boolean(entry))
+    .filter((entry) => primaryCardType(entry) !== "lands");
+
+  if (nonlandModes.length) {
+    return Math.min(...nonlandModes.map((entry) => Math.max(0, entry.manaValue)));
+  }
+
+  return Math.max(0, card.manaValue);
+}
+
+function hasLandSpellModalFaces(card: ManaCurveCardData | undefined) {
+  if (!card?.faces?.length) {
+    return false;
+  }
+  const hasLandFace = card.faces.some((face) => /\bland\b/i.test(face.typeLine));
+  const hasSpellFace = card.faces.some((face) => !/\bland\b/i.test(face.typeLine));
+  return hasLandFace && hasSpellFace;
 }
 
 function buildObservations(
@@ -568,19 +624,39 @@ export function buildManaCurveAnalysis(
     ])
   );
   const typeBreakdown = emptyTypeCounts();
-  const spellValues: Array<{ value: number; qty: number }> = [];
-  let totalManaValue = 0;
-  let spellCount = 0;
+  const physicalTypeBreakdown = emptyTypeCounts();
+  const physicalSpellValues: Array<{ value: number; qty: number }> = [];
+  const castModeValues: Array<{ value: number; qty: number }> = [];
+  let physicalTotalManaValue = 0;
+  let castModeTotalManaValue = 0;
+  let physicalSpellCount = 0;
+  let castModeCount = 0;
   let landCount = 0;
+  let modalSourceCount = 0;
 
   for (const entry of analysisCards) {
     const card = cardData.get(normalizeName(entry.name));
-    for (const curveEntry of curveEntriesForCard(entry, card)) {
+    const physicalType = card ? primaryCardType(card) : "other";
+    physicalTypeBreakdown[physicalType] += entry.qty;
+    typeBreakdown[physicalType] += entry.qty;
+    if (hasLandSpellModalFaces(card)) {
+      modalSourceCount += entry.qty;
+    }
+    if (physicalType === "lands") {
+      landCount += entry.qty;
+    } else {
+      const physicalManaValue = physicalManaValueForCard(card);
+      physicalSpellCount += entry.qty;
+      physicalTotalManaValue += physicalManaValue * entry.qty;
+      physicalSpellValues.push({ value: physicalManaValue, qty: entry.qty });
+    }
+
+    // Physical cards are counted once above. Cast-mode entries may place one
+    // physical card into multiple curve buckets, such as both doors of a Room.
+    for (const curveEntry of castModeEntriesForCard(entry, card)) {
       const curveCard = curveEntry.card;
       const type = curveCard ? primaryCardType(curveCard) : "other";
-      typeBreakdown[type] += curveEntry.qty;
       if (type === "lands") {
-        landCount += curveEntry.qty;
         continue;
       }
 
@@ -590,9 +666,9 @@ export function buildManaCurveAnalysis(
       row.spells += curveEntry.qty;
       row.types[type] += curveEntry.qty;
       addCardToBucket(row.cards[type], curveCard?.name ?? entry.name, curveEntry.qty);
-      spellCount += curveEntry.qty;
-      totalManaValue += manaValue * curveEntry.qty;
-      spellValues.push({ value: manaValue, qty: curveEntry.qty });
+      castModeCount += curveEntry.qty;
+      castModeTotalManaValue += manaValue * curveEntry.qty;
+      castModeValues.push({ value: manaValue, qty: curveEntry.qty });
     }
   }
 
@@ -602,8 +678,8 @@ export function buildManaCurveAnalysis(
   const curve = manaCurveBuckets.map((bucket) => curveMap.get(bucket)!);
   const facts = {
     landCount,
-    spellCount,
-    averageManaValue: spellCount ? totalManaValue / spellCount : 0,
+    spellCount: physicalSpellCount,
+    averageManaValue: physicalSpellCount ? physicalTotalManaValue / physicalSpellCount : 0,
     oneOfCount,
     curve,
     colors
@@ -614,12 +690,21 @@ export function buildManaCurveAnalysis(
     scope,
     format,
     totalCards: analysisCards.reduce((total, card) => total + card.qty, 0),
-    spellCount,
+    physicalSpellCount,
+    spellCount: physicalSpellCount,
     landCount,
+    castModeCount,
     averageManaValue: facts.averageManaValue,
-    medianManaValue: weightedMedian(spellValues),
+    medianManaValue: weightedMedian(physicalSpellValues),
+    averageManaValueBasis: "physical-lowest-castable-mode",
+    medianManaValueBasis: "physical-lowest-castable-mode",
+    castModeAverageManaValue: castModeCount ? castModeTotalManaValue / castModeCount : 0,
+    castModeMedianManaValue: weightedMedian(castModeValues),
     curve,
+    castModeCurve: curve,
+    physicalTypeBreakdown,
     typeBreakdown,
+    modalSourceCount,
     colors,
     oneOfCount,
     observations,

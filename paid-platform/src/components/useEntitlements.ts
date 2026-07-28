@@ -6,8 +6,6 @@ import {
   canUseDeckVault,
   canUseUnlimitedAnalyzer,
   getTier,
-  isPermanentSubscriberEmail,
-  tierFromSubscription,
   type SubscriptionTierId
 } from "@/lib/subscriptions";
 import { supabase } from "@/lib/supabase";
@@ -93,14 +91,6 @@ export function useEntitlements() {
       }
 
       const { data: userData, error: userError } = await supabase.auth.getUser();
-      const email = userData.user?.email;
-
-      if (isPermanentSubscriberEmail(email)) {
-        if (isActive) {
-          setState(stateForRank("beta_premium"));
-        }
-        return;
-      }
 
       if (userError || !userData.user) {
         if (isActive) {
@@ -109,34 +99,39 @@ export function useEntitlements() {
         return;
       }
 
-      const [profileResponse, subscriptionResponse] = await Promise.all([
-        supabase
-          .from("profiles")
-          .select("rank")
-          .eq("id", userData.user.id)
-          .maybeSingle(),
-        supabase
-          .from("subscription_status")
-          .select("status, price_id")
-          .eq("user_id", userData.user.id)
-          .maybeSingle()
-      ]);
+      const sessionResponse = await supabase.auth.getSession();
+      const accessToken = sessionResponse.data.session?.access_token;
+      if (!accessToken) {
+        if (isActive) {
+          setState(stateForTier("free"));
+        }
+        return;
+      }
+
+      const entitlementResponse = await fetch("/api/entitlements", {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        },
+        cache: "no-store"
+      });
 
       if (!isActive) {
         return;
       }
 
-      if (profileResponse.data?.rank === "pro" || profileResponse.data?.rank === "beta_premium") {
-        setState(stateForRank(profileResponse.data.rank));
-        return;
-      }
-
-      if (subscriptionResponse.error) {
+      if (!entitlementResponse.ok) {
         setState(stateForRank("basic"));
         return;
       }
 
-      setState(stateForTier(tierFromSubscription(subscriptionResponse.data?.status, subscriptionResponse.data?.price_id)));
+      const resolved = (await entitlementResponse.json()) as EntitlementState;
+
+      setState({
+        ...stateForTier(resolved.tierId),
+        ...resolved,
+        isLoading: false,
+        error: ""
+      });
     }
 
     void loadEntitlements();

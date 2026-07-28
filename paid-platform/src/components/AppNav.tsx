@@ -5,7 +5,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEntitlements } from "@/components/useEntitlements";
-import { getAuthFallbackUser } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
 
 const navItems = [
@@ -13,6 +12,7 @@ const navItems = [
   { href: "/decks", label: "Save a Deck", deckProOnly: true },
   { href: "/mana-curve", label: "Mana Curve", deckProOnly: true },
   { href: "/metagame", label: "Metagame", deckProOnly: true },
+  { href: "/pricing", label: "Pricing" },
   { href: "/help", label: "How To" },
   { href: "/bug-report", label: "Bug Report" },
   { href: "/settings", label: "Settings" },
@@ -36,10 +36,10 @@ export function AppNav() {
     }
 
     supabase.auth.getSession().then(({ data }) => {
-      setIsSignedIn(Boolean(data.session?.user ?? getAuthFallbackUser()));
+      setIsSignedIn(Boolean(data.session?.user));
     });
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsSignedIn(Boolean(session?.user ?? getAuthFallbackUser()));
+      setIsSignedIn(Boolean(session?.user));
     });
 
     return () => {

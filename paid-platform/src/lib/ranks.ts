@@ -1,5 +1,3 @@
-import { isPermanentSubscriberEmail } from "@/lib/subscriptions";
-
 export type RankKey = "basic" | "pro" | "beta_premium";
 
 export type RankDefinition = {
@@ -28,12 +26,10 @@ export const RANKS: Record<RankKey, RankDefinition> = {
 
 export function rankFromSubscription({
   currentRank,
-  email,
   priceId,
   status
 }: {
   currentRank?: string | null;
-  email?: string | null;
   priceId?: string | null;
   status?: string | null;
 }) {
@@ -41,17 +37,12 @@ export function rankFromSubscription({
     return RANKS.beta_premium;
   }
 
-  if (isPermanentSubscriberEmail(email)) {
-    return RANKS.beta_premium;
-  }
-
   const normalizedStatus = status?.trim().toLowerCase() ?? "";
   const normalizedPrice = priceId?.trim().toLowerCase() ?? "";
   if (
     ["pro", "deck_pro", "active", "trialing", "paid"].includes(normalizedStatus) ||
-    normalizedPrice.includes("pro") ||
-    normalizedPrice.includes("deck") ||
-    normalizedPrice.includes("5")
+    normalizedPrice === "deck_pro" ||
+    normalizedPrice === "grinder"
   ) {
     return RANKS.pro;
   }

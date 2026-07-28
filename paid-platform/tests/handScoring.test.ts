@@ -111,6 +111,58 @@ const oneLandWithRamp = manaSufficiencyAdjustment({
 assert.equal(oneLandWithRamp.adjustment, -22, "castable ramp can soften but not erase one-land risk");
 assert.equal(oneLandWithRamp.cap, 54, "one-land ramp hands remain capped below clean keep texture");
 
+const splitRoomCard = card({
+  name: "Roaring Furnace // Steaming Sauna",
+  manaCost: "{1}{R} // {4}{U}",
+  manaValue: 7,
+  typeLine: "Enchantment — Room",
+  oracleText: "",
+  colors: ["U", "R"],
+  faces: [
+    { name: "Roaring Furnace", manaCost: "{1}{R}", manaValue: 2, typeLine: "Enchantment — Room", oracleText: "" },
+    { name: "Steaming Sauna", manaCost: "{4}{U}", manaValue: 5, typeLine: "Enchantment — Room", oracleText: "" }
+  ]
+});
+const sevenManaOnlyRoom = card({
+  name: "Roaring Furnace // Steaming Sauna",
+  manaCost: "{1}{R} // {4}{U}",
+  manaValue: 7,
+  typeLine: "Enchantment — Room",
+  oracleText: "",
+  colors: ["U", "R"]
+});
+const roomDeckCounts = counts([
+  ["roaring furnace // steaming sauna", 4],
+  ["steam vents", 20]
+]);
+const roomHand = ["Roaring Furnace // Steaming Sauna", "Steam Vents", "Steam Vents", "Steam Vents", "Steam Vents", "Steam Vents", "Steam Vents"];
+const splitRoomScore = scoreHandDeckRelative({
+  mainCounts: roomDeckCounts,
+  handNames: roomHand,
+  cardData: cardMap([
+    splitRoomCard,
+    card({ name: "Steam Vents", manaValue: 0, typeLine: "Land — Island Mountain", isLand: true, producedMana: ["U", "R"] })
+  ]),
+  playDraw: "play",
+  seed: "split-room-score",
+  settings: fastSettings
+});
+const sevenManaOnlyScore = scoreHandDeckRelative({
+  mainCounts: roomDeckCounts,
+  handNames: roomHand,
+  cardData: cardMap([
+    sevenManaOnlyRoom,
+    card({ name: "Steam Vents", manaValue: 0, typeLine: "Land — Island Mountain", isLand: true, producedMana: ["U", "R"] })
+  ]),
+  playDraw: "play",
+  seed: "split-room-score",
+  settings: fastSettings
+});
+assert.ok(
+  splitRoomScore.keepExpectedValue > sevenManaOnlyScore.keepExpectedValue,
+  "combined split costs use the cheap castable face for hand scoring instead of the summed mana value"
+);
+
 const twoLandHighCurve = manaSufficiencyAdjustment({
   landsInHand: 2,
   effectiveLandsInHand: 2,
@@ -210,6 +262,27 @@ assert.equal(
   true,
   "explicit colorless mana accepts a colorless source"
 );
+assert.equal(
+  solveManaPayment("{3}{R}", 4, [
+    { name: "Mountain", colors: ["R"] },
+    { name: "Wastes", colors: ["C"] }
+  ]).canPay,
+  false,
+  "printed generic costs still need enough sources without a reducer"
+);
+assert.equal(
+  solveManaPayment(
+    "{3}{R}",
+    4,
+    [
+      { name: "Mountain", colors: ["R"] },
+      { name: "Wastes", colors: ["C"] }
+    ],
+    { genericReduction: 2 }
+  ).canPay,
+  true,
+  "generic cost reductions lower only the generic portion of a spell's payment"
+);
 
 const redAggroCards = cardMap([
   card({ name: "Mountain", typeLine: "Basic Land — Mountain", oracleText: "{T}: Add {R}.", producedMana: ["R"], isLand: true }),
@@ -306,6 +379,90 @@ const rampNoPayoff = scoreHandDeckRelative({
 });
 
 assert.ok(rampWithPayoff.score >= rampNoPayoff.score, "ramp is worth more when it accelerates a relevant payoff");
+
+const reducedCostCards = cardMap([
+  card({ name: "Mountain", typeLine: "Basic Land â€” Mountain", oracleText: "{T}: Add {R}.", producedMana: ["R"], isLand: true }),
+  card({ name: "Wastes", typeLine: "Basic Land", oracleText: "{T}: Add {C}.", producedMana: ["C"], isLand: true }),
+  card({
+    name: "Discount Dragon",
+    manaCost: "{3}{R}",
+    manaValue: 4,
+    typeLine: "Creature â€” Dragon",
+    oracleText: "This spell costs {2} less to cast if an opponent was dealt damage this turn."
+  }),
+  card({ name: "Full Price Dragon", manaCost: "{3}{R}", manaValue: 4, typeLine: "Creature â€” Dragon", oracleText: "Flying." }),
+  card({ name: "Small Spark", manaCost: "{R}", manaValue: 1, typeLine: "Instant", oracleText: "Small Spark deals 1 damage to any target." })
+]);
+const reducedCostDeck = counts([
+  ["Mountain", 28],
+  ["Wastes", 8],
+  ["Discount Dragon", 4],
+  ["Full Price Dragon", 4],
+  ["Small Spark", 16]
+]);
+const reducedCostHand = scoreHandDeckRelative({
+  mainCounts: reducedCostDeck,
+  handNames: ["Mountain", "Wastes", "Discount Dragon", "Small Spark", "Small Spark", "Mountain", "Mountain"],
+  cardData: reducedCostCards,
+  playDraw: "play",
+  seed: "reduced-cost",
+  settings: fastSettings
+});
+const fullPriceHand = scoreHandDeckRelative({
+  mainCounts: reducedCostDeck,
+  handNames: ["Mountain", "Wastes", "Full Price Dragon", "Small Spark", "Small Spark", "Mountain", "Mountain"],
+  cardData: reducedCostCards,
+  playDraw: "play",
+  seed: "reduced-cost",
+  settings: fastSettings
+});
+
+assert.ok(
+  reducedCostHand.keepExpectedValue > fullPriceHand.keepExpectedValue,
+  "self generic-cost reductions improve castability without changing printed mana value"
+);
+
+const staticReducerCards = cardMap([
+  card({ name: "Island", typeLine: "Basic Land â€” Island", oracleText: "{T}: Add {U}.", producedMana: ["U"], isLand: true }),
+  card({ name: "Mountain", typeLine: "Basic Land â€” Mountain", oracleText: "{T}: Add {R}.", producedMana: ["R"], isLand: true }),
+  card({
+    name: "Goblin Electromancer",
+    manaCost: "{U}{R}",
+    manaValue: 2,
+    typeLine: "Creature â€” Goblin Wizard",
+    oracleText: "Instant and sorcery spells you cast cost {1} less to cast."
+  }),
+  card({ name: "Vanilla Wizard", manaCost: "{U}{R}", manaValue: 2, typeLine: "Creature â€” Goblin Wizard", oracleText: "A normal wizard." }),
+  card({ name: "Big Bolt", manaCost: "{2}{R}", manaValue: 3, typeLine: "Instant", oracleText: "Big Bolt deals 4 damage to any target." })
+]);
+const staticReducerDeck = counts([
+  ["Island", 20],
+  ["Mountain", 20],
+  ["Goblin Electromancer", 4],
+  ["Vanilla Wizard", 4],
+  ["Big Bolt", 20]
+]);
+const staticReducerHand = scoreHandDeckRelative({
+  mainCounts: staticReducerDeck,
+  handNames: ["Island", "Mountain", "Goblin Electromancer", "Big Bolt", "Big Bolt", "Big Bolt", "Big Bolt"],
+  cardData: staticReducerCards,
+  playDraw: "play",
+  seed: "static-reducer",
+  settings: fastSettings
+});
+const noStaticReducerHand = scoreHandDeckRelative({
+  mainCounts: staticReducerDeck,
+  handNames: ["Island", "Mountain", "Vanilla Wizard", "Big Bolt", "Big Bolt", "Big Bolt", "Big Bolt"],
+  cardData: staticReducerCards,
+  playDraw: "play",
+  seed: "static-reducer",
+  settings: fastSettings
+});
+
+assert.ok(
+  staticReducerHand.keepExpectedValue > noStaticReducerHand.keepExpectedValue,
+  "static cost reducers help later matching spells only after the reducer is cast"
+);
 
 const deterministicA = scoreHandDeckRelative({
   mainCounts: redAggroDeck,

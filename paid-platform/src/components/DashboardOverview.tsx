@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAuthFallbackUser } from "@/lib/authFallback";
 import { OPEN_BETA_ACCESS } from "@/lib/subscriptions";
 import { supabase } from "@/lib/supabase";
 
@@ -46,7 +45,7 @@ export function DashboardOverview() {
       }
 
       const sessionResponse = await supabase.auth.getSession();
-      const userId = sessionResponse.data.session?.user.id ?? getAuthFallbackUser()?.id;
+      const userId = sessionResponse.data.session?.user.id ?? "";
 
       const [decks, hands, profile] = await Promise.all([
         userId

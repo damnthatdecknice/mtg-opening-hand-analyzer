@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
 
   const profile = profileRows?.[0];
   if (!profile) {
-    const rank = rankFromSubscription({ email });
+    const rank = rankFromSubscription({});
     return NextResponse.json({
       found: false,
       rank: rank.key,
@@ -84,7 +84,6 @@ export async function POST(request: NextRequest) {
 
   const rank = rankFromSubscription({
     currentRank: profile.rank,
-    email: profile.email,
     priceId: subscription?.price_id,
     status: subscription?.status
   });
@@ -100,12 +99,9 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     found: true,
-    userId: profile.id,
-    email: profile.email,
     rank: rank.key,
     rankLabel: rank.label,
     subscriptionStatus: subscription?.status ?? "free",
-    subscriptionPriceId: subscription?.price_id ?? null,
     currentPeriodEnd: subscription?.current_period_end ?? null,
     checkLogged: !checkLogError
   });

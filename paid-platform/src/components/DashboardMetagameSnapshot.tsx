@@ -46,7 +46,7 @@ export function DashboardMetagameSnapshot() {
     void loadModernSnapshot();
   }, []);
 
-  const highestPpr = state.data ? buildPerformanceDecks(state.data.decks)[0] : undefined;
+  const highestConversionSignal = state.data ? buildPerformanceDecks(state.data.decks)[0] : undefined;
 
   return (
     <section className="panel dashboard-meta-snapshot">
@@ -73,11 +73,13 @@ export function DashboardMetagameSnapshot() {
       ) : state.data ? (
         <>
           <div className="snapshot-callout">
-            <span>Highest PPR</span>
+            <span>Top conversion signal</span>
             <strong>
-              {highestPpr ? `${highestPpr.name} ${formatPpr(highestPpr.score)}` : "No ranked finishes yet"}
+              {highestConversionSignal
+                ? `${highestConversionSignal.name} ${formatConversionSignal(highestConversionSignal.score)}`
+                : "No ranked finishes yet"}
             </strong>
-            <em>Highest Proprietary Performance Rating over the past 7 days in Modern</em>
+            <em>Best recent finish conversion among Modern Challenge archetypes</em>
           </div>
           <div className="mini-meta-bars">
             {state.data.archetypes.slice(0, 5).map((archetype) => (
@@ -98,7 +100,7 @@ export function DashboardMetagameSnapshot() {
   );
 }
 
-function formatPpr(score: number) {
+function formatConversionSignal(score: number) {
   const delta = score - 100;
   return `${delta > 0 ? "+" : ""}${delta.toFixed(2)}`;
 }

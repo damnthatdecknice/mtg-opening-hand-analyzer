@@ -74,6 +74,7 @@ export type AnalysisCard = {
   produces: ManaProductionOption[];
   roles: CardRole[];
   ramp?: RampProfile;
+  costReduction?: CostReductionProfile;
   conditionality?: ConditionalProfile;
   earliestUsefulTurn?: number;
   latestPreferredTurn?: number;
@@ -87,6 +88,14 @@ export type RampProfile = {
   kind: "permanent" | "treasure" | "ritual" | "land_ramp" | "cost_reducer";
   earliestTurn: number;
   manaDelta: number;
+};
+
+export type CostReductionScope = "self" | "all" | "instant_sorcery" | "creature" | "artifact" | "noncreature";
+
+export type CostReductionProfile = {
+  amount: number;
+  scope: CostReductionScope;
+  activeAfterCast: boolean;
 };
 
 export type ConditionalProfile = {
@@ -202,6 +211,10 @@ export type ManaPaymentResult = {
   spentSourceIndexes: number[];
   remainingSourceIndexes: number[];
   approximationNotes: string[];
+};
+
+export type ManaPaymentOptions = {
+  genericReduction?: number;
 };
 
 const BASELINE_CACHE = new Map<string, number[]>();
@@ -336,6 +349,96 @@ function genericCostFromManaCost(manaCost: string | undefined, manaValue: number
   return generic;
 }
 
+function manaValueFromManaCost(manaCost = "") {
+  return manaSymbols(manaCost).reduce((total, symbol) => {
+    if (/^\d+$/.test(symbol)) {
+      return total + Number(symbol);
+    }
+    if (symbol === "X") {
+      return total;
+    }
+    return total + 1;
+  }, 0);
+}
+
+function costReductionAmount(text: string) {
+  const symbolMatch = text.match(/costs?\s+\{(\d+)\}\s+less/);
+  if (symbolMatch) {
+    return Number(symbolMatch[1] ?? 0);
+  }
+  const wordMatch = text.match(/costs?\s+(one|two|three|four|five|a|an|\d+)\s+less/);
+  if (!wordMatch) {
+    return 0;
+  }
+  const words: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5 };
+  const raw = (wordMatch[1] ?? "").toLowerCase();
+  return /^\d+$/.test(raw) ? Number(raw) : words[raw] ?? 0;
+}
+
+function costReductionProfile(card: AnalysisCardInput): CostReductionProfile | undefined {
+  if (card.isLand) {
+    return undefined;
+  }
+  const text = allText(card);
+  const amount = costReductionAmount(text);
+  if (!amount) {
+    return undefined;
+  }
+  if (/\bthis spell costs?\b/.test(text)) {
+    return { amount, scope: "self", activeAfterCast: false };
+  }
+  if (/\binstant and sorcery spells? you cast costs?\b|\binstant or sorcery spells? you cast costs?\b/.test(text)) {
+    return { amount, scope: "instant_sorcery", activeAfterCast: true };
+  }
+  if (/\bcreature spells? you cast costs?\b/.test(text)) {
+    return { amount, scope: "creature", activeAfterCast: true };
+  }
+  if (/\bartifact spells? you cast costs?\b/.test(text)) {
+    return { amount, scope: "artifact", activeAfterCast: true };
+  }
+  if (/\bnoncreature spells? you cast costs?\b/.test(text)) {
+    return { amount, scope: "noncreature", activeAfterCast: true };
+  }
+  if (/\bspells? you cast costs?\b/.test(text)) {
+    return { amount, scope: "all", activeAfterCast: true };
+  }
+  return undefined;
+}
+
+function costReductionApplies(reducer: CostReductionProfile, spell: AnalysisCard) {
+  if (spell.isLand) {
+    return false;
+  }
+  if (reducer.scope === "self") {
+    return false;
+  }
+  if (reducer.scope === "all") {
+    return true;
+  }
+  if (reducer.scope === "instant_sorcery") {
+    return spell.types.includes("instant") || spell.types.includes("sorcery");
+  }
+  if (reducer.scope === "creature") {
+    return spell.types.includes("creature");
+  }
+  if (reducer.scope === "artifact") {
+    return spell.types.includes("artifact");
+  }
+  if (reducer.scope === "noncreature") {
+    return !spell.types.includes("creature");
+  }
+  return false;
+}
+
+function genericReductionForSpell(spell: AnalysisCard, activeReducers: CostReductionProfile[] = []) {
+  const selfReduction = spell.costReduction?.scope === "self" ? spell.costReduction.amount : 0;
+  const activeReduction = activeReducers.reduce(
+    (total, reducer) => total + (costReductionApplies(reducer, spell) ? reducer.amount : 0),
+    0
+  );
+  return Math.min(genericCostFromManaCost(spell.manaCost, spell.manaValue), selfReduction + activeReduction);
+}
+
 function manaRequirements(manaCost: string | undefined, manaValue: number) {
   const requiredPips: ManaColor[][] = [];
   const approximationNotes = new Set<string>();
@@ -394,9 +497,11 @@ function manaRequirements(manaCost: string | undefined, manaValue: number) {
 export function solveManaPayment(
   manaCost: string | undefined,
   manaValue: number,
-  sources: ManaPaymentSource[]
+  sources: ManaPaymentSource[],
+  options: ManaPaymentOptions = {}
 ): ManaPaymentResult {
   const { requiredPips, generic, approximationNotes } = manaRequirements(manaCost, manaValue);
+  const adjustedGeneric = Math.max(0, generic - Math.max(0, Math.floor(options.genericReduction ?? 0)));
   const indexed = sources.map((source, index) => ({ source, index }));
   const orderedPips = [...requiredPips].sort(
     (a, b) =>
@@ -436,7 +541,7 @@ export function solveManaPayment(
   const remainingAfterRequired = sources
     .map((_, index) => index)
     .filter((index) => !requiredSpent.has(index));
-  if (remainingAfterRequired.length < generic) {
+  if (remainingAfterRequired.length < adjustedGeneric) {
     return {
       canPay: false,
       spentSourceIndexes: Array.from(requiredSpent),
@@ -445,7 +550,7 @@ export function solveManaPayment(
     };
   }
 
-  const spentSourceIndexes = [...Array.from(requiredSpent), ...remainingAfterRequired.slice(0, generic)];
+  const spentSourceIndexes = [...Array.from(requiredSpent), ...remainingAfterRequired.slice(0, adjustedGeneric)];
   return {
     canPay: true,
     spentSourceIndexes,
@@ -518,6 +623,14 @@ function inferRoles(card: AnalysisCardInput, types: string[], manaValue: number)
   return Array.from(roles);
 }
 
+function cheapestCastableFace(input: AnalysisCardInput) {
+  const faces = (input.faces ?? []).filter((face) => !face.typeLine.toLowerCase().includes("land") && face.manaCost);
+  if (!faces.length) {
+    return null;
+  }
+  return [...faces].sort((a, b) => manaValueFromManaCost(a.manaCost) - manaValueFromManaCost(b.manaCost))[0] ?? null;
+}
+
 function normalizeAnalysisCard(name: string, quantity: number, input?: AnalysisCardInput): AnalysisCard {
   const fallback: AnalysisCardInput = input ?? {
     name,
@@ -529,12 +642,13 @@ function normalizeAnalysisCard(name: string, quantity: number, input?: AnalysisC
     isLand: false
   };
   const { types, subtypes } = splitTypeLine(fallback.typeLine);
-  const manaCost = fallback.manaCost || fallback.faces?.find((face) => !face.typeLine.toLowerCase().includes("land"))?.manaCost || "";
-  const manaValue =
-    fallback.isLand || types.includes("land")
-      ? 0
-      : Math.max(0, fallback.manaValue || fallback.faces?.find((face) => !face.typeLine.toLowerCase().includes("land"))?.manaValue || 0);
+  const splitFace = fallback.manaCost?.includes("//") ? cheapestCastableFace(fallback) : null;
+  const defaultFace = fallback.faces?.find((face) => !face.typeLine.toLowerCase().includes("land"));
+  const manaCost = splitFace?.manaCost || fallback.manaCost || defaultFace?.manaCost || "";
+  const fallbackManaValue = fallback.manaValue || defaultFace?.manaValue || 0;
+  const manaValue = fallback.isLand || types.includes("land") ? 0 : Math.max(0, splitFace?.manaValue ?? fallbackManaValue);
   const roles = inferRoles(fallback, types, manaValue);
+  const costReduction = costReductionProfile(fallback);
   const conditionality = /if you|unless|as long as|only if|additional cost/i.test(allText(fallback))
     ? { reason: "conditional text", severity: 0.12 }
     : undefined;
@@ -553,6 +667,7 @@ function normalizeAnalysisCard(name: string, quantity: number, input?: AnalysisC
     produces: sourceOptions(fallback),
     roles,
     ramp: rampProfile(fallback),
+    costReduction,
     conditionality,
     earliestUsefulTurn: roles.includes("interaction") ? 2 : manaValue <= 1 ? 1 : Math.max(1, Math.min(5, Math.ceil(manaValue))),
     latestPreferredTurn: roles.includes("early_action") ? 2 : roles.includes("interaction") ? 3 : Math.max(3, Math.min(5, Math.ceil(manaValue) + 1)),
@@ -589,15 +704,24 @@ function removeHandFromLibrary(deck: SimCard[], handNames: string[]) {
   return { hand, library: remaining };
 }
 
-function canPayAnalysis(card: AnalysisCard, sources: SimSource[], manaBudget = sources.length) {
+function canPayAnalysis(
+  card: AnalysisCard,
+  sources: SimSource[],
+  manaBudget = sources.length,
+  activeReducers: CostReductionProfile[] = []
+) {
   if (card.isLand) {
     return false;
   }
-  return solveManaPayment(card.manaCost, card.manaValue, sources.slice(0, manaBudget)).canPay;
+  return solveManaPayment(card.manaCost, card.manaValue, sources.slice(0, manaBudget), {
+    genericReduction: genericReductionForSpell(card, activeReducers)
+  }).canPay;
 }
 
-function payForSpell(card: AnalysisCard, sources: SimSource[]) {
-  return solveManaPayment(card.manaCost, card.manaValue, sources);
+function payForSpell(card: AnalysisCard, sources: SimSource[], activeReducers: CostReductionProfile[] = []) {
+  return solveManaPayment(card.manaCost, card.manaValue, sources, {
+    genericReduction: genericReductionForSpell(card, activeReducers)
+  });
 }
 
 function chooseLandForLine(lands: SimCard[], sources: SimSource[], turn: number, spells: SimCard[]) {
@@ -669,6 +793,7 @@ function evaluateDrawLine(openingHand: SimCard[], drawnCards: SimCard[], deck: S
   const { profile, avgMv, roleTargets } = deckProfileTargets(deck, explicitProfile);
   const hand = [...openingHand];
   const sources: SimSource[] = [];
+  const activeCostReducers: CostReductionProfile[] = [];
   const castCards = new Set<string>();
   const roleCoverage: Partial<Record<CardRole, number>> = {};
   const landDrops: number[] = [];
@@ -713,7 +838,7 @@ function evaluateDrawLine(openingHand: SimCard[], drawnCards: SimCard[], deck: S
       });
 
     for (const spell of castOrder) {
-      const payment = payForSpell(spell, availableSources);
+      const payment = payForSpell(spell, availableSources, activeCostReducers);
       if (!payment.canPay) {
         continue;
       }
@@ -731,6 +856,9 @@ function evaluateDrawLine(openingHand: SimCard[], drawnCards: SimCard[], deck: S
       if (spell.ramp && spell.ramp.kind !== "ritual" && spell.ramp.kind !== "cost_reducer") {
         const colors = spell.roles.includes("ramp") ? (["C"] as ManaColor[]) : (["C"] as ManaColor[]);
         sources.push({ name: spell.name, colors, availableTurn: turn + 1 });
+      }
+      if (spell.costReduction?.activeAfterCast) {
+        activeCostReducers.push(spell.costReduction);
       }
     }
     manaSpentByTurn.push(spent);

@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { AccountBar } from "@/components/AccountBar";
-import { clearAuthFallback, getAuthFallbackUser, type AuthFallbackUser } from "@/lib/authFallback";
+import { clearAuthFallback } from "@/lib/authFallback";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | AuthFallbackUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -18,12 +18,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? getAuthFallbackUser());
+      setUser(data.session?.user ?? null);
       setIsLoading(false);
     });
 
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? getAuthFallbackUser());
+      setUser(session?.user ?? null);
       setIsLoading(false);
     });
 

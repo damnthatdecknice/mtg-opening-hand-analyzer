@@ -1833,11 +1833,109 @@ button.list-row {
 
 .bug-report-page {
   display: grid;
+  justify-items: start;
   gap: 22px;
+  width: min(960px, 100%);
+  margin-inline: auto;
+}
+
+.bug-report-page .compact-hero-panel {
+  width: min(860px, 100%);
+  padding: clamp(26px, 4vw, 42px);
 }
 
 .bug-report-panel {
-  max-width: 860px;
+  overflow: visible;
+  width: min(860px, 100%);
+  padding: clamp(26px, 4vw, 38px);
+  background:
+    linear-gradient(135deg, rgba(2, 10, 22, 0.9), rgba(18, 18, 22, 0.82)),
+    var(--data-card);
+}
+
+.bug-report-panel > .eyebrow {
+  margin: 0 0 12px;
+}
+
+.bug-report-panel h2 {
+  margin: 0;
+}
+
+.bug-report-form {
+  display: grid;
+  gap: 20px;
+  margin-top: 26px;
+}
+
+.bug-report-form label {
+  display: grid;
+  gap: 10px;
+  color: #ffe1a1;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.bug-report-form input,
+.bug-report-form textarea {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(255, 184, 77, 0.26);
+  border-radius: 0;
+  border-color: rgba(255, 184, 77, 0.24);
+  background: rgba(1, 8, 18, 0.78);
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  clip-path: none;
+}
+
+.bug-report-form input {
+  min-height: 52px;
+  padding: 0 16px;
+}
+
+.bug-report-form textarea {
+  min-height: 240px;
+  padding: 16px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.bug-report-form textarea::placeholder {
+  color: color-mix(in srgb, var(--muted) 76%, var(--text));
+  opacity: 0.88;
+}
+
+.bug-report-form input:focus,
+.bug-report-form textarea:focus {
+  border-color: var(--amber);
+  box-shadow:
+    0 0 0 3px rgba(255, 184, 77, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  outline: none;
+}
+
+.bug-report-form .primary-button {
+  justify-self: start;
+  min-width: 220px;
+  width: auto;
+}
+
+@media (max-width: 720px) {
+  .bug-report-page {
+    justify-items: stretch;
+  }
+
+  .bug-report-panel {
+    padding: 22px;
+  }
+
+  .bug-report-form .primary-button {
+    justify-self: stretch;
+  }
 }
 
 .setup-note,

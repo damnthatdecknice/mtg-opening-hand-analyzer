@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { parseDecklist } from "@/lib/deckParser";
 import type { SavedDeck } from "@/lib/decks";
@@ -53,6 +53,7 @@ export function MetagamePanel() {
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [selectedArchetype, setSelectedArchetype] = useState("");
+  const selectedDeckRef = useRef<HTMLElement | null>(null);
 
   const savedDeckNotes = useMemo(
     () => (data ? buildSavedDeckNotes(savedDecks, data, format) : []),
@@ -116,6 +117,13 @@ export function MetagamePanel() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  function selectArchetype(archetypeName: string) {
+    setSelectedArchetype(archetypeName);
+    window.setTimeout(() => {
+      selectedDeckRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
   }
 
   if (!entitlements.isLoading && !entitlements.canUseDeckVault) {
@@ -229,7 +237,7 @@ export function MetagamePanel() {
                       selectedArchetype === archetype.name ? "selected-meta-row" : ""
                     }`}
                     key={archetype.name}
-                    onClick={() => setSelectedArchetype(archetype.name)}
+                    onClick={() => selectArchetype(archetype.name)}
                     type="button"
                   >
                     <span>{archetype.name}</span>
@@ -246,11 +254,11 @@ export function MetagamePanel() {
             <article className="panel compact-panel">
               <div className="performance-heading">
                 <strong>Opening Edge</strong>
-                <h2>Proprietary Performance Rating</h2>
+                <h2>Finish Conversion Signal</h2>
               </div>
               <p className="muted-copy">
-                Separate from metagame share. This highlights which archetypes are converting
-                Challenge appearances from the last {data.windowDays} days into stronger results.
+                Separate from metagame share. This highlights which archetypes are turning
+                Challenge appearances from the last {data.windowDays} days into stronger finishes.
               </p>
               <div className="list-stack">
                 {performanceDecks.length ? (
@@ -262,7 +270,7 @@ export function MetagamePanel() {
                           selectedArchetype === deck.name ? "selected-list-row" : ""
                         }`}
                         key={deck.name}
-                        onClick={() => setSelectedArchetype(deck.name)}
+                        onClick={() => selectArchetype(deck.name)}
                         type="button"
                       >
                         <div>
@@ -289,7 +297,7 @@ export function MetagamePanel() {
           </section>
 
           {selectedDeck ? (
-            <section className="panel compact-panel metagame-featured-list">
+            <section className="panel compact-panel metagame-featured-list" ref={selectedDeckRef}>
               <div className="section-heading split-heading">
                 <div>
                   <p className="eyebrow">Recent winning list</p>
@@ -310,7 +318,7 @@ export function MetagamePanel() {
               </div>
             </section>
           ) : selectedArchetype ? (
-            <section className="panel compact-panel metagame-featured-list">
+            <section className="panel compact-panel metagame-featured-list" ref={selectedDeckRef}>
               <p className="eyebrow">Recent winning list</p>
               <h2>{selectedArchetype}</h2>
               <p className="muted-copy">No parsed list is available for this archetype in the selected window.</p>

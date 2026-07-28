@@ -230,15 +230,20 @@ export function ManaCurveDashboard() {
               <strong>{analysis.landCount}</strong>
             </div>
             <div className="metric-card">
-              <span>Spells</span>
-              <strong>{analysis.spellCount}</strong>
+              <span>Spell cards</span>
+              <strong>{analysis.physicalSpellCount}</strong>
+              <em className="metric-impact neutral">physical copies</em>
             </div>
             <div className="metric-card">
-              <span>Average MV</span>
+              <span>Casting modes</span>
+              <strong>{analysis.castModeCount}</strong>
+            </div>
+            <div className="metric-card">
+              <span>Avg physical MV</span>
               <strong>{analysis.averageManaValue.toFixed(2)}</strong>
             </div>
             <div className="metric-card">
-              <span>Median MV</span>
+              <span>Median physical MV</span>
               <strong>{analysis.medianManaValue.toFixed(1)}</strong>
             </div>
           </section>
@@ -301,7 +306,9 @@ function CurvePanel({ analysis }: { analysis: ManaCurveAnalysis }) {
           <strong>{row.spells}</strong>
         </div>
       ))}
-      <p className="muted-copy">Lands are excluded from the spell curve and counted separately.</p>
+      <p className="muted-copy">
+        Lands are excluded. Multi-face cards may appear in multiple cast-mode buckets, but physical spell-card totals count each copy once.
+      </p>
     </section>
   );
 }
@@ -333,7 +340,10 @@ function TypeBreakdownPanel({ analysis }: { analysis: ManaCurveAnalysis }) {
           </span>
         ))}
       </div>
-      <p className="muted-copy">Multitype cards are assigned one primary role, so artifact creatures are not double-counted.</p>
+      <p className="muted-copy">
+        Physical cards are assigned one primary role, so artifact creatures are not double-counted.
+        {analysis.modalSourceCount ? ` ${analysis.modalSourceCount} modal land/spell source(s) detected.` : ""}
+      </p>
     </section>
   );
 }

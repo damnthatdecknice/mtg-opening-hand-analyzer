@@ -177,6 +177,7 @@ export type AnalyzerResult = {
 
 type ScryfallCard = {
   name: string;
+  layout?: string;
   mtgo_id?: number;
   mtgo_foil_id?: number;
   cmc?: number;
@@ -247,6 +248,24 @@ function chooseCastableFace(card: ScryfallCard) {
   );
 }
 
+function isCombinedFaceCostCard(card: ScryfallCard) {
+  const layout = card.layout?.toLowerCase() ?? "";
+  const typeLine = card.type_line?.toLowerCase() ?? "";
+  return (
+    Boolean(card.card_faces?.length && card.mana_cost?.includes("//")) &&
+    !layout.includes("adventure") &&
+    !typeLine.includes("adventure")
+  );
+}
+
+function cheapestNonlandFace(card: ScryfallCard) {
+  const faces = (card.card_faces ?? []).filter((face) => !face.type_line?.toLowerCase().includes("land") && face.mana_cost);
+  if (!faces.length) {
+    return null;
+  }
+  return [...faces].sort((a, b) => manaValueFromCost(a.mana_cost) - manaValueFromCost(b.mana_cost))[0] ?? null;
+}
+
 function manaValueFromCost(cost = "") {
   const symbols = Array.from(cost.matchAll(/\{([^}]+)\}/g)).map((match) => match[1] ?? "");
   return symbols.reduce((total, symbol) => {
@@ -289,6 +308,19 @@ function checkedManaValueDetails(
   card: ScryfallCard,
   castableFace: NonNullable<ScryfallCard["card_faces"]>[number] | null
 ) {
+  if (isCombinedFaceCostCard(card)) {
+    const cheapestFace = cheapestNonlandFace(card) ?? castableFace;
+    const faceCostValue = manaValueFromCost(cheapestFace?.mana_cost);
+    if (cheapestFace?.mana_cost) {
+      return {
+        value: faceCostValue,
+        source: "cheapest split face mana cost",
+        manaCost: cheapestFace.mana_cost,
+        symbolCheck: faceCostValue
+      };
+    }
+  }
+
   const cardCostValue = manaValueFromCost(card.mana_cost);
   if (cardCostValue) {
     return { value: cardCostValue, source: "mana cost", manaCost: card.mana_cost ?? "", symbolCheck: cardCostValue };
@@ -369,7 +401,7 @@ function mapScryfallCard(card: ScryfallCard): CardLookup {
       card.card_faces?.map((face) => ({
         name: face.name ?? "",
         manaCost: face.mana_cost ?? "",
-        manaValue: face.cmc ?? manaValueFromCost(face.mana_cost),
+        manaValue: face.mana_cost ? manaValueFromCost(face.mana_cost) : face.cmc ?? 0,
         typeLine: face.type_line ?? "",
         oracleText: face.oracle_text ?? ""
       })) ?? [],
@@ -805,7 +837,29 @@ function sourceProfile(card: CardLookup): Omit<ManaSource, "availableTurn"> {
   return { name: card.name, colors: uniqueColors, entersTapped };
 }
 
-function canPay(cost: string, sources: ManaSource[]) {
+function costReductionAmount(text: string) {
+  const symbolMatch = text.match(/costs?\s+\{(\d+)\}\s+less/);
+  if (symbolMatch) {
+    return Number(symbolMatch[1] ?? 0);
+  }
+  const wordMatch = text.match(/costs?\s+(one|two|three|four|five|a|an|\d+)\s+less/);
+  if (!wordMatch) {
+    return 0;
+  }
+  const words: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5 };
+  const raw = (wordMatch[1] ?? "").toLowerCase();
+  return /^\d+$/.test(raw) ? Number(raw) : words[raw] ?? 0;
+}
+
+function selfCostReduction(card: CardLookup) {
+  const text = allText(card);
+  if (!/\bthis spell costs?\b/.test(text)) {
+    return 0;
+  }
+  return costReductionAmount(text);
+}
+
+function canPay(cost: string, sources: ManaSource[], genericReduction = 0) {
   return solveManaPayment(
     cost,
     manaValueFromCost(cost),
@@ -814,7 +868,8 @@ function canPay(cost: string, sources: ManaSource[]) {
       colors: source.colors.filter((color): color is ManaColor =>
         (["W", "U", "B", "R", "G", "C"] as string[]).includes(color)
       )
-    }))
+    })),
+    { genericReduction }
   ).canPay;
 }
 
@@ -952,7 +1007,7 @@ function castabilityMonteCarlo(
           continue;
         }
         const cost = castabilityCost(entry.card);
-        if (!canPay(cost, usableSources)) {
+        if (!canPay(cost, usableSources, selfCostReduction(entry.card))) {
           continue;
         }
         const depth = drawDepth(entry.card);
@@ -973,7 +1028,7 @@ function castabilityMonteCarlo(
       usableSources = sources.filter((source) => source.availableTurn <= turn);
       for (const spell of spells) {
         const cost = castabilityCost(spell);
-        if (canPay(cost, usableSources)) {
+        if (canPay(cost, usableSources, selfCostReduction(spell))) {
           successes.get(spell.name)![turn - 1] += 1;
         }
       }

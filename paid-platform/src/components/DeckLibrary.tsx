@@ -30,6 +30,7 @@ const deckFormats = [
   "Pioneer",
   "Modern",
   "Legacy",
+  "Pauper",
   "Draft",
   "Commander",
   "Brawl",
@@ -493,7 +494,7 @@ export function DeckLibrary() {
                   </span>
                 </div>
                 <div className="deck-row-actions">
-                  <Link className="text-button" href={`/analyzer?deckId=${deck.id}`}>
+                  <Link className="text-button" href={`/analyzer?deck=${deck.id}`}>
                     Analyze
                   </Link>
                   <button className="text-button" onClick={() => startEditing(deck)} type="button">
