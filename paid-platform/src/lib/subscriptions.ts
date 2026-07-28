@@ -23,7 +23,7 @@ export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
       "Screenshot intake",
       "Manual seven-card confirmation",
       "Overview and deep-data results",
-      ...(OPEN_BETA_ACCESS ? ["Saved decks, mana curve, and metagame tools during open beta"] : [])
+      ...(OPEN_BETA_ACCESS ? ["Saved decks, Deck Lab, and metagame tools during open beta"] : [])
     ]
   },
   {

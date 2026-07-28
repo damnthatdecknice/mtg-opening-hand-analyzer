@@ -1308,7 +1308,7 @@ export function HandAnalyzer() {
     const tabs: Array<{ id: ResultTab; label: string }> = [
       { id: "overview", label: "Overview" },
       { id: "deep", label: "Probability Details" },
-      { id: "curve", label: "Mana Curve" },
+      { id: "curve", label: "Deck Lab" },
       { id: "mulligan", label: "Mulligan" },
       { id: "other", label: "Model Notes" }
     ];
@@ -2251,7 +2251,7 @@ function ManaCurve({ result }: { result: AnalyzerResult }) {
   const max = Math.max(1, ...result.curve.map((row) => row.spells));
   return (
     <div className="result-stack curve-panel">
-      <h2>Deck Mana Curve</h2>
+      <h2>Deck Lab Curve</h2>
       {result.curve.map((row) => (
         <div className="curve-row" key={row.manaValue}>
           <span>{row.manaValue}</span>

@@ -213,7 +213,7 @@ export function ManaCurveDashboard() {
     return (
       <section className="panel locked-feature-panel">
         <p className="eyebrow">Deck Pro</p>
-        <h1>Mana Curve unlocks with saved decks</h1>
+        <h1>Deck Lab unlocks with saved decks</h1>
         <p>Save decks to compare curves, card types, and tournament-informed structural suggestions.</p>
         <p className="muted-copy">Open beta access should include this feature. Refresh or sign in again if this appears.</p>
       </section>
@@ -224,7 +224,7 @@ export function ManaCurveDashboard() {
     <div className="mana-curve-page">
       <section className="hero-panel compact-hero-panel">
         <p className="eyebrow">Deck engineering</p>
-        <h1>Mana Curve Lab</h1>
+        <h1>Deck Lab</h1>
         <p>Review saved deck curves, card-type structure, land counts, and similar Challenge-shell pressure points.</p>
       </section>
 
@@ -652,3 +652,4 @@ function SuggestionPanel({ analysis, hasMetagame }: { analysis: ManaCurveAnalysi
     </section>
   );
 }
+

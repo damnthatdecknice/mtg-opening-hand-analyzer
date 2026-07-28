@@ -8,7 +8,7 @@ export function PricingPanel() {
         <h1>All Opening Edge features are currently free during open beta.</h1>
         <p>
           {OPEN_BETA_ACCESS
-            ? "You can use opening-hand analysis, saved decks, mana curve tools, screenshot workflows, and metagame pages without payment while the product is in beta."
+            ? "You can use opening-hand analysis, saved decks, Deck Lab tools, screenshot workflows, and metagame pages without payment while the product is in beta."
             : "Free includes 10 analyzer uses per week. Deck Pro unlocks unlimited analysis, saved decklists, and the remembered deck workflow for competitive testing."}
         </p>
       </header>
