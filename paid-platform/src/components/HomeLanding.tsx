@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { AccountBar } from "@/components/AccountBar";
 import { DashboardContent } from "@/components/DashboardContent";
+import { FirstDeckOnboarding } from "@/components/FirstDeckOnboarding";
 import { clearAuthFallback } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
 
@@ -52,16 +53,7 @@ export function HomeLanding() {
     window.location.href = "/";
   }
 
-  if (isLoading) {
-    return (
-      <section className="panel auth-required">
-        <p className="eyebrow">Checking session</p>
-        <h1>Loading your workspace</h1>
-      </section>
-    );
-  }
-
-  if (user) {
+  if (user && !isLoading) {
     return (
       <>
         <AccountBar onSignOut={handleSignOut} user={user} />
@@ -84,27 +76,14 @@ export function HomeLanding() {
           <Link className="primary-button" href="/analyzer?sample=1">
             Try a Sample Analysis
           </Link>
-          <Link className="secondary-button" href="/signup">
-            Create Free Account
+          <Link className="secondary-button" href="/analyzer">
+            Paste My Deck
           </Link>
         </div>
         <p className="muted-copy">Opening Edge is in open beta. Results are advisory estimates, not guarantees.</p>
       </div>
 
-      <div className="status-stack">
-        <div className="metric-card">
-          <span>Example score</span>
-          <strong>74/100</strong>
-        </div>
-        <div className="metric-card">
-          <span>Recommendation</span>
-          <strong>Keep Lean</strong>
-        </div>
-        <div className="metric-card">
-          <span>Main risk</span>
-          <strong>Third land</strong>
-        </div>
-      </div>
+      <FirstDeckOnboarding mode="guest" />
 
       <div className="pillar-grid">
         {pillars.map((pillar) => (

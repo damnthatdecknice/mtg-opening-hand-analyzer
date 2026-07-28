@@ -8,5 +8,14 @@
     "noEmit": false,
     "incremental": false
   },
-  "include": ["src/lib/deckParser.ts", "src/lib/handScoring.ts", "src/lib/manaCurve.ts", "src/lib/metagame.ts", "tests/**/*.ts"]
+  "include": [
+    "src/lib/analyzerMode.ts",
+    "src/lib/deckParser.ts",
+    "src/lib/firstDeckOnboarding.ts",
+    "src/lib/guestDeck.ts",
+    "src/lib/handScoring.ts",
+    "src/lib/manaCurve.ts",
+    "src/lib/metagame.ts",
+    "tests/**/*.ts"
+  ]
 }

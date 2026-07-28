@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { inferDeckName, parseDecklist, parseDekImport, type DeckImportMetadata } from "@/lib/deckParser";
 import type { DeckInsert, DeckVersion, SavedDeck } from "@/lib/decks";
+import { saveDeckForCurrentUser } from "@/lib/deckStorage";
 import { deckFormatOptions } from "@/lib/formats";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
@@ -220,8 +221,13 @@ export function DeckLibrary() {
         .eq("id", editingDeck.id);
       error = updateResult.error;
     } else {
-      const insertResult = await supabase.from("decks").insert(deck);
-      error = insertResult.error;
+      const insertResult = await saveDeckForCurrentUser({
+        decklist,
+        format,
+        name: name.trim() || inferDeckName(decklist),
+        parsedJson: parsedForSave
+      });
+      error = insertResult.error ? { message: insertResult.error } : null;
     }
     setIsBusy(false);
 

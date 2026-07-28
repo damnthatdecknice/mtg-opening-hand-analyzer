@@ -1,6 +1,7 @@
 "use client";
 
 import { ClipboardEvent, DragEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   analyzeOpeningHand,
   fetchCardData,
@@ -8,6 +9,7 @@ import {
   type CardLookup,
   type PlayDraw
 } from "@/lib/analyzer";
+import { type AnalyzerMode, shouldPersistHandSession } from "@/lib/analyzerMode";
 import {
   inferDeckName,
   parseDecklist,
@@ -17,6 +19,7 @@ import {
 import { selectAnalyzerDeck } from "@/lib/analyzerRouting";
 import type { SavedDeck } from "@/lib/decks";
 import { deckFormatOptions } from "@/lib/formats";
+import { clearGuestDeck, loadGuestDeck } from "@/lib/guestDeck";
 import { validatePastedHandRows } from "@/lib/handValidation";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
@@ -723,6 +726,8 @@ export function HandAnalyzer() {
   const [deckFormat, setDeckFormat] = useState("Standard");
   const [savedDecks, setSavedDecks] = useState<SavedDeck[]>([]);
   const [selectedDeckId, setSelectedDeckId] = useState("custom");
+  const [analyzerMode, setAnalyzerMode] = useState<AnalyzerMode>("account");
+  const [guestDeckName, setGuestDeckName] = useState("");
   const [isLoadingDecks, setIsLoadingDecks] = useState(false);
   const [handText, setHandText] = useState("");
   const [confirmedHand, setConfirmedHand] = useState<string[]>([]);
@@ -756,12 +761,44 @@ export function HandAnalyzer() {
     setHandText(sampleHand);
     setConfirmedHand(sampleHand.split(/\r?\n/));
     setSelectedDeckId("custom");
+    setAnalyzerMode("sample");
+    setGuestDeckName("");
     setDeckImportMetadata(undefined);
     setMessage("Loaded a sample deck and opening hand for demonstration. Nothing is saved unless you choose to save your own deck.");
   }, []);
 
   useEffect(() => {
     async function loadSavedDecks() {
+      const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const guestRequested = params?.get("guest") === "1";
+      const sampleRequested = params?.get("sample") === "1";
+      const requestedId = params?.get("deck") ?? "";
+
+      if (guestRequested && !requestedId && !sampleRequested) {
+        const guestDeck = loadGuestDeck();
+        if (guestDeck) {
+          setDecklist(guestDeck.decklist);
+          setDeckFormat(guestDeck.format);
+          setDeckImportMetadata(guestDeck.importMetadata);
+          setSelectedDeckId("guest");
+          setAnalyzerMode("guest");
+          setGuestDeckName(guestDeck.name);
+          setMessage(
+            "Guest analysis - this deck and hand are stored only in this browser unless you create an account and save them."
+          );
+          return;
+        }
+
+        setSelectedDeckId("custom");
+        setAnalyzerMode("guest");
+        setGuestDeckName("");
+        setMessage("No guest deck was found in this browser. Paste or import a deck to continue.");
+      }
+
+      if (sampleRequested) {
+        return;
+      }
+
       if (!supabase || !entitlements.canUseDeckVault) {
         return;
       }
@@ -781,13 +818,6 @@ export function HandAnalyzer() {
 
       const decks = (data ?? []) as SavedDeck[];
       setSavedDecks(decks);
-      const sampleRequested =
-        typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("sample") === "1" : false;
-      if (sampleRequested) {
-        return;
-      }
-      const requestedId =
-        typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("deck") : "";
       const rememberedId = window.localStorage.getItem(lastDeckStorageKey);
       const selection = selectAnalyzerDeck({
         decks,
@@ -798,6 +828,8 @@ export function HandAnalyzer() {
 
       if (initialDeck) {
         setSelectedDeckId(initialDeck.id);
+        setAnalyzerMode("account");
+        setGuestDeckName("");
         setDecklist(initialDeck.decklist);
         setDeckImportMetadata(initialDeck.parsed_json.importMetadata);
         setDeckFormat(initialDeck.format ?? "Standard");
@@ -809,6 +841,8 @@ export function HandAnalyzer() {
         }
       } else if (selection.message) {
         setSelectedDeckId("custom");
+        setAnalyzerMode("account");
+        setGuestDeckName("");
         setDecklist("");
         setDeckImportMetadata(undefined);
         window.localStorage.removeItem(lastDeckStorageKey);
@@ -820,14 +854,22 @@ export function HandAnalyzer() {
       void loadSavedDecks();
     } else if (!entitlements.isLoading) {
       setSavedDecks([]);
-      setSelectedDeckId("custom");
-      window.localStorage.removeItem(lastDeckStorageKey);
+      if (analyzerMode === "account") {
+        setSelectedDeckId("custom");
+        window.localStorage.removeItem(lastDeckStorageKey);
+      }
     }
-  }, [entitlements.canUseDeckVault, entitlements.isLoading]);
+  }, [analyzerMode, entitlements.canUseDeckVault, entitlements.isLoading]);
 
   function chooseSavedDeck(deckId: string) {
     setSelectedDeckId(deckId);
+    if (deckId === "guest") {
+      setAnalyzerMode("guest");
+      return;
+    }
     if (deckId === "custom") {
+      setAnalyzerMode("account");
+      setGuestDeckName("");
       setDeckImportMetadata(undefined);
       window.localStorage.removeItem(lastDeckStorageKey);
       return;
@@ -839,6 +881,8 @@ export function HandAnalyzer() {
     }
 
     setDecklist(deck.decklist);
+    setAnalyzerMode("account");
+    setGuestDeckName("");
     setDeckImportMetadata(deck.parsed_json.importMetadata);
     setDeckFormat(deck.format ?? "Standard");
     window.localStorage.setItem(lastDeckStorageKey, deck.id);
@@ -863,6 +907,8 @@ export function HandAnalyzer() {
       setDecklist(converted);
       setDeckImportMetadata(imported.parsed.importMetadata);
       setSelectedDeckId("custom");
+      setAnalyzerMode("guest");
+      setGuestDeckName("");
       window.localStorage.removeItem(lastDeckStorageKey);
       setMessage(
         `Imported .dek file: ${convertedParsed.mainCount} main, ${convertedParsed.sideboardCount} sideboard. Preferred .dek art matching is on for Magic Online screenshots.`
@@ -1060,14 +1106,13 @@ export function HandAnalyzer() {
       return true;
     }
 
-    if (!supabase) {
-      setMessage("Could not verify the free weekly analyzer limit.");
-      return false;
-    }
-
     const userId = await currentUserId();
     if (!userId) {
-      setMessage("Sign in before analyzing a hand.");
+      return true;
+    }
+
+    if (!supabase) {
+      setMessage("Could not verify the free weekly analyzer limit.");
       return false;
     }
 
@@ -1123,7 +1168,9 @@ export function HandAnalyzer() {
       setResult(completedAnalysis);
       setWorkflowTab("results");
       setResultTab("overview");
-      await saveHandSession(seven, completedAnalysis);
+      if (shouldPersistHandSession(analyzerMode)) {
+        await saveHandSession(seven, completedAnalysis);
+      }
       if (failures.length) {
         setMessage(`Analysis ran, but ${failures.length} Scryfall lookup(s) need review: ${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "..." : ""}`);
       }
@@ -1135,6 +1182,10 @@ export function HandAnalyzer() {
   }
 
   async function saveHandSession(seven: string[], analysis: AnalyzerResult) {
+    if (!shouldPersistHandSession(analyzerMode)) {
+      return;
+    }
+
     if (!supabase) {
       return;
     }
@@ -1146,7 +1197,7 @@ export function HandAnalyzer() {
 
     const { error } = await supabase.from("hand_sessions").insert({
       user_id: userId,
-      deck_id: selectedDeckId === "custom" ? null : selectedDeckId,
+      deck_id: selectedDeckId === "custom" || selectedDeckId === "guest" ? null : selectedDeckId,
       source: screenshotSrc ? "screenshot" : "manual",
       confirmed_hand: seven,
       analysis_json: analysis,
@@ -1222,6 +1273,36 @@ export function HandAnalyzer() {
 
       {renderWorkflowTabs()}
       {message ? <p className="form-message analyzer-message">{message}</p> : null}
+      {analyzerMode === "guest" ? (
+        <div className="onboarding-panel guest-analysis-banner">
+          <strong>
+            Guest analysis{guestDeckName ? `: ${guestDeckName}` : ""}
+          </strong>
+          <span>
+            This deck and hand are stored only in this browser unless you create an account and save them.
+          </span>
+          <div className="action-row compact-actions">
+            <Link className="secondary-button" href="/signup">
+              Create an Account to Save It
+            </Link>
+            <button
+              className="text-button"
+              onClick={() => {
+                clearGuestDeck();
+                setAnalyzerMode("account");
+                setSelectedDeckId("custom");
+                setGuestDeckName("");
+                setDecklist("");
+                setDeckImportMetadata(undefined);
+                setMessage("Guest deck cleared.");
+              }}
+              type="button"
+            >
+              Clear guest deck
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {workflowTab === "deck" ? (
         <section className="panel analyzer-input-panel narrow-tool-panel">
@@ -1236,6 +1317,9 @@ export function HandAnalyzer() {
                   onChange={(event) => chooseSavedDeck(event.target.value)}
                   value={selectedDeckId}
                 >
+                  {analyzerMode === "guest" ? (
+                    <option value="guest">Guest deck{guestDeckName ? ` - ${guestDeckName}` : ""}</option>
+                  ) : null}
                   <option value="custom">
                     {isLoadingDecks ? "Loading saved decks..." : "Custom pasted deck"}
                   </option>
@@ -1297,6 +1381,9 @@ export function HandAnalyzer() {
                 setDeckFormat(event.target.value);
                 if (selectedDeckId !== "custom") {
                   setSelectedDeckId("custom");
+                  if (analyzerMode === "guest") {
+                    setGuestDeckName("Edited guest deck");
+                  }
                   window.localStorage.removeItem(lastDeckStorageKey);
                 }
               }}
@@ -1317,6 +1404,9 @@ export function HandAnalyzer() {
                 setDecklist(event.target.value);
                 setDeckImportMetadata(undefined);
                 setSelectedDeckId("custom");
+                if (analyzerMode === "guest") {
+                  setGuestDeckName("Edited guest deck");
+                }
                 window.localStorage.removeItem(lastDeckStorageKey);
               }}
               spellCheck={false}
