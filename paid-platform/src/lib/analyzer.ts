@@ -27,6 +27,7 @@ export type CardLookup = {
   oracleText: string;
   colors: string[];
   producedMana: string[];
+  layout?: string;
   faces: Array<{ name: string; manaCost: string; manaValue: number; typeLine: string; oracleText: string }>;
   imageUrl: string;
   imageUrls: string[];
@@ -397,6 +398,7 @@ function mapScryfallCard(card: ScryfallCard): CardLookup {
     oracleText: card.oracle_text ?? castableFace?.oracle_text ?? "",
     colors: card.colors ?? castableFace?.colors ?? [],
     producedMana: card.produced_mana ?? [],
+    layout: card.layout,
     faces:
       card.card_faces?.map((face) => ({
         name: face.name ?? "",

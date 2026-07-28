@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { fetchCardData, type CardLookup } from "@/lib/analyzer";
@@ -58,6 +58,7 @@ export function ManaCurveDashboard() {
   const [selectedDeckId, setSelectedDeckId] = useState("");
   const [deckInputMode, setDeckInputMode] = useState<DeckInputMode>("saved");
   const [pastedDecklist, setPastedDecklist] = useState("");
+  const [analyzedPastedDecklist, setAnalyzedPastedDecklist] = useState("");
   const [pastedFormat, setPastedFormat] = useState("Standard");
   const [displayMode, setDisplayMode] = useState<CurveDisplayMode>("counts");
   const [scope, setScope] = useState<CurveScope>("main");
@@ -66,9 +67,13 @@ export function ManaCurveDashboard() {
   const [isLoadingDecks, setIsLoadingDecks] = useState(true);
   const [isLoadingCards, setIsLoadingCards] = useState(false);
   const [message, setMessage] = useState("");
+  const [lookupFailureCount, setLookupFailureCount] = useState(0);
+  const [lastAnalyzedAt, setLastAnalyzedAt] = useState("");
+  const [lookupRetryNonce, setLookupRetryNonce] = useState(0);
+  const cardLookupCache = useRef(new Map<string, CardLookup>());
 
   const selectedDeck = decks.find((deck) => deck.id === selectedDeckId) ?? decks[0] ?? null;
-  const activeDecklist = deckInputMode === "pasted" ? pastedDecklist : selectedDeck?.decklist ?? "";
+  const activeDecklist = deckInputMode === "pasted" ? analyzedPastedDecklist : selectedDeck?.decklist ?? "";
   const activeFormat = deckInputMode === "pasted" ? pastedFormat : selectedDeck?.format ?? "Standard";
   const analysis = useMemo(
     () =>
@@ -152,6 +157,7 @@ export function ManaCurveDashboard() {
     async function loadCards() {
       if (!activeDecklist.trim()) {
         setCardData(new Map());
+        setLookupFailureCount(0);
         return;
       }
       setIsLoadingCards(true);
@@ -159,12 +165,25 @@ export function ManaCurveDashboard() {
       const parsed = parseDecklist(activeDecklist);
       const deckNames = parsed.cards.map((card) => card.name);
       const candidateNames = extractTournamentCurveCandidateNames(activeDecklist, metagameDecks);
-      const { lookups, failures } = await fetchCardData([...deckNames, ...candidateNames]);
+      const names = Array.from(new Set([...deckNames, ...candidateNames].map((name) => name.trim()).filter(Boolean)));
+      const missingNames = names.filter((name) => !cardLookupCache.current.has(name.toLowerCase()));
+      const fetched = missingNames.length ? await fetchCardData(missingNames) : { lookups: new Map<string, CardLookup>(), failures: [] };
       if (!isActive) {
         return;
       }
-      setCardData(lookups);
-      setMessage(failures.length ? `Some card data could not load: ${failures.slice(0, 3).join(", ")}` : "");
+      for (const [key, lookup] of Array.from(fetched.lookups)) {
+        cardLookupCache.current.set(key, lookup);
+      }
+      const nextLookups = new Map<string, CardLookup>();
+      for (const name of names) {
+        const lookup = cardLookupCache.current.get(name.toLowerCase());
+        if (lookup) {
+          nextLookups.set(name.toLowerCase(), lookup);
+        }
+      }
+      setCardData(nextLookups);
+      setLookupFailureCount(fetched.failures.length);
+      setMessage(fetched.failures.length ? `Some card data could not load: ${fetched.failures.slice(0, 3).join(", ")}` : "");
       setIsLoadingCards(false);
     }
 
@@ -172,7 +191,23 @@ export function ManaCurveDashboard() {
     return () => {
       isActive = false;
     };
-  }, [activeDecklist, metagameDecks]);
+  }, [activeDecklist, metagameDecks, lookupRetryNonce]);
+
+  function runPastedCurveAnalysis() {
+    const parsed = parseDecklist(pastedDecklist);
+    if (!parsed.cards.length || pastedDecklist.trim().split(/\r?\n/).filter(Boolean).length < 2) {
+      setMessage("Paste a decklist with card quantities before running curve analysis.");
+      return;
+    }
+    setAnalyzedPastedDecklist(pastedDecklist);
+    setLastAnalyzedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+    setMessage("Running curve analysis for pasted deck.");
+  }
+
+  function retryCardLookups() {
+    cardLookupCache.current.clear();
+    setLookupRetryNonce((current) => current + 1);
+  }
 
   if (!entitlements.canUseDeckVault && !entitlements.isLoading) {
     return (
@@ -180,9 +215,7 @@ export function ManaCurveDashboard() {
         <p className="eyebrow">Deck Pro</p>
         <h1>Mana Curve unlocks with saved decks</h1>
         <p>Save decks to compare curves, card types, and tournament-informed structural suggestions.</p>
-        <Link className="primary-button" href="/pricing">
-          View tiers
-        </Link>
+        <p className="muted-copy">Open beta access should include this feature. Refresh or sign in again if this appears.</p>
       </section>
     );
   }
@@ -268,10 +301,21 @@ export function ManaCurveDashboard() {
               value={pastedDecklist}
             />
           </label>
+          <div className="hand-action-row">
+            <button className="primary-button" disabled={isLoadingCards} onClick={runPastedCurveAnalysis} type="button">
+              {isLoadingCards ? "Analyzing..." : "Run Curve Analysis"}
+            </button>
+            {lastAnalyzedAt ? <span className="muted-copy">Last analyzed {lastAnalyzedAt}</span> : null}
+          </div>
         </section>
       ) : null}
 
       {message ? <p className="form-message">{message}</p> : null}
+      {lookupFailureCount ? (
+        <button className="secondary-button" onClick={retryCardLookups} type="button">
+          Retry card lookups
+        </button>
+      ) : null}
       {isLoadingCards ? <p className="muted-copy">Loading Scryfall card data...</p> : null}
 
       {analysis ? (
@@ -302,6 +346,22 @@ export function ManaCurveDashboard() {
               <em className="metric-impact neutral">copy-weighted</em>
             </div>
           </section>
+          {analysis.validation.issues.length ? (
+            <section className="panel">
+              <div className="section-heading">
+                <p className="eyebrow">Validation</p>
+                <h2>{analysis.validation.isCompleteEnoughForPosture ? "Deck checks" : "Raw curve only"}</h2>
+              </div>
+              <div className="list-stack">
+                {analysis.validation.issues.slice(0, 5).map((issue) => (
+                  <div className={`empty-state observation-card ${issue.severity === "error" ? "bad" : "neutral"}`} key={`${issue.code}-${issue.cardName ?? issue.title}`}>
+                    <strong>{issue.title}</strong>
+                    <span>{issue.detail}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <section className="mana-curve-grid">
             <CurvePanel analysis={analysis} displayMode={displayMode} />
@@ -455,6 +515,9 @@ function ManaDemandPanel({ analysis }: { analysis: ManaCurveAnalysis }) {
           <div className="mana-demand-row" key={color}>
             <strong>{color}</strong>
             <span>Pips {analysis.manaDemand.pips[color]}</span>
+            <span>Hybrid {analysis.manaDemand.flexiblePips[color]}</span>
+            <span>2/{color} {analysis.manaDemand.numericHybrid[color]}</span>
+            <span>{color}/P {analysis.manaDemand.phyrexian[color]}</span>
             <span>Sources {analysis.manaSources.sources[color]}</span>
           </div>
         ))}
@@ -470,7 +533,10 @@ function ManaDemandPanel({ analysis }: { analysis: ManaCurveAnalysis }) {
           </span>
         ))}
       </div>
-      <p className="muted-copy">Source estimates are card-text based and conservative for conditional lands.</p>
+      <p className="muted-copy">
+        Source confidence: {analysis.manaSources.confidence}. {analysis.manaSources.unknownSourceCount ? `${analysis.manaSources.unknownSourceCount} land row(s) have unknown production. ` : ""}
+        Fixed pips are shown separately from hybrid, numeric-hybrid, and Phyrexian requirements.
+      </p>
     </section>
   );
 }
@@ -564,7 +630,10 @@ function SuggestionPanel({ analysis, hasMetagame }: { analysis: ManaCurveAnalysi
                 <span>{suggestion.role} | {suggestion.slot} | {suggestion.problemAddressed}</span>
                 <small>{suggestion.reason}</small>
                 {suggestion.possibleCuts.length ? (
-                  <small>Possible cuts: {suggestion.possibleCuts.join(", ")}</small>
+                  <small>
+                    Cards to review for space:{" "}
+                    {suggestion.possibleCuts.map((cut) => `${cut.cardName} (${cut.reason}; ${cut.confidence})`).join(", ")}
+                  </small>
                 ) : null}
                 <small>
                   Evidence: {suggestion.source === "similar-tournament-decks" ? `${suggestion.supportingDeckCount} supporting list(s)` : suggestion.source}; {suggestion.similarityConfidence} confidence; {suggestion.formatLegality}; {suggestion.colorCompatibility}

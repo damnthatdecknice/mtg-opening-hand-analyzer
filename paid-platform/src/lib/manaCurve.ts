@@ -1,4 +1,5 @@
 import { parseDecklist, type ParsedDeckCard } from "./deckParser";
+import { validateDeckForManaCurve, type DeckValidationResult } from "./deckValidation";
 import { formatLegalities } from "./formats";
 import type { MetagameDeck } from "./metagame";
 
@@ -25,7 +26,9 @@ export type ManaCurveCardData = {
   typeLine: string;
   oracleText?: string;
   colors?: string[];
-  faces?: Array<{ name: string; manaCost?: string; manaValue: number; typeLine: string; oracleText?: string }>;
+  producedMana?: string[];
+  layout?: string;
+  faces?: Array<{ name: string; manaCost?: string; manaValue: number; typeLine: string; oracleText?: string; colors?: string[] }>;
   isLand: boolean;
   legalities?: Record<string, string>;
 };
@@ -37,7 +40,27 @@ export type ManaCurveRow = {
   cards: Record<CardTypeKey, Array<{ name: string; qty: number }>>;
 };
 
+export type ManaCurveObservationCode =
+  | "LOW_ONE_MANA_PLAYS"
+  | "LOW_EARLY_ACTION"
+  | "LOW_EARLY_THREATS"
+  | "LOW_CHEAP_INTERACTION"
+  | "LOW_CARD_FLOW"
+  | "LOW_RAMP"
+  | "LOW_RAMP_PAYOFFS"
+  | "HEAVY_TOP_END"
+  | "LOW_FINISHERS"
+  | "LOW_SWEEPERS"
+  | "LOW_COMBO_PIECES"
+  | "LAND_COUNT_LOW"
+  | "LAND_COUNT_HIGH"
+  | "HIGH_COLOR_STRAIN"
+  | "MANY_ONE_OFS"
+  | "INCOMPLETE_DECK"
+  | "NO_MAJOR_WARNING";
+
 export type ManaCurveObservation = {
+  code: ManaCurveObservationCode;
   tone: "good" | "neutral" | "bad";
   title: string;
   detail: string;
@@ -90,8 +113,14 @@ export type ManaCurveSuggestion = {
   similarityConfidence: DeckSimilarity["confidence"];
   formatLegality: "legal" | "unknown";
   colorCompatibility: "fits" | "off-color" | "colorless";
-  possibleCuts: string[];
+  possibleCuts: CutCandidate[];
   source: "similar-tournament-decks" | "sideboard" | "structural";
+};
+
+export type CutCandidate = {
+  cardName: string;
+  reason: string;
+  confidence: "low" | "medium" | "high";
 };
 
 export type DeckSimilarity = {
@@ -106,16 +135,49 @@ export type DeckSimilarity = {
 };
 
 export type ManaColor = "W" | "U" | "B" | "R" | "G";
+export type ManaSourceConfidence = "low" | "medium" | "high";
+export type LandAvailability = "untapped" | "tapped" | "conditional" | "unknown";
+
+export type ManaDemandRequirement =
+  | {
+      kind: "fixed";
+      colors: ManaColor[];
+      count: number;
+    }
+  | {
+      kind: "hybrid";
+      colors: ManaColor[];
+      count: number;
+    }
+  | {
+      kind: "numeric_hybrid";
+      color: ManaColor;
+      genericAlternative: number;
+      count: number;
+    }
+  | {
+      kind: "phyrexian";
+      colors: ManaColor[];
+      count: number;
+    };
 
 export type ManaDemandSummary = {
   pips: Record<ManaColor, number>;
+  flexiblePips: Record<ManaColor, number>;
+  numericHybrid: Record<ManaColor, number>;
+  phyrexian: Record<ManaColor, number>;
+  requirements: ManaDemandRequirement[];
   cards: Record<ManaColor, Array<{ name: string; qty: number; pips: number }>>;
   totalColoredPips: number;
 };
 
 export type ManaSourceSummary = {
   sources: Record<ManaColor, number>;
-  untappedByTurn: Array<{ turn: number; sources: Record<ManaColor, number>; confidence: "low" | "medium" | "high"; note: string }>;
+  confidence: ManaSourceConfidence;
+  unknownSourceCount: number;
+  approximateSourceCount: number;
+  availability: Record<LandAvailability, number>;
+  untappedByTurn: Array<{ turn: number; sources: Record<ManaColor, number>; confidence: ManaSourceConfidence; note: string }>;
 };
 
 export type CurveComparisonRange = {
@@ -155,6 +217,7 @@ export type ManaCurveAnalysis = {
   posture: DeckPostureResult;
   observations: ManaCurveObservation[];
   suggestions: ManaCurveSuggestion[];
+  validation: DeckValidationResult;
 };
 
 type CandidateCard = {
@@ -174,6 +237,7 @@ type StructureMetricKey =
   | "drawSelection"
   | "landCount"
   | "rampCount"
+  | "rampPayoffs"
   | "expensiveSpells"
   | "finishers"
   | "oneOfCards"
@@ -233,6 +297,7 @@ const constructedRanges: Record<DeckPosture, Partial<Record<StructureMetricKey, 
     rampCount: { min: 6, label: "ramp pieces" },
     landCount: { min: 24, max: 30, label: "lands" },
     expensiveSpells: { min: 5, max: 14, label: "payoffs and top-end spells" },
+    rampPayoffs: { min: 3, max: 12, label: "ramp payoffs" },
     finishers: { min: 3, label: "finishers" },
     earlyPlays: { min: 8, label: "early setup" },
     oneOfCards: { max: 10, label: "isolated one-ofs" }
@@ -378,6 +443,39 @@ function parseColoredPips(cost = "") {
   return pips;
 }
 
+function parseManaDemandRequirements(cost = ""): ManaDemandRequirement[] {
+  const merged = new Map<string, ManaDemandRequirement>();
+  const add = (requirement: ManaDemandRequirement) => {
+    const key =
+      requirement.kind === "numeric_hybrid"
+        ? `${requirement.kind}:${requirement.color}:${requirement.genericAlternative}`
+        : `${requirement.kind}:${[...requirement.colors].sort().join("")}`;
+    const current = merged.get(key);
+    if (current) {
+      current.count += requirement.count;
+    } else {
+      merged.set(key, { ...requirement });
+    }
+  };
+
+  for (const match of Array.from(cost.matchAll(/\{([^}]+)\}/g))) {
+    const symbol = (match[1] ?? "").toUpperCase();
+    const parts = symbol.split("/");
+    const colors = parts.filter((part): part is ManaColor => (["W", "U", "B", "R", "G"] as string[]).includes(part));
+    if (parts.includes("P") && colors.length) {
+      add({ kind: "phyrexian", colors: Array.from(new Set(colors)), count: 1 });
+    } else if (colors.length > 1) {
+      add({ kind: "hybrid", colors: Array.from(new Set(colors)), count: 1 });
+    } else if (colors.length === 1 && parts.some((part) => /^\d+$/.test(part))) {
+      add({ kind: "numeric_hybrid", color: colors[0], genericAlternative: Number(parts.find((part) => /^\d+$/.test(part)) ?? 2), count: 1 });
+    } else if (colors.length === 1) {
+      add({ kind: "fixed", colors, count: 1 });
+    }
+  }
+
+  return Array.from(merged.values());
+}
+
 function mergePips(target: Record<ManaColor, number>, source: Record<ManaColor, number>, qty: number) {
   for (const color of ["W", "U", "B", "R", "G"] as ManaColor[]) {
     target[color] += source[color] * qty;
@@ -386,6 +484,10 @@ function mergePips(target: Record<ManaColor, number>, source: Record<ManaColor, 
 
 function buildManaDemand(cards: ParsedDeckCard[], cardData: Map<string, ManaCurveCardData>): ManaDemandSummary {
   const pips = emptyManaColors();
+  const flexiblePips = emptyManaColors();
+  const numericHybrid = emptyManaColors();
+  const phyrexian = emptyManaColors();
+  const requirements: ManaDemandRequirement[] = [];
   const cardRows: ManaDemandSummary["cards"] = { W: [], U: [], B: [], R: [], G: [] };
 
   for (const entry of cards) {
@@ -396,9 +498,28 @@ function buildManaDemand(cards: ParsedDeckCard[], cardData: Map<string, ManaCurv
     const entries = castModeEntriesForCard(entry, card);
     for (const curveEntry of entries) {
       const curveCard = curveEntry.card;
-      const costPips = parseColoredPips(curveCard?.manaCost);
-      if (!Object.values(costPips).some(Boolean)) {
-        for (const color of cardColors(curveCard)) {
+      const costRequirements = parseManaDemandRequirements(curveCard?.manaCost);
+      const costPips = emptyManaColors();
+      for (const requirement of costRequirements) {
+        requirements.push({ ...requirement, count: requirement.count * curveEntry.qty });
+        if (requirement.kind === "fixed") {
+          for (const color of requirement.colors) {
+            costPips[color] += requirement.count;
+          }
+        } else if (requirement.kind === "hybrid") {
+          for (const color of requirement.colors) {
+            flexiblePips[color] += requirement.count * curveEntry.qty;
+          }
+        } else if (requirement.kind === "numeric_hybrid") {
+          numericHybrid[requirement.color] += requirement.count * curveEntry.qty;
+        } else if (requirement.kind === "phyrexian") {
+          for (const color of requirement.colors) {
+            phyrexian[color] += requirement.count * curveEntry.qty;
+          }
+        }
+      }
+      if (!costRequirements.length && !Object.values(costPips).some(Boolean)) {
+        for (const color of cardColors(curveCard).filter((color): color is ManaColor => (["W", "U", "B", "R", "G"] as string[]).includes(color))) {
           costPips[color as ManaColor] += 1;
         }
       }
@@ -413,48 +534,109 @@ function buildManaDemand(cards: ParsedDeckCard[], cardData: Map<string, ManaCurv
 
   return {
     pips,
+    flexiblePips,
+    numericHybrid,
+    phyrexian,
+    requirements,
     cards: cardRows,
     totalColoredPips: Object.values(pips).reduce((sum, count) => sum + count, 0)
   };
 }
 
-const sourceText: Record<ManaColor, RegExp[]> = {
-  W: [/\bplains\b/i, /\bwhite\b/i, /\{W\}/i],
-  U: [/\bisland\b/i, /\bblue\b/i, /\{U\}/i],
-  B: [/\bswamp\b/i, /\bblack\b/i, /\{B\}/i],
-  R: [/\bmountain\b/i, /\bred\b/i, /\{R\}/i],
-  G: [/\bforest\b/i, /\bgreen\b/i, /\{G\}/i]
+const landTypeColors: Record<string, ManaColor> = {
+  plains: "W",
+  island: "U",
+  swamp: "B",
+  mountain: "R",
+  forest: "G"
 };
 
-function landProduces(card: ManaCurveCardData | undefined) {
-  const colors = new Set<ManaColor>();
+function landText(card: ManaCurveCardData | undefined) {
   if (!card) {
-    return colors;
+    return "";
   }
-  const text = `${card.typeLine} ${card.manaCost ?? ""} ${(card.faces ?? []).map((face) => `${face.typeLine} ${face.oracleText ?? ""}`).join(" ")}`;
-  for (const color of ["W", "U", "B", "R", "G"] as ManaColor[]) {
-    if (sourceText[color].some((pattern) => pattern.test(text))) {
+  return [
+    card.oracleText ?? "",
+    ...(card.faces ?? []).filter((face) => /\bland\b/i.test(face.typeLine)).map((face) => face.oracleText ?? "")
+  ].join(" ");
+}
+
+function colorsFromProducedMana(card: ManaCurveCardData | undefined) {
+  return Array.from(
+    new Set(
+      (card?.producedMana ?? [])
+        .map((color) => color.toUpperCase())
+        .filter((color): color is ManaColor => (["W", "U", "B", "R", "G"] as string[]).includes(color))
+    )
+  );
+}
+
+function colorsFromLandTypes(card: ManaCurveCardData | undefined) {
+  const colors = new Set<ManaColor>();
+  const typeText = `${card?.typeLine ?? ""} ${(card?.faces ?? []).filter((face) => /\bland\b/i.test(face.typeLine)).map((face) => face.typeLine).join(" ")}`.toLowerCase();
+  for (const [landType, color] of Object.entries(landTypeColors)) {
+    if (new RegExp(`\\b${landType}\\b`, "i").test(typeText)) {
       colors.add(color);
     }
   }
-  if (/\bany color\b/i.test(text)) {
+  return Array.from(colors);
+}
+
+function colorsFromAddOracleText(text: string) {
+  const colors = new Set<ManaColor>();
+  const lower = text.toLowerCase();
+  if (/\badd (?:one mana of )?any color\b|\badd (?:one mana of )?any one color\b/i.test(lower)) {
     for (const color of ["W", "U", "B", "R", "G"] as ManaColor[]) {
       colors.add(color);
     }
   }
-  return colors;
+  for (const match of Array.from(text.matchAll(/\badd\b[^.]*?(\{[^}]+\}|white|blue|black|red|green)/gi))) {
+    const fragment = match[0] ?? "";
+    for (const symbol of Array.from(fragment.matchAll(/\{([WUBRG])\}/gi))) {
+      colors.add((symbol[1] ?? "").toUpperCase() as ManaColor);
+    }
+    for (const [word, color] of Object.entries({ white: "W", blue: "U", black: "B", red: "R", green: "G" } as Record<string, ManaColor>)) {
+      if (new RegExp(`\\b${word}\\b`, "i").test(fragment)) {
+        colors.add(color);
+      }
+    }
+  }
+  return Array.from(colors);
 }
 
-function likelyEntersTapped(card: ManaCurveCardData | undefined) {
+function landProduces(card: ManaCurveCardData | undefined): { colors: Set<ManaColor>; confidence: ManaSourceConfidence; reason: string } {
+  const colors = new Set<ManaColor>();
+  if (!card) {
+    return { colors, confidence: "low", reason: "Missing card data" };
+  }
+  const producedMana = colorsFromProducedMana(card);
+  if (producedMana.length) {
+    producedMana.forEach((color) => colors.add(color));
+    return { colors, confidence: "high", reason: "Scryfall produced_mana" };
+  }
+  const typeColors = colorsFromLandTypes(card);
+  if (typeColors.length) {
+    typeColors.forEach((color) => colors.add(color));
+    return { colors, confidence: "high", reason: "Basic land subtype" };
+  }
+  const oracleColors = colorsFromAddOracleText(landText(card));
+  if (oracleColors.length) {
+    oracleColors.forEach((color) => colors.add(color));
+    return { colors, confidence: "medium", reason: "Oracle Add-mana text" };
+  }
+  return { colors, confidence: "low", reason: "Unknown mana production" };
+}
+
+function likelyEntersTapped(card: ManaCurveCardData | undefined): LandAvailability {
   if (!card) {
     return "unknown";
   }
-  const text = `${card.typeLine} ${(card.faces ?? []).map((face) => face.oracleText ?? "").join(" ")}`;
-  if (/enters tapped|enters the battlefield tapped/i.test(text)) {
-    return "tapped";
-  }
-  if (/may pay|unless you control|if you control|two or more other lands|enters untapped/i.test(text)) {
+  const text = landText(card);
+  if (/enters (?:the battlefield )?tapped unless|enters (?:the battlefield )?tapped if|if you control|unless you control|two or more other lands|three or more other lands|you may pay|as long as|enters (?:the battlefield )?untapped/i.test(text)) {
     return "conditional";
+  }
+  if (/enters (?:the battlefield )?tapped/i.test(text)) {
+    return "tapped";
   }
   return "untapped";
 }
@@ -463,6 +645,10 @@ function buildManaSources(cards: ParsedDeckCard[], cardData: Map<string, ManaCur
   const sources = emptyManaColors();
   const untapped = emptyManaColors();
   const conditional = emptyManaColors();
+  const availability: Record<LandAvailability, number> = { untapped: 0, tapped: 0, conditional: 0, unknown: 0 };
+  let unknownSourceCount = 0;
+  let approximateSourceCount = 0;
+  let lowConfidenceSeen = false;
 
   for (const entry of cards) {
     const card = cardData.get(normalizeName(entry.name));
@@ -472,7 +658,14 @@ function buildManaSources(cards: ParsedDeckCard[], cardData: Map<string, ManaCur
     }
     const produced = landProduces(card);
     const tappedState = likelyEntersTapped(card);
-    for (const color of Array.from(produced)) {
+    availability[tappedState] += entry.qty;
+    if (produced.confidence === "low") {
+      lowConfidenceSeen = true;
+      unknownSourceCount += entry.qty;
+    } else if (produced.confidence === "medium" || tappedState === "conditional" || tappedState === "unknown") {
+      approximateSourceCount += entry.qty;
+    }
+    for (const color of Array.from(produced.colors)) {
       sources[color] += entry.qty;
       if (tappedState === "untapped") {
         untapped[color] += entry.qty;
@@ -484,6 +677,10 @@ function buildManaSources(cards: ParsedDeckCard[], cardData: Map<string, ManaCur
 
   return {
     sources,
+    confidence: lowConfidenceSeen ? "low" : approximateSourceCount ? "medium" : "high",
+    unknownSourceCount,
+    approximateSourceCount,
+    availability,
     untappedByTurn: [1, 2, 3].map((turn) => ({
       turn,
       sources: Object.fromEntries(
@@ -492,8 +689,12 @@ function buildManaSources(cards: ParsedDeckCard[], cardData: Map<string, ManaCur
           Math.min(sources[color], untapped[color] + (turn > 1 ? conditional[color] : Math.floor(conditional[color] * 0.45)))
         ])
       ) as Record<ManaColor, number>,
-      confidence: "medium",
-      note: "Estimated from land text. Conditional lands are conservative, not fully sequenced."
+      confidence: lowConfidenceSeen ? "low" : approximateSourceCount ? "medium" : "high",
+      note: lowConfidenceSeen
+        ? "Some lands have unknown production; source totals may be incomplete."
+        : approximateSourceCount
+          ? "Conditional lands are estimated conservatively and not fully sequenced."
+          : "Scryfall produced_mana or land subtypes supplied source colors."
     }))
   };
 }
@@ -715,6 +916,21 @@ function scaledRange(range: StructureMetricRange, format: string, totalCards: nu
       max: range.max === undefined ? undefined : Math.round(range.max * scale)
     };
   }
+  if (kind === "singleton") {
+    const singletonOverrides: Partial<Record<StructureMetricKey, StructureMetricRange>> = {
+      landCount: format.trim().toLowerCase() === "brawl" ? { min: 23, max: 27, label: "lands" } : { min: 35, max: 40, label: "lands" },
+      rampCount: format.trim().toLowerCase() === "brawl" ? { min: 4, max: 9, label: "ramp pieces" } : { min: 8, max: 14, label: "ramp pieces" },
+      earlyPlays: { min: format.trim().toLowerCase() === "brawl" ? 7 : 10, label: "early setup" },
+      drawSelection: { min: format.trim().toLowerCase() === "brawl" ? 4 : 8, label: "draw or selection" },
+      cheapInteraction: { min: format.trim().toLowerCase() === "brawl" ? 4 : 7, label: "interaction" },
+      finishers: { min: 3, max: format.trim().toLowerCase() === "brawl" ? 8 : 14, label: "finishers" },
+      expensiveSpells: { max: format.trim().toLowerCase() === "brawl" ? 10 : 18, label: "expensive spells" },
+      oneOfCards: { label: "singleton deck construction" }
+    };
+    if (singletonOverrides[key]) {
+      return singletonOverrides[key]!;
+    }
+  }
   if (kind === "singleton" && key === "oneOfCards") {
     return { label: "singleton deck construction" };
   }
@@ -747,6 +963,7 @@ function buildStructuralMetrics(
     drawSelection: 0,
     landCount: facts.landCount,
     rampCount: 0,
+    rampPayoffs: 0,
     expensiveSpells: ["5", "6", "7+"].reduce((sum, bucket) => sum + (facts.curve.find((row) => row.manaValue === bucket)?.spells ?? 0), 0),
     finishers: 0,
     oneOfCards: facts.oneOfCount,
@@ -782,6 +999,9 @@ function buildStructuralMetrics(
     }
     if (roles.includes("ramp")) {
       metrics.rampCount += entry.qty;
+    }
+    if ((roles.includes("finisher") || roles.includes("combo_payoff") || mv >= 5) && mv >= 4) {
+      metrics.rampPayoffs += entry.qty;
     }
     if (roles.includes("finisher") || (roles.includes("combo_payoff") && mv >= 4)) {
       metrics.finishers += entry.qty;
@@ -914,9 +1134,36 @@ function castModeEntriesForCard(entry: ParsedDeckCard, card: ManaCurveCardData |
     return [{ qty: entry.qty, card }];
   }
 
+  const layout = card.layout?.toLowerCase() ?? "";
+  const splitLikeLayouts = new Set(["split", "aftermath", "room"]);
+  const modalSpellLayouts = new Set(["adventure", "modal_dfc", "prototype"]);
+  const transformLikeLayouts = new Set(["transform", "meld", "reversible_card"]);
   const nonlandFaces = (card.faces ?? []).filter((face) => !/\bland\b/i.test(face.typeLine));
-  const shouldSplitFaces = nonlandFaces.length >= 2 && !card.isLand;
+  const shouldSplitFaces =
+    splitLikeLayouts.has(layout) ||
+    (/\broom\b/i.test(card.typeLine) && nonlandFaces.length >= 2) ||
+    (modalSpellLayouts.has(layout) && nonlandFaces.length >= 2) ||
+    (!layout && nonlandFaces.length >= 2 && !card.isLand && card.manaCost?.includes("//"));
   if (!shouldSplitFaces) {
+    if (transformLikeLayouts.has(layout) || layout === "modal_dfc") {
+      const frontFace = nonlandFaces[0];
+      if (frontFace) {
+        const frontCost = frontFace.manaCost || card.manaCost || "";
+        return [
+          {
+            qty: entry.qty,
+            card: {
+              ...card,
+              name: frontFace.name || card.name,
+              manaCost: frontCost,
+              manaValue: Math.max(0, frontCost ? manaValueFromCost(frontCost) : frontFace.manaValue ?? physicalManaValueFromRaw(card)),
+              typeLine: frontFace.typeLine || card.typeLine,
+              oracleText: frontFace.oracleText ?? card.oracleText ?? ""
+            }
+          }
+        ];
+      }
+    }
     return [{ qty: entry.qty, card }];
   }
 
@@ -935,6 +1182,13 @@ function castModeEntriesForCard(entry: ParsedDeckCard, card: ManaCurveCardData |
       }
     };
   });
+}
+
+function physicalManaValueFromRaw(card: ManaCurveCardData) {
+  if (card.manaCost?.includes("//")) {
+    return Math.min(...card.manaCost.split("//").map((cost) => manaValueFromCost(cost.trim())).filter((value) => value >= 0));
+  }
+  return Math.max(0, card.manaCost ? manaValueFromCost(card.manaCost) : card.manaValue);
 }
 
 function physicalManaValueForCard(card: ManaCurveCardData | undefined) {
@@ -992,6 +1246,7 @@ function buildObservations(
   if (scope === "sideboard") {
     return [
       {
+        code: "NO_MAJOR_WARNING",
         tone: "neutral",
         title: "Sideboard scope selected",
         detail:
@@ -1006,6 +1261,23 @@ function buildObservations(
   const postureRanges = constructedRanges[posture.posture] ?? constructedRanges.unknown;
   const totalCards = analysisCards.reduce((total, card) => total + card.qty, 0);
   const postureName = posture.posture === "unknown" ? "mixed/unknown" : posture.posture;
+  const observationCodeForRange = (key: StructureMetricKey, below: boolean): ManaCurveObservationCode => {
+    if (key === "oneManaPlays") return "LOW_ONE_MANA_PLAYS";
+    if (key === "earlyPlays") return "LOW_EARLY_ACTION";
+    if (key === "earlyThreats") return "LOW_EARLY_THREATS";
+    if (key === "cheapInteraction") return "LOW_CHEAP_INTERACTION";
+    if (key === "drawSelection") return "LOW_CARD_FLOW";
+    if (key === "rampCount") return "LOW_RAMP";
+    if (key === "rampPayoffs") return "LOW_RAMP_PAYOFFS";
+    if (key === "finishers") return "LOW_FINISHERS";
+    if (key === "boardWipes") return "LOW_SWEEPERS";
+    if (key === "comboPieces") return "LOW_COMBO_PIECES";
+    if (key === "landCount") return below ? "LAND_COUNT_LOW" : "LAND_COUNT_HIGH";
+    if (key === "expensiveSpells") return "HEAVY_TOP_END";
+    if (key === "oneOfCards") return "MANY_ONE_OFS";
+    return "NO_MAJOR_WARNING";
+  };
+
   const addRangeObservation = (key: StructureMetricKey, title: string, lowDetail: string, highDetail?: string) => {
     const rawRange = postureRanges[key];
     if (!rawRange) {
@@ -1025,6 +1297,7 @@ function buildObservations(
     const confidence: ManaCurveObservation["confidence"] =
       posture.confidence === "high" && distance >= 0.3 ? "high" : posture.confidence === "low" ? "low" : "medium";
     observations.push({
+      code: observationCodeForRange(key, below),
       tone: below || key === "expensiveSpells" || key === "oneOfCards" || key === "landCount" ? "bad" : "neutral",
       title,
       detail: below ? lowDetail : highDetail ?? lowDetail,
@@ -1070,10 +1343,32 @@ function buildObservations(
     `This looks like a ramp deck, but only ${metrics.rampCount} ramp piece(s) were detected. Expensive hands may not reliably accelerate.`
   );
   addRangeObservation(
+    "rampPayoffs",
+    "Ramp payoff density may be low",
+    `This looks like a ramp deck, but only ${metrics.rampPayoffs} meaningful payoff card(s) were detected. Ramp-heavy hands may not convert extra mana into pressure or advantage.`,
+    `${metrics.rampPayoffs} payoff card(s) were detected. The top end may be crowded for the amount of ramp and card flow available.`
+  );
+  addRangeObservation(
     "expensiveSpells",
     "Top end may be heavy",
     `${metrics.expensiveSpells} spell card(s) cost five or more. For this posture, that can increase stranded-card risk in opening hands.`,
     `${metrics.expensiveSpells} spell card(s) cost five or more. For this posture, that can increase stranded-card risk in opening hands.`
+  );
+  addRangeObservation(
+    "finishers",
+    "Finisher density may need review",
+    `${metrics.finishers} finisher or payoff card(s) were detected, which may leave late-game plans light for this posture.`,
+    `${metrics.finishers} finisher or payoff card(s) were detected, which may overload openers for this posture.`
+  );
+  addRangeObservation(
+    "boardWipes",
+    "Sweeper density may be low",
+    `${metrics.boardWipes} board wipe(s) were detected. Control shells often need access to sweepers to stabilize creature-heavy boards.`
+  );
+  addRangeObservation(
+    "comboPieces",
+    "Combo piece density may be low",
+    `${metrics.comboPieces} enabler/payoff card(s) were detected. Combo posture requires enough pieces, tutors, or selection to assemble its core plan.`
   );
   addRangeObservation(
     "landCount",
@@ -1090,6 +1385,7 @@ function buildObservations(
 
   if (facts.colors.length >= 3 && coloredPips >= 14) {
     observations.push({
+      code: "HIGH_COLOR_STRAIN",
       tone: "neutral",
       title: "Colored mana requirements may strain the mana base",
       detail: `${coloredPips} nonland cards have multicolor requirements across ${facts.colors.join("")}, so source quality matters.`,
@@ -1102,6 +1398,7 @@ function buildObservations(
 
   if (!observations.length) {
     observations.push({
+      code: "NO_MAJOR_WARNING",
       tone: "good",
       title: "Structure sits within contextual ranges",
       detail: `No major ${postureName} curve warnings were detected from the current card data.`,
@@ -1327,47 +1624,94 @@ function sideboardCandidates(sideboardCards: ParsedDeckCard[], mainCards: Parsed
     .map((card) => ({ name: card.name, qty: card.qty, source: "sideboard" as const }));
 }
 
-function detectedProblemForCard(card: ManaCurveCardData | undefined, observations: ManaCurveObservation[]) {
-  const titles = observations.map((observation) => observation.title.toLowerCase()).join(" ");
+function candidateAddressesObservation(card: ManaCurveCardData | undefined, observation: ManaCurveObservation) {
   const mv = physicalManaValueForCard(card);
   const type = card ? primaryCardType(card) : "other";
-  if (titles.includes("early plays") && mv <= 2) {
-    return "insufficient early plays";
+  const roles = detectFunctionalRoles(card);
+  switch (observation.code) {
+    case "LOW_ONE_MANA_PLAYS":
+      return mv <= 1;
+    case "LOW_EARLY_ACTION":
+    case "LOW_EARLY_THREATS":
+      return mv <= 2 && (roles.includes("threat") || roles.includes("card_selection") || roles.includes("removal") || roles.includes("burn_reach"));
+    case "LOW_CHEAP_INTERACTION":
+      return (
+        mv <= 2 &&
+        (roles.includes("removal") ||
+          roles.includes("countermagic") ||
+          roles.includes("discard") ||
+          roles.includes("protection") ||
+          roles.includes("burn_reach") ||
+          type === "instants")
+      );
+    case "LOW_CARD_FLOW":
+      return roles.includes("card_draw") || roles.includes("card_selection") || roles.includes("tutor");
+    case "LOW_RAMP":
+      return roles.includes("ramp");
+    case "LOW_RAMP_PAYOFFS":
+    case "LOW_FINISHERS":
+      return roles.includes("finisher") || roles.includes("combo_payoff") || mv >= 5;
+    case "LOW_SWEEPERS":
+      return roles.includes("board_wipe");
+    case "LOW_COMBO_PIECES":
+      return roles.includes("combo_enabler") || roles.includes("combo_payoff") || roles.includes("tutor");
+    case "HEAVY_TOP_END":
+      return mv <= 3 && !roles.includes("finisher");
+    case "HIGH_COLOR_STRAIN":
+      return cardColors(card).length <= 1;
+    default:
+      return false;
   }
-  if (titles.includes("interaction") && mv <= 2 && (type === "instants" || type === "sorceries")) {
-    return "limited cheap interaction or velocity";
-  }
-  if (titles.includes("expensive") && mv <= 3) {
-    return "curve compression";
-  }
-  if (titles.includes("colored mana") && cardColors(card).length <= 1) {
-    return "lower color strain";
-  }
-  return mv <= 2 ? "early curve density" : type === "instants" || type === "sorceries" ? "interactive spell density" : "structural role coverage";
 }
 
-function possibleCutsForProblem(mainCards: ParsedDeckCard[], cardData: Map<string, ManaCurveCardData>, problem: string) {
+function detectedProblemForCard(card: ManaCurveCardData | undefined, observations: ManaCurveObservation[]) {
+  const problem = observations.find((observation) => observation.tone !== "good" && candidateAddressesObservation(card, observation));
+  if (!problem) {
+    const mv = physicalManaValueForCard(card);
+    const type = card ? primaryCardType(card) : "other";
+    return { code: "NO_MAJOR_WARNING" as ManaCurveObservationCode, label: mv <= 2 ? "early curve density" : type === "instants" || type === "sorceries" ? "interactive spell density" : "structural role coverage" };
+  }
+  return { code: problem.code, label: problem.title };
+}
+
+function protectedFromCuts(row: { entry: ParsedDeckCard; card?: ManaCurveCardData }) {
+  const roles = detectFunctionalRoles(row.card);
+  return (
+    roles.includes("combo_enabler") ||
+    roles.includes("combo_payoff") ||
+    roles.includes("tutor") ||
+    roles.includes("finisher") ||
+    roles.includes("board_wipe") ||
+    (roles.some((role) => ["removal", "countermagic", "discard", "protection"].includes(role)) && row.entry.qty <= 2)
+  );
+}
+
+function possibleCutsForProblem(mainCards: ParsedDeckCard[], cardData: Map<string, ManaCurveCardData>, problem: ManaCurveObservationCode): CutCandidate[] {
   const rows = mainCards
     .filter((entry) => !basicLandName(entry.name))
     .map((entry) => {
       const card = cardData.get(normalizeName(entry.name));
       return { entry, card, manaValue: physicalManaValueForCard(card), type: card ? primaryCardType(card) : "other" };
     })
-    .filter((row) => row.card && !row.card.isLand);
+    .filter((row) => row.card && !row.card.isLand && !protectedFromCuts(row));
 
   const candidates = rows
     .filter((row) => {
-      if (problem.includes("early") || problem.includes("interaction") || problem.includes("compression")) {
+      if (problem === "LOW_ONE_MANA_PLAYS" || problem === "LOW_EARLY_ACTION" || problem === "LOW_CHEAP_INTERACTION" || problem === "HEAVY_TOP_END") {
         return row.manaValue >= 4 || row.entry.qty === 1;
       }
-      if (problem.includes("color")) {
+      if (problem === "HIGH_COLOR_STRAIN") {
         return cardColors(row.card).length >= 2;
       }
       return row.entry.qty === 1 || row.manaValue >= 3;
     })
     .sort((a, b) => b.manaValue - a.manaValue || a.entry.name.localeCompare(b.entry.name));
 
-  return candidates.slice(0, 3).map((row) => row.entry.name);
+  return candidates.slice(0, 3).map((row) => ({
+    cardName: row.entry.name,
+    reason: row.entry.qty === 1 ? "isolated one-of or flex slot" : row.manaValue >= 4 ? "higher-cost card competing for curve space" : "may be a flexible slot for this issue",
+    confidence: row.entry.qty === 1 || row.manaValue >= 5 ? "medium" : "low"
+  }));
 }
 
 function buildContextualRanges(curve: ManaCurveRow[], spellCount: number, posture: DeckPosture): CurveComparisonRange[] {
@@ -1390,6 +1734,51 @@ function buildContextualRanges(curve: ManaCurveRow[], spellCount: number, postur
   });
 }
 
+function summarizeMainDeckForPosture(cards: ParsedDeckCard[], cardData: Map<string, ManaCurveCardData>) {
+  const curveMap = new Map<ManaCurveBucket, ManaCurveRow>(
+    manaCurveBuckets.map((manaValue) => [
+      manaValue,
+      { manaValue, spells: 0, types: emptyTypeCounts(), cards: emptyTypeCards() }
+    ])
+  );
+  const values: Array<{ value: number; qty: number }> = [];
+  let landCount = 0;
+  let spellCount = 0;
+  let totalManaValue = 0;
+
+  for (const entry of cards) {
+    const card = cardData.get(normalizeName(entry.name));
+    const type = card ? primaryCardType(card) : "other";
+    if (type === "lands") {
+      landCount += entry.qty;
+      continue;
+    }
+    const manaValue = physicalManaValueForCard(card);
+    const row = curveMap.get(bucketForManaValue(manaValue))!;
+    row.spells += entry.qty;
+    row.types[type] += entry.qty;
+    addCardToBucket(row.cards[type], entry.name, entry.qty);
+    spellCount += entry.qty;
+    totalManaValue += manaValue * entry.qty;
+    values.push({ value: manaValue, qty: entry.qty });
+  }
+
+  const counts = countRows(cards);
+  const facts = {
+    landCount,
+    spellCount,
+    averageManaValue: spellCount ? totalManaValue / spellCount : 0,
+    oneOfCount: Array.from(counts.values()).filter((card) => card.qty === 1).length,
+    curve: manaCurveBuckets.map((bucket) => curveMap.get(bucket)!),
+    colors: deckColors(cards, cardData),
+    medianManaValue: weightedMedian(values)
+  };
+  return {
+    facts,
+    metrics: buildStructuralMetrics(cards, cardData, facts)
+  };
+}
+
 function buildSuggestions(
   mainCards: ParsedDeckCard[],
   sideboardCards: ParsedDeckCard[],
@@ -1401,7 +1790,7 @@ function buildSuggestions(
 ) {
   const mainCounts = countRows(mainCards);
   const maxCopies = maxCopiesForFormat(format);
-  const weaknessText = observations.map((observation) => observation.title.toLowerCase()).join(" ");
+  const activeCodes = new Set(observations.filter((observation) => observation.tone !== "good").map((observation) => observation.code));
   const candidatePool = [...tournamentCandidates(mainCards, metagameDecks, cardData), ...sideboardCandidates(sideboardCards, mainCards)];
   const suggestions: ManaCurveSuggestion[] = [];
 
@@ -1417,13 +1806,25 @@ function buildSuggestions(
     const bucket = bucketForManaValue(card.manaValue);
     const role = cardRole(card);
     const suggestedQuantity = Math.max(1, Math.min(candidate.qty, maxCopies - currentCopies));
-    const problemAddressed = detectedProblemForCard(card, observations);
-    const possibleCuts = possibleCutsForProblem(mainCards, cardData, problemAddressed);
+    const problem = detectedProblemForCard(card, observations);
+    if (candidate.source === "similar-tournament-decks" && problem.code === "NO_MAJOR_WARNING") {
+      continue;
+    }
+    const possibleCuts = possibleCutsForProblem(mainCards, cardData, problem.code);
     const supportingDeckCount = candidate.sourceDecks ?? 0;
     const similarityConfidence = candidate.similarity?.confidence ?? (candidate.source === "sideboard" ? "medium" : "low");
+    if (candidate.source === "similar-tournament-decks" && similarityConfidence === "low") {
+      continue;
+    }
+    const evidencePhrase =
+      similarityConfidence === "high"
+        ? "high-similarity"
+        : similarityConfidence === "medium"
+          ? "reasonably similar"
+          : "loosely related";
     const reason =
       candidate.source === "similar-tournament-decks"
-        ? `Worth testing as a ${role.toLowerCase()}: it appears in ${supportingDeckCount} recent high-similarity Challenge list(s) and fits your ${colors.join("") || "colorless"} color lens.`
+        ? `Worth testing as a ${role.toLowerCase()}: it appears in ${supportingDeckCount} recent ${evidencePhrase} Challenge list(s) and fits your ${colors.join("") || "colorless"} color lens.`
         : `Already in your sideboard, legal for this format, and can be tested as a ${role.toLowerCase()} without changing colors.`;
 
     suggestions.push({
@@ -1431,7 +1832,7 @@ function buildSuggestions(
       suggestedQuantity,
       role,
       slot: `${bucket}-mana ${primaryCardType(card).replace(/s$/, "")}`,
-      problemAddressed,
+      problemAddressed: problem.label,
       reason,
       supportingDeckCount,
       similarityConfidence,
@@ -1443,7 +1844,7 @@ function buildSuggestions(
   }
 
   if (!suggestions.length) {
-    if (weaknessText.includes("early plays")) {
+    if (activeCodes.has("LOW_ONE_MANA_PLAYS") || activeCodes.has("LOW_EARLY_ACTION")) {
       suggestions.push({
         cardName: "Add a one- or two-mana spell in your colors",
         suggestedQuantity: 2,
@@ -1455,10 +1856,10 @@ function buildSuggestions(
         similarityConfidence: "low",
         formatLegality: "unknown",
         colorCompatibility: "fits",
-        possibleCuts: possibleCutsForProblem(mainCards, cardData, "early curve density"),
+        possibleCuts: possibleCutsForProblem(mainCards, cardData, "LOW_EARLY_ACTION"),
         source: "structural"
       });
-    } else if (weaknessText.includes("expensive")) {
+    } else if (activeCodes.has("HEAVY_TOP_END")) {
       suggestions.push({
         cardName: "Replace a top-end spell with a cheaper role player",
         suggestedQuantity: 1,
@@ -1470,10 +1871,10 @@ function buildSuggestions(
         similarityConfidence: "low",
         formatLegality: "unknown",
         colorCompatibility: "fits",
-        possibleCuts: possibleCutsForProblem(mainCards, cardData, "curve compression"),
+        possibleCuts: possibleCutsForProblem(mainCards, cardData, "HEAVY_TOP_END"),
         source: "structural"
       });
-    } else if (weaknessText.includes("interaction")) {
+    } else if (activeCodes.has("LOW_CHEAP_INTERACTION")) {
       suggestions.push({
         cardName: "Add cheap interaction or velocity",
         suggestedQuantity: 2,
@@ -1485,7 +1886,7 @@ function buildSuggestions(
         similarityConfidence: "low",
         formatLegality: "unknown",
         colorCompatibility: "fits",
-        possibleCuts: possibleCutsForProblem(mainCards, cardData, "limited cheap interaction"),
+        possibleCuts: possibleCutsForProblem(mainCards, cardData, "LOW_CHEAP_INTERACTION"),
         source: "structural"
       });
     }
@@ -1509,6 +1910,7 @@ export function buildManaCurveAnalysis(
   const mainCards = selectedCards(parsed.cards, "main");
   const sideboardCards = selectedCards(parsed.cards, "sideboard");
   const analysisCards = selectedCards(parsed.cards, scope);
+  const validation = validateDeckForManaCurve(decklist, cardData, format);
   const curveMap = new Map<ManaCurveBucket, ManaCurveRow>(
     manaCurveBuckets.map((manaValue) => [
       manaValue,
@@ -1589,9 +1991,29 @@ export function buildManaCurveAnalysis(
     colors
   };
   const totalCards = analysisCards.reduce((total, card) => total + card.qty, 0);
-  const structuralMetrics = buildStructuralMetrics(analysisCards, cardData, facts);
-  const posture = scope === "sideboard" ? { posture: "unknown" as const, confidence: "low" as const, evidence: ["Sideboard-only view."] } : classifyDeckPosture(structuralMetrics, format, totalCards);
-  const observations = buildObservations(mainCards, analysisCards, cardData, facts, posture, structuralMetrics, format, scope);
+  const mainSummary = summarizeMainDeckForPosture(mainCards, cardData);
+  const structuralMetrics = mainSummary.metrics;
+  const posture =
+    scope === "sideboard"
+      ? { posture: "unknown" as const, confidence: "low" as const, evidence: ["Sideboard-only view."] }
+      : validation.isCompleteEnoughForPosture
+        ? classifyDeckPosture(structuralMetrics, format, validation.mainCount)
+        : { posture: "unknown" as const, confidence: "low" as const, evidence: ["Deck incomplete; posture withheld."] };
+  const observations = validation.isCompleteEnoughForPosture
+    ? buildObservations(mainCards, analysisCards, cardData, mainSummary.facts, posture, structuralMetrics, format, scope)
+    : [
+        {
+          code: "INCOMPLETE_DECK" as const,
+          tone: "neutral" as const,
+          title: "Deck incomplete",
+          detail:
+            "Curve totals are shown, but posture and recommendations are withheld until the list is close to the expected size for this format.",
+          measuredValue: validation.mainCount,
+          expectedRange: validation.expectedMainSize ? { min: validation.expectedMainSize } : undefined,
+          confidence: "high" as const,
+          evidence: validation.issues.map((issue) => issue.detail).slice(0, 3)
+        }
+      ];
 
   return {
     scope,
@@ -1614,20 +2036,23 @@ export function buildManaCurveAnalysis(
     typeBreakdown,
     manaDemand: buildManaDemand(analysisCards, cardData),
     manaSources: buildManaSources(mainCards, cardData),
-    contextualRanges: buildContextualRanges(physicalCurve, physicalSpellCount, posture.posture),
+    contextualRanges: validation.isCompleteEnoughForPosture ? buildContextualRanges(physicalCurve, physicalSpellCount, posture.posture) : [],
     modalSourceCount,
     colors,
     oneOfCount,
     posture,
     observations,
-    suggestions: buildSuggestions(
-      mainCards,
-      sideboardCards,
-      cardData,
-      format,
-      colors,
-      observations,
-      options.metagameDecks ?? []
-    )
+    suggestions: validation.isCompleteEnoughForPosture
+      ? buildSuggestions(
+          mainCards,
+          sideboardCards,
+          cardData,
+          format,
+          colors,
+          observations,
+          options.metagameDecks ?? []
+        )
+      : [],
+    validation
   };
 }

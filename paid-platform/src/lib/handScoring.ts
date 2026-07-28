@@ -440,7 +440,7 @@ function genericReductionForSpell(spell: AnalysisCard, activeReducers: CostReduc
 }
 
 function manaRequirements(manaCost: string | undefined, manaValue: number) {
-  const requiredPips: ManaColor[][] = [];
+  const requiredPips: Array<{ colors: ManaColor[]; genericAlternative?: number }> = [];
   const approximationNotes = new Set<string>();
   let generic = 0;
 
@@ -454,12 +454,12 @@ function manaRequirements(manaCost: string | undefined, manaValue: number) {
       continue;
     }
     if (symbol === "C") {
-      requiredPips.push(["C"]);
+      requiredPips.push({ colors: ["C"] });
       continue;
     }
     if (symbol === "S") {
       approximationNotes.add("Snow mana was approximated as colorless-capable mana.");
-      requiredPips.push(["C"]);
+      requiredPips.push({ colors: ["C"] });
       continue;
     }
     if (symbol.includes("/")) {
@@ -472,8 +472,10 @@ function manaRequirements(manaCost: string | undefined, manaValue: number) {
       if (phyrexian) {
         approximationNotes.add("Phyrexian mana may be paid with life; mana payment is conservative.");
       }
-      if (hybridColors.length) {
-        requiredPips.push(Array.from(new Set(hybridColors)));
+      if (hybridColors.length && numericHybrid) {
+        requiredPips.push({ colors: Array.from(new Set(hybridColors)), genericAlternative: Number(numericHybrid) });
+      } else if (hybridColors.length) {
+        requiredPips.push({ colors: Array.from(new Set(hybridColors)) });
       } else if (numericHybrid) {
         generic += Number(numericHybrid);
       }
@@ -481,7 +483,7 @@ function manaRequirements(manaCost: string | undefined, manaValue: number) {
     }
     const color = symbol.match(/[WUBRGC]/)?.[0] as ManaColor | undefined;
     if (color) {
-      requiredPips.push([color]);
+      requiredPips.push({ colors: [color] });
       continue;
     }
     approximationNotes.add(`Unsupported mana symbol {${symbol}} was approximated using mana value.`);
@@ -501,35 +503,48 @@ export function solveManaPayment(
   options: ManaPaymentOptions = {}
 ): ManaPaymentResult {
   const { requiredPips, generic, approximationNotes } = manaRequirements(manaCost, manaValue);
-  const adjustedGeneric = Math.max(0, generic - Math.max(0, Math.floor(options.genericReduction ?? 0)));
+  const baseGeneric = Math.max(0, generic - Math.max(0, Math.floor(options.genericReduction ?? 0)));
   const indexed = sources.map((source, index) => ({ source, index }));
   const orderedPips = [...requiredPips].sort(
     (a, b) =>
-      indexed.filter(({ source }) => a.some((color) => source.colors.includes(color))).length -
-      indexed.filter(({ source }) => b.some((color) => source.colors.includes(color))).length
+      indexed.filter(({ source }) => a.colors.some((color) => source.colors.includes(color))).length -
+      indexed.filter(({ source }) => b.colors.some((color) => source.colors.includes(color))).length
   );
 
-  const assignRequired = (pipIndex: number, spent: Set<number>): Set<number> | null => {
+  const assignRequired = (
+    pipIndex: number,
+    spent: Set<number>,
+    extraGeneric: number
+  ): { spent: Set<number>; extraGeneric: number } | null => {
     if (pipIndex >= orderedPips.length) {
-      return spent;
+      return { spent, extraGeneric };
     }
-    const pip = orderedPips[pipIndex] ?? [];
+    const pip = orderedPips[pipIndex];
+    if (!pip) {
+      return { spent, extraGeneric };
+    }
     for (const { source, index } of indexed) {
-      if (spent.has(index) || !pip.some((color) => source.colors.includes(color))) {
+      if (spent.has(index) || !pip.colors.some((color) => source.colors.includes(color))) {
         continue;
       }
       const nextSpent = new Set(spent);
       nextSpent.add(index);
-      const result = assignRequired(pipIndex + 1, nextSpent);
+      const result = assignRequired(pipIndex + 1, nextSpent, extraGeneric);
       if (result) {
         return result;
+      }
+    }
+    if (pip.genericAlternative !== undefined) {
+      const genericResult = assignRequired(pipIndex + 1, new Set(spent), extraGeneric + pip.genericAlternative);
+      if (genericResult) {
+        return genericResult;
       }
     }
     return null;
   };
 
-  const requiredSpent = assignRequired(0, new Set());
-  if (!requiredSpent) {
+  const requiredResult = assignRequired(0, new Set(), 0);
+  if (!requiredResult) {
     return {
       canPay: false,
       spentSourceIndexes: [],
@@ -538,6 +553,8 @@ export function solveManaPayment(
     };
   }
 
+  const requiredSpent = requiredResult.spent;
+  const adjustedGeneric = baseGeneric + requiredResult.extraGeneric;
   const remainingAfterRequired = sources
     .map((_, index) => index)
     .filter((index) => !requiredSpent.has(index));

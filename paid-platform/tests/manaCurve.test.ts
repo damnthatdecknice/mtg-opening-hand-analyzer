@@ -27,6 +27,25 @@ function card(
   };
 }
 
+function land(
+  name: string,
+  typeLine: string,
+  producedMana: string[] = [],
+  oracleText = "",
+  legalities: Record<string, string> = { modern: "legal", pioneer: "legal", standard: "legal" }
+): ManaCurveCardData {
+  return {
+    name,
+    manaValue: 0,
+    typeLine,
+    oracleText,
+    colors: [],
+    producedMana,
+    isLand: true,
+    legalities
+  };
+}
+
 function splitCard(
   name: string,
   typeLine: string,
@@ -38,6 +57,7 @@ function splitCard(
     name,
     manaValue: faces.reduce((sum, face) => sum + face.manaValue, 0),
     typeLine,
+    layout: /\broom\b/i.test(typeLine) ? "room" : "split",
     colors,
     faces,
     isLand: /\bland\b/i.test(typeLine),
@@ -71,19 +91,47 @@ const baseCards = data([
   card("Off Color Charm", 2, "Instant", ["G"])
 ]);
 
+const sourceCards = data([
+  land("Blooming Marsh", "Land", ["B", "G"], "Blooming Marsh enters tapped unless you control two or fewer other lands."),
+  land("Cavern of Souls", "Land", ["C"], "As Cavern of Souls enters, choose a creature type. {T}: Add {C}. {T}: Add one mana of any color. Spend this mana only to cast a creature spell of the chosen type."),
+  land("Mystic Sanctuary", "Land - Island", [], "Mystic Sanctuary enters the battlefield tapped unless you control three or more other Islands."),
+  land("Island", "Basic Land - Island"),
+  {
+    ...card("Hybrid Lesson", 2, "Instant", ["W", "U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Draw a card."),
+    manaCost: "{W/U}{W/U}"
+  }
+]);
+
 const postureCards = data([
   card("Savannah Cub", 1, "Creature - Cat", ["G"]),
   card("Swift Scout", 1, "Creature - Scout", ["R"]),
+  card("Kird Ape", 1, "Creature - Ape", ["R", "G"]),
+  card("Raging Goblin", 1, "Creature - Goblin", ["R"]),
+  card("Kumano Faces Kakkazan", 1, "Enchantment - Saga", ["R"]),
+  card("Play with Fire", 1, "Instant", ["R"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Play with Fire deals 2 damage to any target. Scry 1."),
+  card("Shock", 1, "Instant", ["R"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Shock deals 2 damage to any target."),
   card("Lightning Strike", 2, "Instant", ["R"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Lightning Strike deals 3 damage to any target."),
   card("Counterspell", 2, "Instant", ["U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Counter target spell."),
+  card("Absorb", 3, "Instant", ["W", "U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Counter target spell. You gain 3 life."),
   card("Opt", 1, "Instant", ["U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Scry 1. Draw a card."),
   card("Supreme Verdict", 4, "Sorcery", ["W", "U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Destroy all creatures."),
+  card("Sunfall", 5, "Sorcery", ["W"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Exile all creatures."),
   card("Memory Deluge", 4, "Instant", ["U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Look at the top X cards. Put two of them into your hand."),
+  card("Teferi, Hero of Dominaria", 5, "Legendary Planeswalker - Teferi", ["W", "U"]),
+  card("March of Otherworldly Light", 1, "Instant", ["W"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Exile target artifact, creature, or enchantment."),
   card("Llanowar Elves", 1, "Creature - Elf Druid", ["G"], { modern: "legal", pioneer: "legal", standard: "legal" }, "{T}: Add {G}."),
+  card("Paradise Druid", 2, "Creature - Elf Druid", ["G"], { modern: "legal", pioneer: "legal", standard: "legal" }, "{T}: Add one mana of any color."),
+  card("Cultivate", 3, "Sorcery", ["G"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Search your library for up to two basic land cards."),
   card("Titan of Industry", 7, "Creature - Elemental", ["G"]),
+  card("Ugin, the Spirit Dragon", 8, "Legendary Planeswalker - Ugin", []),
+  card("Rampaging Baloths", 6, "Creature - Beast", ["G"]),
   card("Reanimate", 1, "Sorcery", ["B"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Return target creature card from a graveyard to the battlefield."),
+  card("Animate Dead", 2, "Enchantment", ["B"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Enchant creature card in a graveyard. Return that card to the battlefield."),
   card("Griselbrand", 8, "Legendary Creature - Demon", ["B"]),
   card("Entomb", 1, "Instant", ["B"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Search your library for a card and put that card into your graveyard."),
+  card("Careful Study", 1, "Sorcery", ["U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Draw two cards, then discard two cards."),
+  card("Dark Ritual", 1, "Instant", ["B"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Add {B}{B}{B}."),
+  card("Flusterstorm", 1, "Instant", ["U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Counter target instant or sorcery spell unless its controller pays {1}."),
   card("Addendum Lesson", 2, "Instant", ["W"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Addendum - If you cast this spell during your main phase, draw a card."),
   card("Sacrifice Outlet", 2, "Creature - Vampire", ["B"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Sacrifice another creature: Scry 1."),
   card("Temple Garden", 0, "Land - Forest Plains"),
@@ -145,6 +193,25 @@ Sideboard
 2 Duress
 1 Off Color Charm`;
 
+const recommendationDecklist = `Deck
+4 Memnite
+4 Monastery Swiftspear
+4 Lightning Strike
+4 Expressive Iteration
+4 Fable of the Mirror-Breaker
+4 The Wandering Emperor
+4 Force of Negation
+4 Boom // Bust
+4 Invasion of Gobakhan
+1 Sol Talisman
+13 Mountain
+10 Island
+
+Sideboard
+2 Opt
+2 Duress
+1 Off Color Charm`;
+
 function modernDeck(main: Array<{ name: string; qty: number }>): MetagameDeck {
   return {
     player: "test",
@@ -162,22 +229,26 @@ function modernDeck(main: Array<{ name: string; qty: number }>): MetagameDeck {
 
 const similarDecks = [
   modernDeck([
+    { name: "Memnite", qty: 4 },
     { name: "Monastery Swiftspear", qty: 4 },
     { name: "Lightning Strike", qty: 4 },
     { name: "Expressive Iteration", qty: 4 },
     { name: "Fable of the Mirror-Breaker", qty: 2 },
-    { name: "Fireball", qty: 1 },
-    { name: "Spikefield Hazard", qty: 1 },
+    { name: "Force of Negation", qty: 4 },
+    { name: "Boom // Bust", qty: 4 },
+    { name: "Invasion of Gobakhan", qty: 4 },
     { name: "Tournament Bolt", qty: 4 },
     { name: "Opt", qty: 4 }
   ]),
   modernDeck([
+    { name: "Memnite", qty: 4 },
     { name: "Monastery Swiftspear", qty: 4 },
     { name: "Lightning Strike", qty: 4 },
     { name: "Expressive Iteration", qty: 4 },
     { name: "Fable of the Mirror-Breaker", qty: 2 },
-    { name: "Fireball", qty: 1 },
-    { name: "Spikefield Hazard", qty: 1 },
+    { name: "Force of Negation", qty: 4 },
+    { name: "Boom // Bust", qty: 4 },
+    { name: "Invasion of Gobakhan", qty: 4 },
     { name: "Tournament Bolt", qty: 4 },
     { name: "Opt", qty: 4 }
   ])
@@ -215,10 +286,13 @@ const noEarlyDeck = `Deck
 4 The Wandering Emperor
 4 Force of Negation
 4 Boom // Bust
-10 Mountain
-10 Island`;
+22 Mountain
+22 Island`;
 const noEarly = buildManaCurveAnalysis(noEarlyDeck, baseCards, { format: "Modern" });
-assert.ok(noEarly.observations.some((row) => /early action|one-mana/i.test(row.title)), "observations change when curve gets slower");
+assert.ok(
+  noEarly.observations.some((row) => row.code === "LOW_EARLY_ACTION" || row.code === "LOW_ONE_MANA_PLAYS"),
+  "observations change when curve gets slower"
+);
 assert.ok(noEarly.observations.every((row) => row.evidence.length), "observations expose evidence");
 
 assert.ok(
@@ -235,15 +309,19 @@ assert.ok(
   ]).includes("Tournament Bolt"),
   "weak tournament overlap is not treated as a similar shell"
 );
+const recommendationAnalysis = buildManaCurveAnalysis(recommendationDecklist, baseCards, {
+  format: "Modern",
+  metagameDecks: similarDecks
+});
 assert.ok(
-  analysis.suggestions.some((row) => row.cardName === "Tournament Bolt" && row.source === "similar-tournament-decks"),
+  recommendationAnalysis.suggestions.some((row) => row.cardName === "Tournament Bolt" && row.source === "similar-tournament-decks"),
   "recommendations can use similar tournament deck candidates"
 );
-const tournamentSuggestion = analysis.suggestions.find((row) => row.cardName === "Tournament Bolt");
+const tournamentSuggestion = recommendationAnalysis.suggestions.find((row) => row.cardName === "Tournament Bolt");
 assert.equal(tournamentSuggestion?.suggestedQuantity, 4, "recommendations include suggested quantity");
 assert.ok(tournamentSuggestion?.supportingDeckCount, "recommendations include supporting list count");
 assert.notEqual(tournamentSuggestion?.similarityConfidence, "low", "real shell overlap has usable confidence");
-assert.ok(!analysis.suggestions.some((row) => row.cardName === "Off Color Charm"), "recommendations reject off-color candidates");
+assert.ok(!recommendationAnalysis.suggestions.some((row) => row.cardName === "Off Color Charm"), "recommendations reject off-color candidates");
 
 const standard = buildManaCurveAnalysis(decklist, baseCards, { format: "Standard" });
 assert.ok(!standard.suggestions.some((row) => row.cardName === "Duress"), "recommendations reject format-illegal cards");
@@ -303,13 +381,49 @@ assert.equal(staleRoomAnalysis.curve.find((row) => row.manaValue === "2")?.spell
 assert.equal(staleRoomAnalysis.curve.find((row) => row.manaValue === "5")?.spells, 4, "stale split face cmc still uses parent split cost for expensive face");
 assert.equal(staleRoomAnalysis.curve.find((row) => row.manaValue === "7+")?.spells, 0, "stale split face cmc never creates a parent 7+ bucket");
 
+const sourceAnalysis = buildManaCurveAnalysis(
+  `Deck
+4 Blooming Marsh
+4 Mystic Sanctuary
+4 Cavern of Souls
+4 Hybrid Lesson
+44 Island`,
+  sourceCards,
+  { format: "Standard" }
+);
+assert.equal(sourceAnalysis.manaSources.sources.B, 8, "produced_mana plus restricted any-color text supply black sources");
+assert.equal(sourceAnalysis.manaSources.sources.G, 8, "produced_mana plus restricted any-color text supply green sources");
+assert.equal(sourceAnalysis.manaSources.sources.U, 52, "land subtypes and restricted any-color text supply blue sources");
+assert.equal(sourceAnalysis.manaSources.approximateSourceCount, 12, "conditional and restricted mana sources are disclosed as approximate");
+assert.equal(sourceAnalysis.manaSources.availability.conditional, 8, "conditional tapped clauses are not treated as always tapped");
+assert.equal(sourceAnalysis.manaDemand.pips.W, 0, "hybrid pips are not displayed as fixed white demand");
+assert.equal(sourceAnalysis.manaDemand.flexiblePips.W, 8, "hybrid pips are displayed as flexible demand");
+assert.equal(sourceAnalysis.manaDemand.flexiblePips.U, 8, "hybrid pips are displayed for each possible color");
+
+const incompleteModern = buildManaCurveAnalysis(
+  `Deck
+4 Monastery Swiftspear
+4 Lightning Strike
+4 Mountain`,
+  baseCards,
+  { format: "Modern" }
+);
+assert.equal(incompleteModern.validation.isCompleteEnoughForPosture, false, "materially incomplete decks withhold posture judgments");
+assert.equal(incompleteModern.suggestions.length, 0, "materially incomplete decks do not produce recommendations");
+assert.ok(incompleteModern.observations.some((row) => row.code === "INCOMPLETE_DECK"), "incomplete deck issue is exposed with a stable code");
+
 const aggroPosture = buildManaCurveAnalysis(
   `Deck
-8 Savannah Cub
-8 Swift Scout
-8 Lightning Strike
+4 Savannah Cub
+4 Swift Scout
+4 Kird Ape
+4 Raging Goblin
+4 Kumano Faces Kakkazan
+4 Play with Fire
+4 Shock
+4 Lightning Strike
 16 Mountain
-8 Forest`,
+12 Forest`,
   postureCards,
   { format: "Pioneer" }
 );
@@ -322,13 +436,18 @@ assert.ok(
 const controlPosture = buildManaCurveAnalysis(
   `Deck
 4 Counterspell
+4 Absorb
 4 Opt
 4 Supreme Verdict
-8 Memory Deluge
+4 Memory Deluge
+2 Sunfall
+2 Teferi, Hero of Dominaria
+4 March of Otherworldly Light
+4 Addendum Lesson
 2 Titan of Industry
-10 Island
+14 Island
 8 Plains
-6 Temple Garden`,
+4 Temple Garden`,
   postureCards,
   { format: "Pioneer" }
 );
@@ -340,9 +459,13 @@ assert.ok(
 
 const rampPosture = buildManaCurveAnalysis(
   `Deck
-10 Llanowar Elves
-8 Titan of Industry
-16 Forest
+4 Llanowar Elves
+4 Paradise Druid
+4 Cultivate
+4 Titan of Industry
+4 Ugin, the Spirit Dragon
+4 Rampaging Baloths
+32 Forest
 4 Temple Garden`,
   postureCards,
   { format: "Modern" }
@@ -351,11 +474,15 @@ assert.equal(rampPosture.posture.posture, "ramp", "ramp plus expensive payoffs c
 
 const comboPosture = buildManaCurveAnalysis(
   `Deck
-8 Reanimate
-6 Entomb
-6 Opt
-8 Griselbrand
-12 Swamp
+4 Reanimate
+4 Animate Dead
+4 Entomb
+4 Careful Study
+4 Opt
+4 Dark Ritual
+4 Flusterstorm
+4 Griselbrand
+20 Swamp
 8 Island`,
   postureCards,
   { format: "Legacy" }
@@ -364,13 +491,14 @@ assert.equal(comboPosture.posture.posture, "combo", "combo pieces plus tutors/se
 
 const mixedPosture = buildManaCurveAnalysis(
   `Deck
-1 Savannah Cub
-1 Supreme Verdict
-1 Titan of Industry
-1 Reanimate
-1 Addendum Lesson
-10 Forest
-10 Island`,
+4 Savannah Cub
+4 Supreme Verdict
+4 Titan of Industry
+4 Reanimate
+4 Addendum Lesson
+20 Forest
+16 Island
+4 Plains`,
   postureCards,
   { format: "Modern" }
 );
@@ -378,9 +506,12 @@ assert.equal(mixedPosture.posture.posture, "unknown", "mixed sparse inputs do no
 
 const sideboardOnlyObservations = buildManaCurveAnalysis(
   `Deck
-8 Savannah Cub
-8 Lightning Strike
-16 Mountain
+4 Savannah Cub
+4 Lightning Strike
+4 Shock
+4 Play with Fire
+20 Mountain
+24 Forest
 
 Sideboard
 1 Supreme Verdict

@@ -283,6 +283,29 @@ assert.equal(
   true,
   "generic cost reductions lower only the generic portion of a spell's payment"
 );
+assert.equal(
+  solveManaPayment("{2/W}", 2, [{ name: "Plains", colors: ["W"] }]).canPay,
+  true,
+  "numeric hybrid can be paid with the color"
+);
+assert.equal(
+  solveManaPayment("{2/W}", 2, [
+    { name: "Island", colors: ["U"] },
+    { name: "Mountain", colors: ["R"] }
+  ]).canPay,
+  true,
+  "numeric hybrid can be paid with two generic mana"
+);
+assert.equal(
+  solveManaPayment("{2/W}", 2, [{ name: "Island", colors: ["U"] }]).canPay,
+  false,
+  "numeric hybrid cannot be paid by one off-color source"
+);
+assert.equal(
+  solveManaPayment("{2/W}", 2, [{ name: "Island", colors: ["U"] }], { genericReduction: 1 }).canPay,
+  false,
+  "generic reduction does not make one off-color source pay a two-generic hybrid alternative"
+);
 
 const redAggroCards = cardMap([
   card({ name: "Mountain", typeLine: "Basic Land — Mountain", oracleText: "{T}: Add {R}.", producedMana: ["R"], isLand: true }),

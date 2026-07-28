@@ -17,6 +17,7 @@ import {
 import { selectAnalyzerDeck } from "@/lib/analyzerRouting";
 import type { SavedDeck } from "@/lib/decks";
 import { deckFormatOptions } from "@/lib/formats";
+import { validatePastedHandRows } from "@/lib/handValidation";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
 
@@ -872,11 +873,13 @@ export function HandAnalyzer() {
   }
 
   function applyPastedHand() {
-    const next = hand.slice(0, 7);
-    while (next.length < 7) {
-      next.push(options[0] ?? "");
+    const validation = validatePastedHandRows(hand, decklist);
+    if (validation.error) {
+      setMessage(validation.error);
+      return;
     }
-    setConfirmedHand(next);
+    setConfirmedHand(validation.hand);
+    setHandText(validation.hand.join("\n"));
     setMessage("Confirmed hand updated from pasted text.");
   }
 
