@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   buildManaCurveAnalysis,
+  detectFunctionalRoles,
   extractTournamentCurveCandidateNames,
   primaryCardType,
   type ManaCurveCardData
@@ -12,12 +13,14 @@ function card(
   manaValue: number,
   typeLine: string,
   colors: string[] = [],
-  legalities: Record<string, string> = { modern: "legal", pioneer: "legal", standard: "legal" }
+  legalities: Record<string, string> = { modern: "legal", pioneer: "legal", standard: "legal" },
+  oracleText = ""
 ): ManaCurveCardData {
   return {
     name,
     manaValue,
     typeLine,
+    oracleText,
     colors,
     isLand: /\bland\b/i.test(typeLine),
     legalities
@@ -63,9 +66,32 @@ const baseCards = data([
   card("Mountain", 0, "Basic Land - Mountain"),
   card("Island", 0, "Basic Land - Island"),
   card("Duress", 1, "Sorcery", ["B"], { modern: "legal", pioneer: "legal", standard: "not_legal" }),
-  card("Opt", 1, "Instant", ["U"]),
-  card("Tournament Bolt", 1, "Instant", ["R"]),
+  card("Opt", 1, "Instant", ["U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Scry 1. Draw a card."),
+  card("Tournament Bolt", 1, "Instant", ["R"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Tournament Bolt deals 2 damage to any target."),
   card("Off Color Charm", 2, "Instant", ["G"])
+]);
+
+const postureCards = data([
+  card("Savannah Cub", 1, "Creature - Cat", ["G"]),
+  card("Swift Scout", 1, "Creature - Scout", ["R"]),
+  card("Lightning Strike", 2, "Instant", ["R"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Lightning Strike deals 3 damage to any target."),
+  card("Counterspell", 2, "Instant", ["U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Counter target spell."),
+  card("Opt", 1, "Instant", ["U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Scry 1. Draw a card."),
+  card("Supreme Verdict", 4, "Sorcery", ["W", "U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Destroy all creatures."),
+  card("Memory Deluge", 4, "Instant", ["U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Look at the top X cards. Put two of them into your hand."),
+  card("Llanowar Elves", 1, "Creature - Elf Druid", ["G"], { modern: "legal", pioneer: "legal", standard: "legal" }, "{T}: Add {G}."),
+  card("Titan of Industry", 7, "Creature - Elemental", ["G"]),
+  card("Reanimate", 1, "Sorcery", ["B"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Return target creature card from a graveyard to the battlefield."),
+  card("Griselbrand", 8, "Legendary Creature - Demon", ["B"]),
+  card("Entomb", 1, "Instant", ["B"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Search your library for a card and put that card into your graveyard."),
+  card("Addendum Lesson", 2, "Instant", ["W"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Addendum - If you cast this spell during your main phase, draw a card."),
+  card("Sacrifice Outlet", 2, "Creature - Vampire", ["B"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Sacrifice another creature: Scry 1."),
+  card("Temple Garden", 0, "Land - Forest Plains"),
+  card("Forest", 0, "Basic Land - Forest"),
+  card("Island", 0, "Basic Land - Island"),
+  card("Plains", 0, "Basic Land - Plains"),
+  card("Swamp", 0, "Basic Land - Swamp"),
+  card("Mountain", 0, "Basic Land - Mountain")
 ]);
 
 const roomCards = data([
@@ -139,6 +165,9 @@ const similarDecks = [
     { name: "Monastery Swiftspear", qty: 4 },
     { name: "Lightning Strike", qty: 4 },
     { name: "Expressive Iteration", qty: 4 },
+    { name: "Fable of the Mirror-Breaker", qty: 2 },
+    { name: "Fireball", qty: 1 },
+    { name: "Spikefield Hazard", qty: 1 },
     { name: "Tournament Bolt", qty: 4 },
     { name: "Opt", qty: 4 }
   ]),
@@ -146,6 +175,9 @@ const similarDecks = [
     { name: "Monastery Swiftspear", qty: 4 },
     { name: "Lightning Strike", qty: 4 },
     { name: "Expressive Iteration", qty: 4 },
+    { name: "Fable of the Mirror-Breaker", qty: 2 },
+    { name: "Fireball", qty: 1 },
+    { name: "Spikefield Hazard", qty: 1 },
     { name: "Tournament Bolt", qty: 4 },
     { name: "Opt", qty: 4 }
   ])
@@ -186,16 +218,31 @@ const noEarlyDeck = `Deck
 10 Mountain
 10 Island`;
 const noEarly = buildManaCurveAnalysis(noEarlyDeck, baseCards, { format: "Modern" });
-assert.ok(noEarly.observations.some((row) => row.title === "Too few early plays"), "observations change when curve gets slower");
+assert.ok(noEarly.observations.some((row) => /early action|one-mana/i.test(row.title)), "observations change when curve gets slower");
+assert.ok(noEarly.observations.every((row) => row.evidence.length), "observations expose evidence");
 
 assert.ok(
   extractTournamentCurveCandidateNames(decklist, similarDecks).includes("Tournament Bolt"),
   "similar tournament decks produce candidate lookup names"
 );
 assert.ok(
+  !extractTournamentCurveCandidateNames(decklist, [
+    modernDeck([
+      { name: "Monastery Swiftspear", qty: 4 },
+      { name: "Tournament Bolt", qty: 4 },
+      { name: "Opt", qty: 4 }
+    ])
+  ]).includes("Tournament Bolt"),
+  "weak tournament overlap is not treated as a similar shell"
+);
+assert.ok(
   analysis.suggestions.some((row) => row.cardName === "Tournament Bolt" && row.source === "similar-tournament-decks"),
   "recommendations can use similar tournament deck candidates"
 );
+const tournamentSuggestion = analysis.suggestions.find((row) => row.cardName === "Tournament Bolt");
+assert.equal(tournamentSuggestion?.suggestedQuantity, 4, "recommendations include suggested quantity");
+assert.ok(tournamentSuggestion?.supportingDeckCount, "recommendations include supporting list count");
+assert.notEqual(tournamentSuggestion?.similarityConfidence, "low", "real shell overlap has usable confidence");
 assert.ok(!analysis.suggestions.some((row) => row.cardName === "Off Color Charm"), "recommendations reject off-color candidates");
 
 const standard = buildManaCurveAnalysis(decklist, baseCards, { format: "Standard" });
@@ -255,5 +302,97 @@ const staleRoomAnalysis = buildManaCurveAnalysis(
 assert.equal(staleRoomAnalysis.curve.find((row) => row.manaValue === "2")?.spells, 4, "stale split face cmc still uses parent split cost for cheap face");
 assert.equal(staleRoomAnalysis.curve.find((row) => row.manaValue === "5")?.spells, 4, "stale split face cmc still uses parent split cost for expensive face");
 assert.equal(staleRoomAnalysis.curve.find((row) => row.manaValue === "7+")?.spells, 0, "stale split face cmc never creates a parent 7+ bucket");
+
+const aggroPosture = buildManaCurveAnalysis(
+  `Deck
+8 Savannah Cub
+8 Swift Scout
+8 Lightning Strike
+16 Mountain
+8 Forest`,
+  postureCards,
+  { format: "Pioneer" }
+);
+assert.equal(aggroPosture.posture.posture, "aggro", "low curve threat decks classify as aggro");
+assert.ok(
+  aggroPosture.observations.some((row) => row.expectedRange && row.measuredValue !== undefined),
+  "contextual observations include measured values and expected ranges"
+);
+
+const controlPosture = buildManaCurveAnalysis(
+  `Deck
+4 Counterspell
+4 Opt
+4 Supreme Verdict
+8 Memory Deluge
+2 Titan of Industry
+10 Island
+8 Plains
+6 Temple Garden`,
+  postureCards,
+  { format: "Pioneer" }
+);
+assert.equal(controlPosture.posture.posture, "control", "interaction, sweepers, draw, and lands classify as control");
+assert.ok(
+  !controlPosture.observations.some((row) => /cheap threat/i.test(row.title)),
+  "control decks are not warned for missing aggro-style cheap threats"
+);
+
+const rampPosture = buildManaCurveAnalysis(
+  `Deck
+10 Llanowar Elves
+8 Titan of Industry
+16 Forest
+4 Temple Garden`,
+  postureCards,
+  { format: "Modern" }
+);
+assert.equal(rampPosture.posture.posture, "ramp", "ramp plus expensive payoffs classifies as ramp");
+
+const comboPosture = buildManaCurveAnalysis(
+  `Deck
+8 Reanimate
+6 Entomb
+6 Opt
+8 Griselbrand
+12 Swamp
+8 Island`,
+  postureCards,
+  { format: "Legacy" }
+);
+assert.equal(comboPosture.posture.posture, "combo", "combo pieces plus tutors/selection classify as combo");
+
+const mixedPosture = buildManaCurveAnalysis(
+  `Deck
+1 Savannah Cub
+1 Supreme Verdict
+1 Titan of Industry
+1 Reanimate
+1 Addendum Lesson
+10 Forest
+10 Island`,
+  postureCards,
+  { format: "Modern" }
+);
+assert.equal(mixedPosture.posture.posture, "unknown", "mixed sparse inputs do not force a posture");
+
+const sideboardOnlyObservations = buildManaCurveAnalysis(
+  `Deck
+8 Savannah Cub
+8 Lightning Strike
+16 Mountain
+
+Sideboard
+1 Supreme Verdict
+1 Titan of Industry
+1 Memory Deluge`,
+  postureCards,
+  { format: "Pioneer", scope: "sideboard" }
+);
+assert.equal(sideboardOnlyObservations.observations[0]?.title, "Sideboard scope selected", "sideboard-only scope suppresses normal main-deck warnings");
+
+assert.ok(!detectFunctionalRoles(postureCards.get("addendum lesson")).includes("ramp"), "the word addendum is not treated as ramp");
+assert.ok(!detectFunctionalRoles(postureCards.get("sacrifice outlet")).includes("combo_enabler"), "sacrifice text alone is not treated as combo");
+assert.ok(detectFunctionalRoles(postureCards.get("llanowar elves")).includes("ramp"), "explicit mana production is ramp");
 
 console.log("manaCurve tests passed");

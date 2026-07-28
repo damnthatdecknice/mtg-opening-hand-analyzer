@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { fetchCardData, type CardLookup } from "@/lib/analyzer";
+import { parseDecklist } from "@/lib/deckParser";
 import type { SavedDeck } from "@/lib/decks";
+import { deckFormatOptions } from "@/lib/formats";
 import {
   buildManaCurveAnalysis,
   cardTypeKeys,
@@ -16,6 +18,8 @@ import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
 
 type CurveScope = ManaCurveAnalysis["scope"];
+type CurveDisplayMode = "counts" | "percentages";
+type DeckInputMode = "saved" | "pasted";
 
 const scopeOptions: Array<{ value: CurveScope; label: string }> = [
   { value: "main", label: "Main deck" },
@@ -52,6 +56,10 @@ export function ManaCurveDashboard() {
   const searchParams = useSearchParams();
   const [decks, setDecks] = useState<SavedDeck[]>([]);
   const [selectedDeckId, setSelectedDeckId] = useState("");
+  const [deckInputMode, setDeckInputMode] = useState<DeckInputMode>("saved");
+  const [pastedDecklist, setPastedDecklist] = useState("");
+  const [pastedFormat, setPastedFormat] = useState("Standard");
+  const [displayMode, setDisplayMode] = useState<CurveDisplayMode>("counts");
   const [scope, setScope] = useState<CurveScope>("main");
   const [cardData, setCardData] = useState<Map<string, CardLookup>>(new Map());
   const [metagameDecks, setMetagameDecks] = useState<MetagameDeck[]>([]);
@@ -60,16 +68,18 @@ export function ManaCurveDashboard() {
   const [message, setMessage] = useState("");
 
   const selectedDeck = decks.find((deck) => deck.id === selectedDeckId) ?? decks[0] ?? null;
+  const activeDecklist = deckInputMode === "pasted" ? pastedDecklist : selectedDeck?.decklist ?? "";
+  const activeFormat = deckInputMode === "pasted" ? pastedFormat : selectedDeck?.format ?? "Standard";
   const analysis = useMemo(
     () =>
-      selectedDeck
-        ? buildManaCurveAnalysis(selectedDeck.decklist, cardData, {
-            format: selectedDeck.format ?? "Standard",
+      activeDecklist.trim()
+        ? buildManaCurveAnalysis(activeDecklist, cardData, {
+            format: activeFormat,
             scope,
             metagameDecks
           })
         : null,
-    [cardData, metagameDecks, scope, selectedDeck]
+    [activeDecklist, activeFormat, cardData, metagameDecks, scope]
   );
 
   useEffect(() => {
@@ -109,12 +119,12 @@ export function ManaCurveDashboard() {
   useEffect(() => {
     let isActive = true;
     async function loadMetagame() {
-      if (!selectedDeck?.format || !isMetagameFormat(selectedDeck.format)) {
+      if (!activeFormat || !isMetagameFormat(activeFormat)) {
         setMetagameDecks([]);
         return;
       }
       try {
-        const response = await fetch(`/api/metagame?format=${encodeURIComponent(selectedDeck.format)}&windowDays=7&v=6`, {
+        const response = await fetch(`/api/metagame?format=${encodeURIComponent(activeFormat)}&windowDays=7&v=6`, {
           cache: "no-store"
         });
         if (!response.ok) {
@@ -135,19 +145,20 @@ export function ManaCurveDashboard() {
     return () => {
       isActive = false;
     };
-  }, [selectedDeck]);
+  }, [activeFormat]);
 
   useEffect(() => {
     let isActive = true;
     async function loadCards() {
-      if (!selectedDeck) {
+      if (!activeDecklist.trim()) {
         setCardData(new Map());
         return;
       }
       setIsLoadingCards(true);
       setMessage("");
-      const deckNames = selectedDeck.parsed_json.cards.map((card) => card.name);
-      const candidateNames = extractTournamentCurveCandidateNames(selectedDeck.decklist, metagameDecks);
+      const parsed = parseDecklist(activeDecklist);
+      const deckNames = parsed.cards.map((card) => card.name);
+      const candidateNames = extractTournamentCurveCandidateNames(activeDecklist, metagameDecks);
       const { lookups, failures } = await fetchCardData([...deckNames, ...candidateNames]);
       if (!isActive) {
         return;
@@ -161,7 +172,7 @@ export function ManaCurveDashboard() {
     return () => {
       isActive = false;
     };
-  }, [metagameDecks, selectedDeck]);
+  }, [activeDecklist, metagameDecks]);
 
   if (!entitlements.canUseDeckVault && !entitlements.isLoading) {
     return (
@@ -186,6 +197,14 @@ export function ManaCurveDashboard() {
 
       <section className="panel mana-curve-controls">
         <label>
+          Analyze
+          <select className="card-select" onChange={(event) => setDeckInputMode(event.target.value as DeckInputMode)} value={deckInputMode}>
+            <option value="saved">Saved deck</option>
+            <option value="pasted">Pasted deck</option>
+          </select>
+        </label>
+        {deckInputMode === "saved" ? (
+        <label>
           Saved deck
           <select
             className="card-select"
@@ -204,6 +223,18 @@ export function ManaCurveDashboard() {
             )}
           </select>
         </label>
+        ) : (
+          <label>
+            Format
+            <select className="card-select" onChange={(event) => setPastedFormat(event.target.value)} value={pastedFormat}>
+              {deckFormatOptions.map((formatOption) => (
+                <option key={formatOption} value={formatOption}>
+                  {formatOption}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
           Scope
           <select className="card-select" onChange={(event) => setScope(event.target.value as CurveScope)} value={scope}>
@@ -214,15 +245,36 @@ export function ManaCurveDashboard() {
             ))}
           </select>
         </label>
+        <label>
+          Display
+          <select className="card-select" onChange={(event) => setDisplayMode(event.target.value as CurveDisplayMode)} value={displayMode}>
+            <option value="counts">Counts</option>
+            <option value="percentages">Percentages</option>
+          </select>
+        </label>
         <Link className="secondary-button" href="/decks">
           Save a Deck
         </Link>
       </section>
 
+      {deckInputMode === "pasted" ? (
+        <section className="panel mana-curve-paste-panel">
+          <label>
+            Paste a decklist
+            <textarea
+              onChange={(event) => setPastedDecklist(event.target.value)}
+              placeholder="Paste MTG Arena or plain text decklist here. This does not save the deck."
+              spellCheck={false}
+              value={pastedDecklist}
+            />
+          </label>
+        </section>
+      ) : null}
+
       {message ? <p className="form-message">{message}</p> : null}
       {isLoadingCards ? <p className="muted-copy">Loading Scryfall card data...</p> : null}
 
-      {analysis && selectedDeck ? (
+      {analysis ? (
         <>
           <section className="curve-metrics">
             <div className="metric-card">
@@ -237,21 +289,31 @@ export function ManaCurveDashboard() {
             <div className="metric-card">
               <span>Casting modes</span>
               <strong>{analysis.castModeCount}</strong>
+              <em className="metric-impact neutral">{analysis.castModeCount - analysis.physicalSpellCount} extra modes</em>
             </div>
             <div className="metric-card">
               <span>Avg physical MV</span>
               <strong>{analysis.averageManaValue.toFixed(2)}</strong>
+              <em className="metric-impact neutral">lowest castable mode</em>
             </div>
             <div className="metric-card">
               <span>Median physical MV</span>
               <strong>{analysis.medianManaValue.toFixed(1)}</strong>
+              <em className="metric-impact neutral">copy-weighted</em>
             </div>
           </section>
 
           <section className="mana-curve-grid">
-            <CurvePanel analysis={analysis} />
+            <CurvePanel analysis={analysis} displayMode={displayMode} />
             <TypeBreakdownPanel analysis={analysis} />
           </section>
+
+          <section className="mana-curve-grid">
+            <PosturePanel analysis={analysis} />
+            <ComparisonPanel analysis={analysis} />
+          </section>
+
+          <ManaDemandPanel analysis={analysis} />
 
           <section className="mana-curve-grid">
             <ObservationPanel analysis={analysis} />
@@ -261,8 +323,8 @@ export function ManaCurveDashboard() {
       ) : (
         <section className="panel">
           <div className="empty-state">
-            <strong>No saved decks yet</strong>
-            <span>Save a deck first, then come back to inspect its curve.</span>
+            <strong>No deck selected</strong>
+            <span>Choose a saved deck or paste a decklist to inspect its curve.</span>
           </div>
         </section>
       )}
@@ -270,23 +332,55 @@ export function ManaCurveDashboard() {
   );
 }
 
-function CurvePanel({ analysis }: { analysis: ManaCurveAnalysis }) {
-  const max = Math.max(1, ...analysis.curve.map((row) => row.spells));
+function postureLabel(posture: ManaCurveAnalysis["posture"]["posture"]) {
+  if (posture === "unknown") {
+    return "Mixed / unknown";
+  }
+  return posture.charAt(0).toUpperCase() + posture.slice(1);
+}
+
+function PosturePanel({ analysis }: { analysis: ManaCurveAnalysis }) {
+  return (
+    <section className="panel">
+      <div className="section-heading">
+        <p className="eyebrow">Deck posture</p>
+        <h2>{postureLabel(analysis.posture.posture)}</h2>
+      </div>
+      <div className="posture-summary">
+        <strong>{analysis.posture.confidence} confidence</strong>
+        <span>
+          The curve observations are compared against {analysis.posture.posture === "unknown" ? "broad structural" : analysis.posture.posture} expectations for {analysis.format}.
+        </span>
+      </div>
+      <div className="mini-table-stack">
+        {analysis.posture.evidence.length ? (
+          analysis.posture.evidence.map((evidence) => <span key={evidence}>{evidence}</span>)
+        ) : (
+          <span>No single posture signal dominated.</span>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function CurvePanel({ analysis, displayMode }: { analysis: ManaCurveAnalysis; displayMode: CurveDisplayMode }) {
+  const maxCount = Math.max(1, ...analysis.curve.map((row) => row.spells));
+  const total = Math.max(1, analysis.castModeCount);
   const stackTypes = cardTypeKeys.filter((type) => type !== "lands");
   return (
     <section className="panel curve-panel mana-curve-wide-panel">
       <div className="section-heading split-heading">
         <div>
-          <p className="eyebrow">Copy-weighted curve</p>
+          <p className="eyebrow">Cast-mode curve</p>
           <h2>Spell Mana Values</h2>
         </div>
-        <span className="muted-copy">{analysis.scope}</span>
+        <span className="muted-copy">{displayMode === "percentages" ? "% of modes" : analysis.scope}</span>
       </div>
       {analysis.curve.map((row) => (
         <div className="curve-row stacked-curve-row" key={row.manaValue}>
           <span>{row.manaValue}</span>
           <div>
-            <span className="stacked-curve-track" style={{ width: `${(row.spells / max) * 100}%` }}>
+            <span className="stacked-curve-track" style={{ width: `${(row.spells / maxCount) * 100}%` }}>
               {stackTypes.map((type) => {
                 const count = row.types[type];
                 const tooltip = formatCurveTooltip(typeLabels[type], row.cards[type]);
@@ -303,11 +397,11 @@ function CurvePanel({ analysis }: { analysis: ManaCurveAnalysis }) {
               })}
             </span>
           </div>
-          <strong>{row.spells}</strong>
+          <strong>{displayMode === "percentages" ? `${Math.round((row.spells / total) * 100)}%` : row.spells}</strong>
         </div>
       ))}
       <p className="muted-copy">
-        Lands are excluded. Multi-face cards may appear in multiple cast-mode buckets, but physical spell-card totals count each copy once.
+        Lands are excluded. Physical-card averages count each card once at its lowest castable nonland mode; cast-mode bars show separate playable halves where appropriate.
       </p>
     </section>
   );
@@ -348,6 +442,79 @@ function TypeBreakdownPanel({ analysis }: { analysis: ManaCurveAnalysis }) {
   );
 }
 
+function ManaDemandPanel({ analysis }: { analysis: ManaCurveAnalysis }) {
+  const colors = ["W", "U", "B", "R", "G"] as const;
+  return (
+    <section className="panel">
+      <div className="section-heading">
+        <p className="eyebrow">Mana pressure</p>
+        <h2>Colored Pips vs Sources</h2>
+      </div>
+      <div className="mana-demand-grid">
+        {colors.map((color) => (
+          <div className="mana-demand-row" key={color}>
+            <strong>{color}</strong>
+            <span>Pips {analysis.manaDemand.pips[color]}</span>
+            <span>Sources {analysis.manaSources.sources[color]}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mini-table-stack">
+        {analysis.manaSources.untappedByTurn.map((turn) => (
+          <span key={turn.turn}>
+            T{turn.turn} likely untapped:{" "}
+            {colors
+              .map((color) => `${color} ${turn.sources[color]}`)
+              .join(" / ")}{" "}
+            <em>{turn.confidence} confidence</em>
+          </span>
+        ))}
+      </div>
+      <p className="muted-copy">Source estimates are card-text based and conservative for conditional lands.</p>
+    </section>
+  );
+}
+
+function ComparisonPanel({ analysis }: { analysis: ManaCurveAnalysis }) {
+  return (
+    <section className="panel">
+      <div className="section-heading">
+        <p className="eyebrow">Context ranges</p>
+        <h2>Curve Shape</h2>
+      </div>
+      <div className="list-stack">
+        {analysis.contextualRanges
+          .filter((row) => row.count || row.label !== "in range")
+          .map((row) => (
+            <div className={`range-row ${row.label.replace(/\s+/g, "-")}`} key={row.bucket}>
+              <strong>{row.bucket}</strong>
+              <span>
+                {row.count} cards, {Math.round(row.share * 100)}%
+              </span>
+              <em>
+                {row.label}; expected {Math.round(row.typicalLow * 100)}-{Math.round(row.typicalHigh * 100)}%
+              </em>
+            </div>
+          ))}
+      </div>
+      <p className="muted-copy">Ranges are contextual heuristics based on inferred deck posture, format, and selected scope.</p>
+    </section>
+  );
+}
+
+function formatExpectedRange(range: ManaCurveAnalysis["observations"][number]["expectedRange"]) {
+  if (!range || (range.min === undefined && range.max === undefined)) {
+    return "";
+  }
+  if (range.min !== undefined && range.max !== undefined) {
+    return `${range.min}-${range.max}`;
+  }
+  if (range.min !== undefined) {
+    return `${range.min}+`;
+  }
+  return `up to ${range.max}`;
+}
+
 function ObservationPanel({ analysis }: { analysis: ManaCurveAnalysis }) {
   return (
     <section className="panel">
@@ -360,6 +527,14 @@ function ObservationPanel({ analysis }: { analysis: ManaCurveAnalysis }) {
           <div className={`empty-state observation-card ${observation.tone}`} key={observation.title}>
             <strong>{observation.title}</strong>
             <span>{observation.detail}</span>
+            {observation.measuredValue !== undefined || observation.expectedRange ? (
+              <small>
+                {observation.measuredValue !== undefined ? `Measured: ${observation.measuredValue}` : ""}
+                {observation.expectedRange ? `${observation.measuredValue !== undefined ? " | " : ""}Expected: ${formatExpectedRange(observation.expectedRange)}` : ""}
+              </small>
+            ) : null}
+            {observation.evidence.length ? <small>Evidence: {observation.evidence.join("; ")}</small> : null}
+            <em>{observation.confidence} confidence</em>
           </div>
         ))}
       </div>
@@ -385,9 +560,15 @@ function SuggestionPanel({ analysis, hasMetagame }: { analysis: ManaCurveAnalysi
           analysis.suggestions.map((suggestion) => (
             <div className="list-row curve-suggestion-row" key={`${suggestion.cardName}-${suggestion.role}`}>
               <div>
-                <strong>{suggestion.cardName}</strong>
-                <span>{suggestion.role} | {suggestion.slot}</span>
+                <strong>Add {suggestion.suggestedQuantity} {suggestion.cardName}</strong>
+                <span>{suggestion.role} | {suggestion.slot} | {suggestion.problemAddressed}</span>
                 <small>{suggestion.reason}</small>
+                {suggestion.possibleCuts.length ? (
+                  <small>Possible cuts: {suggestion.possibleCuts.join(", ")}</small>
+                ) : null}
+                <small>
+                  Evidence: {suggestion.source === "similar-tournament-decks" ? `${suggestion.supportingDeckCount} supporting list(s)` : suggestion.source}; {suggestion.similarityConfidence} confidence; {suggestion.formatLegality}; {suggestion.colorCompatibility}
+                </small>
               </div>
               <em>{suggestion.source === "similar-tournament-decks" ? "Challenge" : suggestion.source === "sideboard" ? "Sideboard" : "Role"}</em>
             </div>

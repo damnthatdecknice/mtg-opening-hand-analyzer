@@ -100,6 +100,12 @@ export default function HelpPage() {
             Treat the suggestions as a competitive testing queue, not an automatic import. The goal is
             to surface cards worth trying before your next league, challenge, or local event.
           </p>
+          <p>
+            Metagame snapshots currently use Standard, Pioneer, Modern, and Legacy Magic Online
+            Challenge data. Saved decks and analyzer tools also support Pauper, Draft, Commander,
+            Brawl, Vintage, Penny Dreadful, Premodern, Historic, and Explorer where card data and
+            legality checks are available.
+          </p>
         </div>
       </section>
       <section className="panel compact-panel">

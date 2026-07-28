@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { inferDeckName, parseDecklist, parseDekImport, type DeckImportMetadata } from "@/lib/deckParser";
 import type { DeckInsert, DeckVersion, SavedDeck } from "@/lib/decks";
+import { deckFormatOptions } from "@/lib/formats";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
 
@@ -24,22 +25,6 @@ const defaultDecklist = `Deck
 Sideboard
 3 Destroy Evil
 2 Lithomantic Barrage`;
-
-const deckFormats = [
-  "Standard",
-  "Pioneer",
-  "Modern",
-  "Legacy",
-  "Pauper",
-  "Draft",
-  "Commander",
-  "Brawl",
-  "Vintage",
-  "Penny Dreadful",
-  "Premodern",
-  "Historic",
-  "Explorer"
-];
 
 type ExportFormat = "arena" | "mtgo" | "plain" | "moxfield";
 
@@ -357,7 +342,7 @@ export function DeckLibrary() {
                 onChange={(event) => setFormat(event.target.value)}
                 value={format}
               >
-                {deckFormats.map((deckFormat) => (
+                {deckFormatOptions.map((deckFormat) => (
                   <option key={deckFormat} value={deckFormat}>
                     {deckFormat}
                   </option>

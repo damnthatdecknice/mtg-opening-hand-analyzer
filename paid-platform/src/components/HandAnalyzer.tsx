@@ -16,6 +16,7 @@ import {
 } from "@/lib/deckParser";
 import { selectAnalyzerDeck } from "@/lib/analyzerRouting";
 import type { SavedDeck } from "@/lib/decks";
+import { deckFormatOptions } from "@/lib/formats";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
 
@@ -96,21 +97,6 @@ Inspiring Vantage`;
 const lastDeckStorageKey = "mtg-hand-pro:last-analyzer-deck-id";
 const signatureCachePrefix = "mtg-hand-pro:image-signature:";
 const freeWeeklyAnalyzerLimit = 10;
-const deckFormats = [
-  "Standard",
-  "Pioneer",
-  "Modern",
-  "Legacy",
-  "Pauper",
-  "Draft",
-  "Commander",
-  "Brawl",
-  "Vintage",
-  "Penny Dreadful",
-  "Premodern",
-  "Historic",
-  "Explorer"
-];
 let localOcrWorkerPromise: Promise<LocalOcrWorker> | null = null;
 const defaultCropAdjustments: CropAdjustments = {
   x: 0,
@@ -1313,7 +1299,7 @@ export function HandAnalyzer() {
               }}
               value={deckFormat}
             >
-              {deckFormats.map((formatOption) => (
+              {deckFormatOptions.map((formatOption) => (
                 <option key={formatOption} value={formatOption}>
                   {formatOption}
                 </option>
