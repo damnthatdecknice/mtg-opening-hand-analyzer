@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { parseDecklist, parseDekImport } from "../src/lib/deckParser";
-import { shouldPersistHandSession } from "../src/lib/analyzerMode";
+import { analyzerStepFromParam, shouldPersistHandSession } from "../src/lib/analyzerMode";
+import { resolveAuthReturnPathFromParts } from "../src/lib/authRouting";
 import { buildOnboardingReview, onboardingExampleDeck } from "../src/lib/firstDeckOnboarding";
 import {
   guestDeckFromParsed,
+  parseGuestDeckIntent,
   parseGuestDeck,
+  safeInternalReturnPath,
+  serializeGuestDeckIntent,
   serializeGuestDeck
 } from "../src/lib/guestDeck";
 
@@ -37,6 +41,38 @@ assert.equal(
   null,
   "guest deck expires after the scoped browser-storage window"
 );
+
+assert.equal(safeInternalReturnPath("/dashboard?importGuest=1"), "/dashboard?importGuest=1", "internal return paths are allowed");
+assert.equal(safeInternalReturnPath("https://example.com"), "/dashboard", "external return paths are rejected");
+assert.equal(safeInternalReturnPath("//example.com"), "/dashboard", "protocol-relative return paths are rejected");
+
+const guestIntent = {
+  action: "save-after-auth" as const,
+  createdAt: now,
+  returnPath: "/dashboard?importGuest=1"
+};
+assert.deepEqual(
+  parseGuestDeckIntent(serializeGuestDeckIntent(guestIntent), now + 1000),
+  guestIntent,
+  "guest save intent serializes and parses"
+);
+assert.equal(
+  parseGuestDeckIntent(serializeGuestDeckIntent(guestIntent), now + 8 * 24 * 60 * 60 * 1000),
+  null,
+  "guest save intent expires after the scoped browser-storage window"
+);
+assert.equal(
+  resolveAuthReturnPathFromParts({ hasIntent: true, returnTo: null, storedIntent: guestIntent }),
+  "/dashboard?importGuest=1",
+  "successful authentication with a guest save intent returns to the conversion flow"
+);
+assert.equal(
+  resolveAuthReturnPathFromParts({ hasIntent: false, returnTo: null, storedIntent: null }),
+  "/dashboard",
+  "normal authentication without an intent opens the dashboard"
+);
+assert.equal(analyzerStepFromParam("hand"), "hand", "valid analyzer step is accepted");
+assert.equal(analyzerStepFromParam("bad-step"), "deck", "invalid analyzer step falls back to deck");
 
 const imported = parseDekImport(`
 <Deck>

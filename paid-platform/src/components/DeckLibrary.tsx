@@ -485,7 +485,7 @@ export function DeckLibrary() {
                   </span>
                 </div>
                 <div className="deck-row-actions">
-                  <Link className="text-button" href={`/analyzer?deck=${deck.id}`}>
+                  <Link className="text-button" href={`/analyzer?deck=${deck.id}&step=hand`}>
                     Analyze
                   </Link>
                   <button className="text-button" onClick={() => startEditing(deck)} type="button">

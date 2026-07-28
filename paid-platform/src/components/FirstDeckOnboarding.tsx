@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -11,17 +11,26 @@ import {
 } from "@/lib/deckParser";
 import { deckFormatOptions } from "@/lib/formats";
 import { buildOnboardingReview, onboardingExampleDeck } from "@/lib/firstDeckOnboarding";
-import { guestDeckFromParsed, saveGuestDeck } from "@/lib/guestDeck";
+import { guestDeckFromParsed, saveGuestDeck, saveGuestDeckIntent } from "@/lib/guestDeck";
 import { saveDeckForCurrentUser } from "@/lib/deckStorage";
 
 type FirstDeckOnboardingProps = {
   mode: "guest" | "account";
   compact?: boolean;
+  id?: string;
+  requestedAction?: "none" | "example";
+  onRequestedActionHandled?: () => void;
 };
 
 type EntryMode = "dek" | "paste";
 
-export function FirstDeckOnboarding({ mode, compact = false }: FirstDeckOnboardingProps) {
+export function FirstDeckOnboarding({
+  mode,
+  compact = false,
+  id,
+  requestedAction = "none",
+  onRequestedActionHandled
+}: FirstDeckOnboardingProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const decklistRef = useRef<HTMLTextAreaElement | null>(null);
@@ -49,13 +58,22 @@ export function FirstDeckOnboarding({ mode, compact = false }: FirstDeckOnboardi
     }
   }
 
-  function loadExampleDeck() {
+  const loadExampleDeck = useCallback(() => {
     setEntryMode("paste");
     setDecklist(onboardingExampleDeck);
     setDeckName(inferDeckName(onboardingExampleDeck));
     setImportMetadata(undefined);
     setMessage("Example deck loaded. Review the counts, then continue to analysis.");
-  }
+  }, []);
+
+  useEffect(() => {
+    if (requestedAction !== "example") {
+      return;
+    }
+    loadExampleDeck();
+    window.requestAnimationFrame(() => decklistRef.current?.focus());
+    onRequestedActionHandled?.();
+  }, [loadExampleDeck, onRequestedActionHandled, requestedAction]);
 
   async function handleDekUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -92,6 +110,16 @@ export function FirstDeckOnboarding({ mode, compact = false }: FirstDeckOnboardi
     );
   }
 
+  function prepareGuestSaveIntent() {
+    if (parsed.mainCount > 0) {
+      storeGuestDeck();
+    }
+    saveGuestDeckIntent({
+      action: "save-after-auth",
+      returnPath: "/dashboard?importGuest=1"
+    });
+  }
+
   async function analyzeGuestDeck() {
     if (parsed.mainCount === 0) {
       setMessage("Add quantities before each card name, such as \"4 Lightning Bolt.\"");
@@ -99,7 +127,7 @@ export function FirstDeckOnboarding({ mode, compact = false }: FirstDeckOnboardi
       return;
     }
     storeGuestDeck();
-    router.push("/analyzer?guest=1");
+    router.push("/analyzer?guest=1&step=hand");
   }
 
   async function saveAndContinue() {
@@ -125,13 +153,13 @@ export function FirstDeckOnboarding({ mode, compact = false }: FirstDeckOnboardi
     }
 
     setMessage("Your deck was saved successfully. Opening the analyzer now.");
-    router.push(`/analyzer?deck=${encodeURIComponent(result.deckId)}`);
+    router.push(`/analyzer?deck=${encodeURIComponent(result.deckId)}&step=hand`);
   }
 
   const primaryAction = mode === "account" ? saveAndContinue : analyzeGuestDeck;
 
   return (
-    <section className={`panel first-deck-onboarding${compact ? " compact-first-deck" : ""}`}>
+    <section className={`panel first-deck-onboarding${compact ? " compact-first-deck" : ""}`} id={id} tabIndex={-1}>
       <div className="section-heading">
         <p className="eyebrow">First deck setup</p>
         <h2>Add Your First Deck</h2>
@@ -142,8 +170,12 @@ export function FirstDeckOnboarding({ mode, compact = false }: FirstDeckOnboardi
       </div>
 
       <ol className="onboarding-progress" aria-label="First deck progress">
-        <li className={decklist ? "is-complete" : "is-current"}>Add deck</li>
-        <li className={parsed.mainCount ? "is-current" : ""}>Review</li>
+        <li aria-current={!decklist ? "step" : undefined} className={decklist ? "is-complete" : "is-current"}>
+          Add deck
+        </li>
+        <li aria-current={decklist && parsed.mainCount ? "step" : undefined} className={parsed.mainCount ? "is-current" : ""}>
+          Review
+        </li>
         <li>{mode === "account" ? "Save" : "Continue"}</li>
         <li>Analyze</li>
       </ol>
@@ -151,6 +183,7 @@ export function FirstDeckOnboarding({ mode, compact = false }: FirstDeckOnboardi
       <div className="deck-import-choice" role="group" aria-label="Choose deck input method">
         <button
           className={`choice-card${entryMode === "dek" ? " is-selected" : ""}`}
+          aria-pressed={entryMode === "dek"}
           onClick={() => setEntryMode("dek")}
           type="button"
         >
@@ -159,6 +192,7 @@ export function FirstDeckOnboarding({ mode, compact = false }: FirstDeckOnboardi
         </button>
         <button
           className={`choice-card${entryMode === "paste" ? " is-selected" : ""}`}
+          aria-pressed={entryMode === "paste"}
           onClick={() => setEntryMode("paste")}
           type="button"
         >
@@ -251,9 +285,14 @@ export function FirstDeckOnboarding({ mode, compact = false }: FirstDeckOnboardi
             Continue Without Saving
           </button>
         ) : (
-          <Link className="secondary-button" href="/signup">
-            Create an Account to Save It
-          </Link>
+          <>
+            <Link className="secondary-button" href="/signup?intent=save-guest-deck" onClick={prepareGuestSaveIntent}>
+              Create an Account to Save It
+            </Link>
+            <Link className="text-button" href="/login?intent=save-guest-deck" onClick={prepareGuestSaveIntent}>
+              Sign in to Save It
+            </Link>
+          </>
         )}
       </div>
 

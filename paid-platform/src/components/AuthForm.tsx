@@ -3,6 +3,8 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { saveAuthFallback } from "@/lib/authFallback";
+import { hasSaveGuestDeckIntent, resolveAuthReturnPath } from "@/lib/authRouting";
+import { loadGuestDeckIntent } from "@/lib/guestDeck";
 import { AuthMode, isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type AuthFormProps = {
@@ -17,6 +19,9 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [isBusy, setIsBusy] = useState(false);
 
   const isSignUp = mode === "sign-up";
+  const authSearch = typeof window === "undefined" ? "" : window.location.search;
+  const hasGuestSaveIntent = hasSaveGuestDeckIntent(authSearch) || loadGuestDeckIntent()?.action === "save-after-auth";
+  const switchHref = `${isSignUp ? "/login" : "/signup"}${hasGuestSaveIntent ? "?intent=save-guest-deck" : ""}`;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -58,7 +63,11 @@ export function AuthForm({ mode }: AuthFormProps) {
           display_name: displayName.trim()
         });
       }
-      setMessage("Account created. Check your email if confirmations are enabled, then sign in.");
+      setMessage(
+        hasGuestSaveIntent
+          ? "Account created. After confirming your email and signing in, your imported deck will be ready to save."
+          : "Account created. Check your email if confirmations are enabled, then sign in."
+      );
       return;
     }
 
@@ -72,8 +81,9 @@ export function AuthForm({ mode }: AuthFormProps) {
       saveAuthFallback(result.data.session);
     }
 
-    setMessage("Signed in. Opening your dashboard...");
-    window.location.replace("/dashboard");
+    const returnPath = resolveAuthReturnPath(window.location.search);
+    setMessage("Signed in. Opening your workspace...");
+    window.location.replace(returnPath);
   }
 
   return (
@@ -142,7 +152,7 @@ export function AuthForm({ mode }: AuthFormProps) {
 
         <p className="auth-switch">
           {isSignUp ? "Already have an account?" : "Need an account?"}{" "}
-          <Link href={isSignUp ? "/login" : "/signup"}>
+          <Link href={switchHref}>
             {isSignUp ? "Sign in" : "Create one"}
           </Link>
         </p>

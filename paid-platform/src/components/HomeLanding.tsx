@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { AccountBar } from "@/components/AccountBar";
 import { DashboardContent } from "@/components/DashboardContent";
@@ -27,6 +26,7 @@ const pillars = [
 export function HomeLanding() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [onboardingAction, setOnboardingAction] = useState<"none" | "example">("none");
 
   useEffect(() => {
     if (!supabase) {
@@ -53,6 +53,19 @@ export function HomeLanding() {
     window.location.href = "/";
   }
 
+  function focusFirstDeckOnboarding() {
+    const element = document.getElementById("first-deck-onboarding");
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    element?.scrollIntoView({
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+      block: "start"
+    });
+
+    window.requestAnimationFrame(() => {
+      element?.querySelector<HTMLElement>('input[type="file"], textarea, button')?.focus();
+    });
+  }
+
   if (user && !isLoading) {
     return (
       <>
@@ -73,17 +86,29 @@ export function HomeLanding() {
           improve your position.
         </p>
         <div className="action-row">
-          <Link className="primary-button" href="/analyzer?sample=1">
-            Try a Sample Analysis
-          </Link>
-          <Link className="secondary-button" href="/analyzer">
-            Paste My Deck
-          </Link>
+          <button className="primary-button" onClick={focusFirstDeckOnboarding} type="button">
+            Add My Deck
+          </button>
+          <button
+            className="secondary-button"
+            onClick={() => {
+              setOnboardingAction("example");
+              focusFirstDeckOnboarding();
+            }}
+            type="button"
+          >
+            Try an Example
+          </button>
         </div>
         <p className="muted-copy">Opening Edge is in open beta. Results are advisory estimates, not guarantees.</p>
       </div>
 
-      <FirstDeckOnboarding mode="guest" />
+      <FirstDeckOnboarding
+        id="first-deck-onboarding"
+        mode="guest"
+        requestedAction={onboardingAction}
+        onRequestedActionHandled={() => setOnboardingAction("none")}
+      />
 
       <div className="pillar-grid">
         {pillars.map((pillar) => (

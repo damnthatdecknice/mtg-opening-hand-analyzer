@@ -1903,6 +1903,47 @@ button.list-row {
   width: min(920px, 100%);
 }
 
+.guest-deck-conversion-card {
+  display: grid;
+  gap: 18px;
+  width: min(920px, 100%);
+}
+
+.guest-deck-conversion-card:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.guest-conversion-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.guest-conversion-grid span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid rgba(103, 194, 255, 0.2);
+  background: rgba(1, 8, 18, 0.5);
+  padding: 12px;
+  clip-path: var(--clip-sm);
+}
+
+.guest-conversion-grid strong {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.guest-conversion-grid em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 .add-another-deck-card {
   align-items: center;
   display: flex;

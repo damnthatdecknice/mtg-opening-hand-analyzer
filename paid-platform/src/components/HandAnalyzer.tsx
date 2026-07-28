@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardEvent, DragEvent, useEffect, useMemo, useState } from "react";
+import { ClipboardEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   analyzeOpeningHand,
@@ -9,7 +9,7 @@ import {
   type CardLookup,
   type PlayDraw
 } from "@/lib/analyzer";
-import { type AnalyzerMode, shouldPersistHandSession } from "@/lib/analyzerMode";
+import { analyzerStepFromParam, type AnalyzerMode, type AnalyzerStep, shouldPersistHandSession } from "@/lib/analyzerMode";
 import {
   inferDeckName,
   parseDecklist,
@@ -19,12 +19,12 @@ import {
 import { selectAnalyzerDeck } from "@/lib/analyzerRouting";
 import type { SavedDeck } from "@/lib/decks";
 import { deckFormatOptions } from "@/lib/formats";
-import { clearGuestDeck, loadGuestDeck } from "@/lib/guestDeck";
+import { clearGuestDeck, loadGuestDeck, saveGuestDeckIntent } from "@/lib/guestDeck";
 import { validatePastedHandRows } from "@/lib/handValidation";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
 
-type WorkflowTab = "deck" | "hand" | "screenshot" | "results";
+type WorkflowTab = AnalyzerStep;
 type ResultTab = "overview" | "deep" | "curve" | "mulligan" | "other";
 type ScreenshotSource = "mtgo" | "arena";
 
@@ -719,7 +719,14 @@ function makeArenaCrops(image: HTMLImageElement, adjustments: CropAdjustments) {
 
 export function HandAnalyzer() {
   const entitlements = useEntitlements();
-  const [workflowTab, setWorkflowTab] = useState<WorkflowTab>("deck");
+  const initialWorkflowStep = () =>
+    typeof window === "undefined"
+      ? "deck"
+      : analyzerStepFromParam(new URLSearchParams(window.location.search).get("step"));
+  const [requestedInitialStep] = useState<WorkflowTab>(initialWorkflowStep);
+  const [hasAppliedInitialStep, setHasAppliedInitialStep] = useState(false);
+  const [shouldFocusHandStep, setShouldFocusHandStep] = useState(false);
+  const [workflowTab, setWorkflowTab] = useState<WorkflowTab>(initialWorkflowStep);
   const [resultTab, setResultTab] = useState<ResultTab>("overview");
   const [decklist, setDecklist] = useState("");
   const [deckImportMetadata, setDeckImportMetadata] = useState<DeckImportMetadata | undefined>();
@@ -742,6 +749,8 @@ export function HandAnalyzer() {
   const [isBusy, setIsBusy] = useState(false);
   const [isCropping, setIsCropping] = useState(false);
   const [isRecognizing, setIsRecognizing] = useState(false);
+  const handHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const handTextRef = useRef<HTMLTextAreaElement | null>(null);
 
   const parsed = useMemo(() => parseDecklist(decklist), [decklist]);
   const options = useMemo(() => uniqueDeckOptions(decklist), [decklist]);
@@ -749,6 +758,61 @@ export function HandAnalyzer() {
     () => handText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
     [handText]
   );
+
+  useEffect(() => {
+    if (hasAppliedInitialStep || requestedInitialStep === "deck") {
+      return;
+    }
+
+    if (!parsed.mainCount) {
+      const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const sampleRequested = params?.get("sample") === "1";
+      const guestRequested = params?.get("guest") === "1";
+      const requestedId = params?.get("deck") ?? "";
+      if (sampleRequested || guestRequested || requestedId || isLoadingDecks || entitlements.isLoading) {
+        return;
+      }
+      setWorkflowTab("deck");
+      setHasAppliedInitialStep(true);
+      return;
+    }
+
+    const nextStep = requestedInitialStep === "results" && !result ? "hand" : requestedInitialStep;
+    setWorkflowTab(nextStep);
+    setHasAppliedInitialStep(true);
+
+    if (nextStep === "hand") {
+      setShouldFocusHandStep(true);
+      if (analyzerMode === "guest") {
+        setMessage("Your guest deck is ready. Enter your opening seven or draw a random hand.");
+      } else if (analyzerMode === "sample") {
+        setMessage("Your deck is ready. Enter your opening seven or draw a random hand.");
+      } else {
+        setMessage("Deck saved. Enter your first opening hand.");
+      }
+    }
+  }, [
+    analyzerMode,
+    entitlements.isLoading,
+    hasAppliedInitialStep,
+    isLoadingDecks,
+    parsed.mainCount,
+    requestedInitialStep,
+    result
+  ]);
+
+  useEffect(() => {
+    if (!shouldFocusHandStep || workflowTab !== "hand") {
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      handHeadingRef.current?.focus();
+      if (!handText.trim()) {
+        handTextRef.current?.focus();
+      }
+      setShouldFocusHandStep(false);
+    });
+  }, [handText, shouldFocusHandStep, workflowTab]);
 
   useEffect(() => {
     const sampleRequested =
@@ -793,6 +857,8 @@ export function HandAnalyzer() {
         setAnalyzerMode("guest");
         setGuestDeckName("");
         setMessage("No guest deck was found in this browser. Paste or import a deck to continue.");
+        setWorkflowTab("deck");
+        setHasAppliedInitialStep(true);
       }
 
       if (sampleRequested) {
@@ -847,6 +913,8 @@ export function HandAnalyzer() {
         setDeckImportMetadata(undefined);
         window.localStorage.removeItem(lastDeckStorageKey);
         setMessage(selection.message);
+        setWorkflowTab("deck");
+        setHasAppliedInitialStep(true);
       }
     }
 
@@ -1282,8 +1350,29 @@ export function HandAnalyzer() {
             This deck and hand are stored only in this browser unless you create an account and save them.
           </span>
           <div className="action-row compact-actions">
-            <Link className="secondary-button" href="/signup">
+            <Link
+              className="secondary-button"
+              href="/signup?intent=save-guest-deck"
+              onClick={() =>
+                saveGuestDeckIntent({
+                  action: "save-after-auth",
+                  returnPath: "/dashboard?importGuest=1"
+                })
+              }
+            >
               Create an Account to Save It
+            </Link>
+            <Link
+              className="text-button"
+              href="/login?intent=save-guest-deck"
+              onClick={() =>
+                saveGuestDeckIntent({
+                  action: "save-after-auth",
+                  returnPath: "/dashboard?importGuest=1"
+                })
+              }
+            >
+              Sign in to Save It
             </Link>
             <button
               className="text-button"
@@ -1438,12 +1527,15 @@ export function HandAnalyzer() {
         <section className="panel analyzer-input-panel narrow-tool-panel">
           <div className="section-heading">
             <p className="eyebrow">Enter Your Hand</p>
-            <h2>Confirm Opening Hand</h2>
+            <h2 ref={handHeadingRef} tabIndex={-1}>
+              Confirm Opening Hand
+            </h2>
             <p>Paste seven names or correct the seven dropdowns directly.</p>
           </div>
           <label className="field-stack">
             Paste a hand list
             <textarea
+              ref={handTextRef}
               className="analyzer-textarea hand-textarea"
               onChange={(event) => setHandText(event.target.value)}
               spellCheck={false}
