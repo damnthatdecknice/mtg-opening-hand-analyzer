@@ -17,7 +17,7 @@ export function DashboardActions() {
             Analyze a Hand
           </Link>
           <Link className="secondary-button" href="/metagame">
-            Metagame
+            Metagame Analysis
           </Link>
         </>
       ) : (
