@@ -78,7 +78,7 @@ export function DashboardOverview() {
         <Link className="metric-card add-deck-metric" href="/decks">
           <span>Deck setup</span>
           <strong>Add Another Deck</strong>
-          <em>Import your .dek or paste a new list</em>
+          <em>Import your .dek or paste another decklist</em>
         </Link>
       </div>
     </>
