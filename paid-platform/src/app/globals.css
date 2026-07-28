@@ -1372,6 +1372,50 @@ h2 {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
+.dashboard-metrics .dashboard-stat-card {
+  min-height: 104px;
+  padding: 16px 20px;
+}
+
+.dashboard-metrics .dashboard-stat-card strong {
+  margin-top: 8px;
+  font-size: 1.55rem;
+}
+
+.add-deck-metric {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  min-height: 104px;
+  padding: 16px 20px;
+  color: var(--text);
+  text-decoration: none;
+  border-color: rgba(255, 184, 77, 0.52);
+  background:
+    radial-gradient(circle at 88% 12%, rgba(255, 184, 77, 0.16), transparent 32%),
+    linear-gradient(135deg, rgba(255, 184, 77, 0.1), rgba(89, 216, 255, 0.06) 45%, transparent 72%),
+    var(--panel);
+}
+
+.add-deck-metric strong {
+  margin-top: 0;
+  color: var(--gold);
+  font-size: 1.35rem;
+}
+
+.add-deck-metric em {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.add-deck-metric:hover {
+  border-color: rgba(255, 184, 77, 0.8);
+  box-shadow: 0 0 24px rgba(255, 184, 77, 0.12);
+  transform: translateY(-1px);
+}
+
 .dashboard-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

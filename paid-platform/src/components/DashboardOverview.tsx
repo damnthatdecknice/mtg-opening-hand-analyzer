@@ -1,13 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { OPEN_BETA_ACCESS } from "@/lib/subscriptions";
 import { supabase } from "@/lib/supabase";
 
 type DashboardState = {
   deckCount: number;
   handCount: number;
-  planLabel: string;
   error: string;
   isLoading: boolean;
 };
@@ -15,20 +14,9 @@ type DashboardState = {
 const initialState: DashboardState = {
   deckCount: 0,
   handCount: 0,
-  planLabel: OPEN_BETA_ACCESS ? "Open Beta" : "Free",
   error: "",
   isLoading: true
 };
-
-function planLabelFromRank(rank?: string | null) {
-  if (rank === "beta_premium") {
-    return "Beta Tester";
-  }
-  if (rank === "pro") {
-    return "Pro";
-  }
-  return OPEN_BETA_ACCESS ? "Open Beta" : "Free";
-}
 
 export function DashboardOverview() {
   const [state, setState] = useState<DashboardState>(initialState);
@@ -47,7 +35,7 @@ export function DashboardOverview() {
       const sessionResponse = await supabase.auth.getSession();
       const userId = sessionResponse.data.session?.user.id ?? "";
 
-      const [decks, hands, profile] = await Promise.all([
+      const [decks, hands] = await Promise.all([
         userId
           ? supabase
               .from("decks")
@@ -60,17 +48,13 @@ export function DashboardOverview() {
               .from("hand_sessions")
               .select("id", { count: "exact", head: true })
               .eq("user_id", userId)
-          : Promise.resolve({ count: 0, error: null }),
-        userId
-          ? supabase.from("profiles").select("rank").eq("id", userId).maybeSingle()
-          : Promise.resolve({ data: null, error: null })
+          : Promise.resolve({ count: 0, error: null })
       ]);
 
       const firstError = decks.error ?? hands.error;
       setState({
         deckCount: decks.count ?? 0,
         handCount: hands.count ?? 0,
-        planLabel: planLabelFromRank(profile.data?.rank),
         error: firstError?.message ?? "",
         isLoading: false
       });
@@ -83,18 +67,19 @@ export function DashboardOverview() {
     <>
       {state.error ? <p className="form-message">{state.error}</p> : null}
       <div className="dashboard-metrics">
-        <div className="metric-card">
+        <div className="metric-card dashboard-stat-card">
           <span>Saved decks</span>
           <strong>{state.isLoading ? "..." : state.deckCount}</strong>
         </div>
-        <div className="metric-card">
+        <div className="metric-card dashboard-stat-card">
           <span>Hands analyzed</span>
           <strong>{state.isLoading ? "..." : state.handCount}</strong>
         </div>
-        <div className="metric-card">
-          <span>Plan</span>
-          <strong>{state.isLoading ? "..." : state.planLabel}</strong>
-        </div>
+        <Link className="metric-card add-deck-metric" href="/decks">
+          <span>Deck setup</span>
+          <strong>Add Another Deck</strong>
+          <em>Import your .dek or paste a new list</em>
+        </Link>
       </div>
     </>
   );

@@ -1,6 +1,4 @@
 "use client";
-
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DashboardActions } from "@/components/DashboardActions";
 import { DashboardMetagameSnapshot } from "@/components/DashboardMetagameSnapshot";
@@ -215,16 +213,6 @@ export function DashboardContent() {
             <DeckSummary />
             <DashboardMetagameSnapshot />
           </div>
-          <section className="panel add-another-deck-card">
-            <div>
-              <p className="eyebrow">Deck setup</p>
-              <h2>Add Another Deck</h2>
-              <p>Import your MTGO .dek or paste another list when you are ready to test a new shell.</p>
-            </div>
-            <Link className="secondary-button" href="/decks">
-              Add Another Deck
-            </Link>
-          </section>
         </>
       )}
     </section>
