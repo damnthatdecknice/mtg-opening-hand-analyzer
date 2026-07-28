@@ -1136,7 +1136,7 @@ h2 {
 
 .dashboard {
   display: grid;
-  gap: 20px;
+  gap: 12px;
 }
 
 .settings-page {
@@ -1360,6 +1360,14 @@ h2 {
 
 .dashboard-header h1 {
   font-size: clamp(2.4rem, 6vw, 4.8rem);
+}
+
+.dashboard-header {
+  padding-bottom: 16px;
+}
+
+.dashboard-header .action-row {
+  margin-bottom: 0;
 }
 
 .dashboard-metrics,
