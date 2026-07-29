@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { validatePastedHandRows } from "../src/lib/handValidation";
+import { validateOpeningHandAgainstDeck, validatePastedHandRows } from "../src/lib/handValidation";
 
 const decklist = `Deck
 2 Roaring Furnace // Steaming Sauna
@@ -38,5 +38,16 @@ assert.deepEqual(
   "split-card face names resolve to the parent deck row within copy limits"
 );
 
-console.log("handValidation tests passed");
+assert.match(
+  validateOpeningHandAgainstDeck(["Island", "Mountain", "Opt", "Lightning Strike", "Island", "Mountain", ""], decklist).error,
+  /Card 7 is blank/,
+  "final hand validation rejects blank confirmed slots"
+);
 
+assert.deepEqual(
+  validateOpeningHandAgainstDeck(["Roaring Furnace", "Steaming Sauna", "Opt", "Opt", "Island", "Island", "Mountain"], decklist).hand,
+  ["Roaring Furnace // Steaming Sauna", "Roaring Furnace // Steaming Sauna", "Opt", "Opt", "Island", "Island", "Mountain"],
+  "final hand validation canonicalizes split-card face aliases"
+);
+
+console.log("handValidation tests passed");

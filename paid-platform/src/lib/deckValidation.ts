@@ -65,7 +65,7 @@ function addIssue(issues: DeckValidationIssue[], issue: DeckValidationIssue) {
   issues.push(issue);
 }
 
-export function validateDeckForManaCurve(
+export function validateDeckConstruction(
   decklist: string,
   cardData: Map<string, ManaCurveCardData>,
   format: string
@@ -79,7 +79,7 @@ export function validateDeckForManaCurve(
   const issues: DeckValidationIssue[] = [];
 
   if (model.expectedMainSize && mainCount < model.expectedMainSize) {
-    const severity = mainCount < (model.minCompleteMainSize ?? model.expectedMainSize) ? "warning" : "info";
+    const severity: DeckValidationSeverity = "warning";
     addIssue(issues, {
       code: "MAIN_DECK_INCOMPLETE",
       severity,
@@ -97,6 +97,16 @@ export function validateDeckForManaCurve(
       severity: "warning",
       title: "Sideboard may be too large",
       detail: `${format} normally uses up to ${model.maxSideboardSize} sideboard${model.maxSideboardSize === 1 ? " card" : " cards"}.`
+    });
+  }
+
+  if ((format.trim().toLowerCase() === "commander" || format.trim().toLowerCase() === "brawl") && mainCount > 0) {
+    addIssue(issues, {
+      code: "COMMANDER_IDENTITY_UNVERIFIED",
+      severity: "warning",
+      title: "Commander details need review",
+      detail:
+        "Opening Edge can check counts and card names, but commander identity, companion rules, and house-rule assumptions may need manual review."
     });
   }
 
@@ -167,3 +177,4 @@ export function validateDeckForManaCurve(
   };
 }
 
+export const validateDeckForManaCurve = validateDeckConstruction;

@@ -87,12 +87,12 @@ assert.equal(importReview.sideboardCount, 2, ".dek import populates sideboard co
 assert.match(importReview.suggestedName, /Lightning Bolt|Mountain/, ".dek import produces a suggested deck name");
 
 const pasteReview = buildOnboardingReview(onboardingExampleDeck, "Standard");
-assert.equal(pasteReview.status, "ready", "example pasted deck is ready");
+assert.equal(pasteReview.status, "checking", "example pasted deck waits for card verification");
 assert.equal(pasteReview.mainCount, 60, "example pasted deck has 60 main cards");
 assert.equal(pasteReview.sideboardCount, 5, "example pasted deck has sideboard cards");
 
 const incompleteReview = buildOnboardingReview("Deck\n4 Lightning Bolt", "Modern");
-assert.equal(incompleteReview.status, "partial", "incomplete decks are flagged as partial");
+assert.equal(incompleteReview.status, "incomplete", "incomplete decks are flagged as incomplete");
 assert.match(incompleteReview.messages.join(" "), /Deck is incomplete/i, "incomplete decks explain limited analysis");
 
 assert.equal(shouldPersistHandSession("guest"), false, "guest mode never saves hand sessions");

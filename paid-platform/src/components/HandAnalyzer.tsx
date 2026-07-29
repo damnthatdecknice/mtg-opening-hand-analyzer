@@ -20,7 +20,7 @@ import { selectAnalyzerDeck } from "@/lib/analyzerRouting";
 import type { SavedDeck } from "@/lib/decks";
 import { deckFormatOptions } from "@/lib/formats";
 import { clearGuestDeck, loadGuestDeck, saveGuestDeckIntent } from "@/lib/guestDeck";
-import { validatePastedHandRows } from "@/lib/handValidation";
+import { validateOpeningHandAgainstDeck, validatePastedHandRows } from "@/lib/handValidation";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
 
@@ -1210,17 +1210,21 @@ export function HandAnalyzer() {
     setMessage("");
     setResult(null);
 
-    const seven = sourceHand.map((name) => name.trim()).filter(Boolean);
     if (parsed.mainCount === 0) {
       setMessage("Paste a main deck before analyzing.");
       setWorkflowTab("deck");
       return;
     }
-    if (seven.length !== 7) {
-      setMessage("Confirm exactly seven cards before analyzing.");
+
+    const validatedHand = validateOpeningHandAgainstDeck(sourceHand, decklist);
+    if (validatedHand.error) {
+      setMessage(validatedHand.error);
       setWorkflowTab("hand");
       return;
     }
+    const seven = validatedHand.hand;
+    setConfirmedHand(seven);
+    setHandText(seven.join("\n"));
 
     const canAnalyze = await canRunAnalyzerThisWeek();
     if (!canAnalyze) {

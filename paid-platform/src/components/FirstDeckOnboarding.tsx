@@ -9,8 +9,15 @@ import {
   parseDekImport,
   type DeckImportMetadata
 } from "@/lib/deckParser";
+import { fetchCardData } from "@/lib/analyzer";
 import { deckFormatOptions } from "@/lib/formats";
-import { buildOnboardingReview, onboardingExampleDeck } from "@/lib/firstDeckOnboarding";
+import {
+  buildOnboardingReview,
+  onboardingExampleDeck,
+  verifyDeckForOnboarding,
+  type OnboardingDeckReview,
+  type OnboardingValidationStatus
+} from "@/lib/firstDeckOnboarding";
 import { guestDeckFromParsed, saveGuestDeck, saveGuestDeckIntent } from "@/lib/guestDeck";
 import { saveDeckForCurrentUser } from "@/lib/deckStorage";
 
@@ -41,13 +48,18 @@ export function FirstDeckOnboarding({
   const [importMetadata, setImportMetadata] = useState<DeckImportMetadata | undefined>();
   const [message, setMessage] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+  const [verification, setVerification] = useState<OnboardingDeckReview | null>(null);
+  const [validationStatus, setValidationStatus] = useState<OnboardingValidationStatus>("empty");
+  const [acknowledgedWarnings, setAcknowledgedWarnings] = useState(false);
+  const [verificationRetry, setVerificationRetry] = useState(0);
 
   const parsed = useMemo(() => parseDecklist(decklist), [decklist]);
   const parsedForSave = useMemo(
     () => (importMetadata ? { ...parsed, importMetadata } : parsed),
     [importMetadata, parsed]
   );
-  const review = useMemo(() => buildOnboardingReview(decklist, format, parsed), [decklist, format, parsed]);
+  const localReview = useMemo(() => buildOnboardingReview(decklist, format, parsed), [decklist, format, parsed]);
+  const review = verification ?? localReview;
   const resolvedName = deckName.trim() || review.suggestedName || inferDeckName(decklist);
 
   function focusFirstInput() {
@@ -65,6 +77,60 @@ export function FirstDeckOnboarding({
     setImportMetadata(undefined);
     setMessage("Example deck loaded. Review the counts, then continue to analysis.");
   }, []);
+
+  useEffect(() => {
+    setAcknowledgedWarnings(false);
+    setMessage("");
+
+    if (!decklist.trim() || parsed.mainCount === 0) {
+      setVerification(null);
+      setValidationStatus("empty");
+      return;
+    }
+
+    setValidationStatus("checking");
+    setVerification({
+      ...localReview,
+      status: "checking",
+      messages: ["Checking card names, deck construction, and available format legality..."]
+    });
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      verifyDeckForOnboarding(decklist, format, fetchCardData, controller.signal)
+        .then((result) => {
+          if (controller.signal.aborted) {
+            return;
+          }
+          setVerification(result);
+          setValidationStatus(result.status);
+        })
+        .catch((error) => {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            return;
+          }
+          setVerification({
+            ...localReview,
+            status: "lookup-error",
+            messages: ["Opening Edge could not finish checking this deck. You can retry without losing the decklist."],
+            issues: [
+              {
+                code: "LOOKUP_ERROR",
+                severity: "warning",
+                title: "Verification could not finish",
+                detail: "Opening Edge could not finish checking this deck. You can retry without losing the decklist."
+              }
+            ]
+          });
+          setValidationStatus("lookup-error");
+        });
+    }, 650);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [decklist, format, localReview, parsed.mainCount, verificationRetry]);
 
   useEffect(() => {
     if (requestedAction !== "example") {
@@ -126,6 +192,9 @@ export function FirstDeckOnboarding({
       focusFirstInput();
       return;
     }
+    if (!canContinueAfterVerification()) {
+      return;
+    }
     storeGuestDeck();
     router.push("/analyzer?guest=1&step=hand");
   }
@@ -134,6 +203,9 @@ export function FirstDeckOnboarding({
     if (parsed.mainCount === 0) {
       setMessage("Add at least one main-deck card before saving.");
       focusFirstInput();
+      return;
+    }
+    if (!canContinueAfterVerification()) {
       return;
     }
 
@@ -158,6 +230,30 @@ export function FirstDeckOnboarding({
 
   const primaryAction = mode === "account" ? saveAndContinue : analyzeGuestDeck;
 
+  function canContinueAfterVerification() {
+    if (validationStatus === "checking") {
+      setMessage("Checking card names, deck construction, and available format legality...");
+      return false;
+    }
+    if (validationStatus === "empty") {
+      setMessage("Import a `.dek` file or paste a decklist to begin.");
+      focusFirstInput();
+      return false;
+    }
+    if ((validationStatus === "warnings" || validationStatus === "incomplete" || validationStatus === "lookup-error") && !acknowledgedWarnings) {
+      setMessage(
+        validationStatus === "lookup-error"
+          ? "Opening Edge could not finish checking this deck. Acknowledge the warning or retry before continuing."
+          : "Review and acknowledge the deck warnings before continuing."
+      );
+      return false;
+    }
+    return true;
+  }
+
+  const actionsDisabled = isBusy || validationStatus === "checking";
+  const needsAcknowledgment = validationStatus === "warnings" || validationStatus === "incomplete" || validationStatus === "lookup-error";
+
   return (
     <section className={`panel first-deck-onboarding${compact ? " compact-first-deck" : ""}`} id={id} tabIndex={-1}>
       <div className="section-heading">
@@ -165,7 +261,7 @@ export function FirstDeckOnboarding({
         <h2>Add Your First Deck</h2>
         <p>
           Import a Magic Online <code>.dek</code> file or paste a decklist. Opening Edge will
-          organize the cards, check the list, and prepare it for opening-hand analysis.
+          check card names, deck construction, and available format legality before analysis.
         </p>
       </div>
 
@@ -240,7 +336,7 @@ export function FirstDeckOnboarding({
         Load an Example Deck
       </button>
 
-      <div className={`deck-review-card ${review.status}`} aria-live="polite">
+      <div className={`deck-review-card ${validationStatus}`} aria-live="polite">
         <div className="form-row">
           <label>
             Deck name
@@ -267,21 +363,44 @@ export function FirstDeckOnboarding({
           <span>{review.sideboardCount} sideboard</span>
           <span>{review.uniqueCount} unique rows</span>
           <span>{importMetadata?.source === "mtgo_dek" ? ".dek import" : "decklist"}</span>
+          <span>{validationStatus === "checking" ? "checking" : validationStatus.replace("-", " ")}</span>
         </div>
 
         <ul className="validation-list">
           {review.messages.map((item) => (
             <li key={item}>{item}</li>
           ))}
+          {review.issues.slice(0, 8).map((issue) => (
+            <li key={`${issue.code}-${issue.cardName ?? issue.title}-${issue.detail}`} className={`validation-${issue.severity}`}>
+              <strong>{issue.title}:</strong> {issue.detail}
+            </li>
+          ))}
         </ul>
+
+        {validationStatus === "lookup-error" ? (
+          <button className="text-button" onClick={() => setVerificationRetry((value) => value + 1)} type="button">
+            Retry deck check
+          </button>
+        ) : null}
+
+        {needsAcknowledgment ? (
+          <label className="checkbox-row">
+            <input
+              checked={acknowledgedWarnings}
+              onChange={(event) => setAcknowledgedWarnings(event.target.checked)}
+              type="checkbox"
+            />
+            I understand these warnings and want to continue.
+          </label>
+        ) : null}
       </div>
 
       <div className="action-row first-deck-actions">
-        <button className="primary-button" disabled={isBusy} onClick={primaryAction} type="button">
-          {isBusy ? "Saving..." : mode === "account" ? "Save Deck and Continue" : "Analyze This Deck"}
+        <button className="primary-button" disabled={actionsDisabled} onClick={primaryAction} type="button">
+          {isBusy ? "Saving..." : validationStatus === "checking" ? "Checking..." : mode === "account" ? "Save Deck and Continue" : "Analyze This Deck"}
         </button>
         {mode === "account" ? (
-          <button className="secondary-button" disabled={isBusy} onClick={analyzeGuestDeck} type="button">
+          <button className="secondary-button" disabled={actionsDisabled} onClick={analyzeGuestDeck} type="button">
             Continue Without Saving
           </button>
         ) : (
@@ -296,9 +415,9 @@ export function FirstDeckOnboarding({
         )}
       </div>
 
-      {(message || review.status === "ready") ? (
+      {(message || validationStatus === "verified") ? (
         <p className="form-message" id="first-deck-message" aria-live="polite">
-          {message || "Your deck is ready to analyze."}
+          {message || "Deck verified for opening-hand analysis."}
         </p>
       ) : null}
     </section>

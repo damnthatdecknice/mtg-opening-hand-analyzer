@@ -1,14 +1,29 @@
 import { inferDeckName, parseDecklist, type ParsedDeck } from "./deckParser";
+import { validateDeckConstruction, type DeckValidationIssue } from "./deckValidation";
 import { normalizeFormat } from "./formats";
+import type { ManaCurveCardData } from "./manaCurve";
+
+export type OnboardingValidationStatus =
+  | "empty"
+  | "checking"
+  | "incomplete"
+  | "warnings"
+  | "verified"
+  | "lookup-error";
 
 export type OnboardingDeckReview = {
   suggestedName: string;
   mainCount: number;
   sideboardCount: number;
   uniqueCount: number;
-  status: "ready" | "partial" | "needs-correction";
+  status: OnboardingValidationStatus;
   messages: string[];
+  issues: DeckValidationIssue[];
 };
+
+export type OnboardingCardDataFetcher = (
+  cardNames: string[]
+) => Promise<{ lookups: Map<string, ManaCurveCardData>; failures: string[] }>;
 
 export const onboardingExampleDeck = `Deck
 4 Monastery Swiftspear
@@ -28,34 +43,45 @@ Sideboard
 3 Destroy Evil
 2 Lithomantic Barrage`;
 
-export function buildOnboardingReview(decklist: string, format: string, parsed: ParsedDeck = parseDecklist(decklist)): OnboardingDeckReview {
-  const messages: string[] = [];
-  const normalizedFormat = normalizeFormat(format);
+function emptyReview(decklist: string, parsed: ParsedDeck): OnboardingDeckReview {
+  return {
+    suggestedName: inferDeckName(decklist),
+    mainCount: parsed.mainCount,
+    sideboardCount: parsed.sideboardCount,
+    uniqueCount: parsed.cards.length,
+    status: "empty",
+    messages: ["Import a `.dek` file or paste a decklist to begin."],
+    issues: []
+  };
+}
 
+export function buildOnboardingReview(decklist: string, format: string, parsed: ParsedDeck = parseDecklist(decklist)): OnboardingDeckReview {
   if (parsed.mainCount === 0) {
-    messages.push("We could not find any main-deck cards. Add quantities before each card name, such as \"4 Lightning Bolt.\"");
-    return {
-      suggestedName: inferDeckName(decklist),
-      mainCount: 0,
-      sideboardCount: parsed.sideboardCount,
-      uniqueCount: parsed.cards.length,
-      status: "needs-correction",
-      messages
-    };
+    return emptyReview(decklist, parsed);
   }
 
-  messages.push(`${parsed.mainCount} cards in main deck`);
-  messages.push(`${parsed.sideboardCount} cards in sideboard`);
-
+  const normalizedFormat = normalizeFormat(format);
   const expected = normalizedFormat === "Draft" ? 40 : normalizedFormat === "Commander" ? 99 : normalizedFormat === "Brawl" ? 59 : 60;
   const minimum = normalizedFormat === "Draft" ? 36 : normalizedFormat === "Commander" ? 90 : normalizedFormat === "Brawl" ? 54 : 54;
+  const issues: DeckValidationIssue[] = [];
+  const messages = [`${parsed.mainCount} cards in main deck`, `${parsed.sideboardCount} cards in sideboard`];
 
-  if (parsed.mainCount >= expected) {
-    messages.push(`This appears to be a complete ${normalizedFormat} deck.`);
-  } else if (parsed.mainCount >= minimum) {
+  if (parsed.mainCount < minimum) {
+    messages.push("Deck is incomplete. You can continue with limited analysis, but posture and recommendations may be withheld.");
+    issues.push({
+      code: "MAIN_DECK_INCOMPLETE",
+      severity: "warning",
+      title: "Deck incomplete",
+      detail: `Curve totals can be shown, but posture and recommendations need a main deck close to ${expected} cards.`
+    });
+  } else if (parsed.mainCount < expected) {
     messages.push(`Your deck has ${parsed.mainCount} main-deck cards. You can continue, but check the final count.`);
-  } else {
-    messages.push(`Deck is incomplete. You can continue, but posture and recommendations may be limited.`);
+    issues.push({
+      code: "MAIN_DECK_INCOMPLETE",
+      severity: "warning",
+      title: "Deck incomplete",
+      detail: `The main deck is below the normal ${expected}-card size for ${normalizedFormat}.`
+    });
   }
 
   return {
@@ -63,7 +89,86 @@ export function buildOnboardingReview(decklist: string, format: string, parsed: 
     mainCount: parsed.mainCount,
     sideboardCount: parsed.sideboardCount,
     uniqueCount: parsed.cards.length,
-    status: parsed.mainCount >= minimum ? "ready" : "partial",
-    messages: messages.slice(0, 5)
+    status: issues.length ? (parsed.mainCount < minimum ? "incomplete" : "warnings") : "checking",
+    messages,
+    issues
   };
+}
+
+export async function verifyDeckForOnboarding(
+  decklist: string,
+  format: string,
+  fetchCardData: OnboardingCardDataFetcher,
+  signal?: AbortSignal
+): Promise<OnboardingDeckReview> {
+  const parsed = parseDecklist(decklist);
+  if (parsed.mainCount === 0) {
+    return emptyReview(decklist, parsed);
+  }
+
+  const names = parsed.cards.map((card) => card.name);
+
+  try {
+    const { lookups, failures } = await fetchCardData(names);
+    if (signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+
+    const validation = validateDeckConstruction(decklist, lookups, format);
+    const issues = [...validation.issues];
+
+    if (failures.length) {
+      for (const failure of failures.slice(0, 8)) {
+        issues.push({
+          code: "LOOKUP_FAILURE",
+          severity: "warning",
+          title: "Card lookup did not finish",
+          detail: failure
+        });
+      }
+    }
+
+    const hasLookupFailure = failures.length > 0 && lookups.size === 0;
+    const hasWarning = issues.some((issue) => issue.severity === "warning" || issue.severity === "error");
+    const status: OnboardingValidationStatus = hasLookupFailure
+      ? "lookup-error"
+      : !validation.isCompleteEnoughForPosture
+        ? "incomplete"
+        : hasWarning
+          ? "warnings"
+          : "verified";
+
+    return {
+      suggestedName: inferDeckName(decklist),
+      mainCount: validation.mainCount,
+      sideboardCount: validation.sideboardCount,
+      uniqueCount: parsed.cards.length,
+      status,
+      messages:
+        status === "verified"
+          ? ["Deck verified for opening-hand analysis."]
+          : [`${validation.mainCount} cards in main deck`, `${validation.sideboardCount} cards in sideboard`],
+      issues
+    };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+    return {
+      suggestedName: inferDeckName(decklist),
+      mainCount: parsed.mainCount,
+      sideboardCount: parsed.sideboardCount,
+      uniqueCount: parsed.cards.length,
+      status: "lookup-error",
+      messages: ["Opening Edge could not finish checking this deck. You can retry without losing the decklist."],
+      issues: [
+        {
+          code: "LOOKUP_ERROR",
+          severity: "warning",
+          title: "Verification could not finish",
+          detail: "Opening Edge could not finish checking this deck. You can retry without losing the decklist."
+        }
+      ]
+    };
+  }
 }
