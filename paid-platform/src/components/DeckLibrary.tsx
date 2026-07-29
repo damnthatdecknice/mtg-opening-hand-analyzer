@@ -6,6 +6,13 @@ import { inferDeckName, parseDecklist, parseDekImport, type DeckImportMetadata }
 import type { DeckInsert, DeckVersion, SavedDeck } from "@/lib/decks";
 import { saveDeckForCurrentUser } from "@/lib/deckStorage";
 import { deckFormatOptions } from "@/lib/formats";
+import { fetchCardData } from "@/lib/analyzer";
+import {
+  gateDeckVerification,
+  verifyDeckForSaving,
+  type OnboardingDeckReview,
+  type OnboardingValidationStatus
+} from "@/lib/firstDeckOnboarding";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
 
@@ -82,6 +89,10 @@ export function DeckLibrary() {
   const [showArchived, setShowArchived] = useState(false);
   const [message, setMessage] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+  const [verification, setVerification] = useState<OnboardingDeckReview | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<OnboardingValidationStatus>("checking");
+  const [acknowledgedWarnings, setAcknowledgedWarnings] = useState(false);
+  const [verificationRetry, setVerificationRetry] = useState(0);
 
   const parsed = useMemo(() => parseDecklist(decklist), [decklist]);
   const parsedForSave = useMemo(
@@ -98,6 +109,74 @@ export function DeckLibrary() {
       loadDecks();
     }
   }, [entitlements.canUseDeckVault]);
+
+  useEffect(() => {
+    setAcknowledgedWarnings(false);
+
+    if (!decklist.trim() || parsed.mainCount === 0) {
+      setVerification({
+        suggestedName: inferDeckName(decklist),
+        mainCount: parsed.mainCount,
+        sideboardCount: parsed.sideboardCount,
+        uniqueCount: parsed.cards.length,
+        status: "empty",
+        messages: ["Paste a decklist or import your MTGO .dek to begin."],
+        issues: []
+      });
+      setVerificationStatus("empty");
+      return;
+    }
+
+    setVerificationStatus("checking");
+    setVerification({
+      suggestedName: inferDeckName(decklist),
+      mainCount: parsed.mainCount,
+      sideboardCount: parsed.sideboardCount,
+      uniqueCount: parsed.cards.length,
+      status: "checking",
+      messages: ["Checking card names, deck construction, and available format legality..."],
+      issues: []
+    });
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      verifyDeckForSaving(decklist, format, fetchCardData, controller.signal)
+        .then((result) => {
+          if (controller.signal.aborted) {
+            return;
+          }
+          setVerification(result);
+          setVerificationStatus(result.status);
+        })
+        .catch((error) => {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            return;
+          }
+          setVerification({
+            suggestedName: inferDeckName(decklist),
+            mainCount: parsed.mainCount,
+            sideboardCount: parsed.sideboardCount,
+            uniqueCount: parsed.cards.length,
+            status: "lookup-error",
+            messages: ["Opening Edge could not finish checking this deck. You can retry without losing the decklist."],
+            issues: [
+              {
+                code: "LOOKUP_ERROR",
+                severity: "warning",
+                title: "Verification could not finish",
+                detail: "Opening Edge could not finish checking this deck. You can retry without losing the decklist."
+              }
+            ]
+          });
+          setVerificationStatus("lookup-error");
+        });
+    }, 650);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [decklist, format, parsed.cards.length, parsed.mainCount, parsed.sideboardCount, verificationRetry]);
 
   async function loadDecks() {
     if (!supabase) {
@@ -181,6 +260,12 @@ export function DeckLibrary() {
 
     if (parsed.mainCount === 0) {
       setMessage("Paste a decklist with at least one main-deck card.");
+      return;
+    }
+
+    const gate = gateDeckVerification(verificationStatus, acknowledgedWarnings, parsed.mainCount);
+    if (!gate.allowed) {
+      setMessage(gate.message ?? "Review this deck before saving.");
       return;
     }
 
@@ -393,11 +478,41 @@ export function DeckLibrary() {
               {importMetadata?.source === "mtgo_dek" ? (
                 <span>.dek import ready</span>
               ) : null}
+              <span>{verificationStatus === "checking" ? "checking" : verificationStatus.replace("-", " ")}</span>
             </div>
-            <button className="primary-button" disabled={isBusy} type="submit">
-              {isBusy ? "Saving..." : editingDeck ? "Save new version" : "Save deck"}
+            <button className="primary-button" disabled={isBusy || verificationStatus === "checking"} type="submit">
+              {isBusy ? "Saving..." : verificationStatus === "checking" ? "Checking..." : editingDeck ? "Save new version" : "Save deck"}
             </button>
           </div>
+          {verification ? (
+            <div className={`deck-review-card ${verificationStatus}`} aria-live="polite">
+              <ul className="validation-list">
+                {verification.messages.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+                {verification.issues.slice(0, 8).map((issue) => (
+                  <li key={`${issue.code}-${issue.cardName ?? issue.title}-${issue.detail}`} className={`validation-${issue.severity}`}>
+                    <strong>{issue.title}:</strong> {issue.detail}
+                  </li>
+                ))}
+              </ul>
+              {verificationStatus === "lookup-error" ? (
+                <button className="text-button" onClick={() => setVerificationRetry((value) => value + 1)} type="button">
+                  Retry deck check
+                </button>
+              ) : null}
+              {verificationStatus === "warnings" || verificationStatus === "incomplete" || verificationStatus === "lookup-error" ? (
+                <label className="checkbox-row">
+                  <input
+                    checked={acknowledgedWarnings}
+                    onChange={(event) => setAcknowledgedWarnings(event.target.checked)}
+                    type="checkbox"
+                  />
+                  I understand these warnings and want to save this deck.
+                </label>
+              ) : null}
+            </div>
+          ) : null}
         </form>
 
         {editingDeck ? (

@@ -19,11 +19,20 @@ export type OnboardingDeckReview = {
   status: OnboardingValidationStatus;
   messages: string[];
   issues: DeckValidationIssue[];
+  unresolvedCards?: string[];
+  checkedAt?: number;
+  deckFingerprint?: string;
 };
 
 export type OnboardingCardDataFetcher = (
   cardNames: string[]
 ) => Promise<{ lookups: Map<string, ManaCurveCardData>; failures: string[] }>;
+
+export type DeckVerificationGate = {
+  allowed: boolean;
+  message?: string;
+  needsAcknowledgment: boolean;
+};
 
 export const onboardingExampleDeck = `Deck
 4 Monastery Swiftspear
@@ -52,6 +61,50 @@ function emptyReview(decklist: string, parsed: ParsedDeck): OnboardingDeckReview
     status: "empty",
     messages: ["Import a `.dek` file or paste a decklist to begin."],
     issues: []
+  };
+}
+
+function buildDeckFingerprint(decklist: string, format: string, parsed: ParsedDeck) {
+  const normalizedCards = parsed.cards
+    .map((card) => `${card.section}:${card.name.trim().toLowerCase()}:${card.qty}`)
+    .sort()
+    .join("|");
+  return `${format.trim().toLowerCase()}::${normalizedCards || decklist.trim().toLowerCase()}`;
+}
+
+export function gateDeckVerification(
+  status: OnboardingValidationStatus,
+  acknowledgedWarnings: boolean,
+  mainCount: number
+): DeckVerificationGate {
+  const needsAcknowledgment = status === "warnings" || status === "incomplete" || status === "lookup-error";
+  if (status === "checking") {
+    return {
+      allowed: false,
+      needsAcknowledgment,
+      message: "Checking card names, deck construction, and available format legality..."
+    };
+  }
+  if (status === "empty" || mainCount === 0) {
+    return {
+      allowed: false,
+      needsAcknowledgment,
+      message: "Import a `.dek` file or paste a decklist to begin."
+    };
+  }
+  if (needsAcknowledgment && !acknowledgedWarnings) {
+    return {
+      allowed: false,
+      needsAcknowledgment,
+      message:
+        status === "lookup-error"
+          ? "Opening Edge could not finish checking this deck. Acknowledge the warning or retry before continuing."
+          : "Review and acknowledge the deck warnings before continuing."
+    };
+  }
+  return {
+    allowed: true,
+    needsAcknowledgment
   };
 }
 
@@ -95,7 +148,7 @@ export function buildOnboardingReview(decklist: string, format: string, parsed: 
   };
 }
 
-export async function verifyDeckForOnboarding(
+export async function verifyDeckForSaving(
   decklist: string,
   format: string,
   fetchCardData: OnboardingCardDataFetcher,
@@ -128,6 +181,10 @@ export async function verifyDeckForOnboarding(
       }
     }
 
+    const unresolvedCards = [
+      ...failures,
+      ...issues.filter((issue) => issue.code === "UNKNOWN_CARD" && issue.cardName).map((issue) => issue.cardName as string)
+    ];
     const hasLookupFailure = failures.length > 0 && lookups.size === 0;
     const hasWarning = issues.some((issue) => issue.severity === "warning" || issue.severity === "error");
     const status: OnboardingValidationStatus = hasLookupFailure
@@ -148,7 +205,10 @@ export async function verifyDeckForOnboarding(
         status === "verified"
           ? ["Deck verified for opening-hand analysis."]
           : [`${validation.mainCount} cards in main deck`, `${validation.sideboardCount} cards in sideboard`],
-      issues
+      issues,
+      unresolvedCards,
+      checkedAt: Date.now(),
+      deckFingerprint: buildDeckFingerprint(decklist, format, parsed)
     };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
@@ -168,7 +228,12 @@ export async function verifyDeckForOnboarding(
           title: "Verification could not finish",
           detail: "Opening Edge could not finish checking this deck. You can retry without losing the decklist."
         }
-      ]
+      ],
+      unresolvedCards: [],
+      checkedAt: Date.now(),
+      deckFingerprint: buildDeckFingerprint(decklist, format, parsed)
     };
   }
 }
+
+export const verifyDeckForOnboarding = verifyDeckForSaving;

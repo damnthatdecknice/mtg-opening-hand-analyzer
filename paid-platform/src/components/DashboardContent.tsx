@@ -5,7 +5,14 @@ import { DashboardMetagameSnapshot } from "@/components/DashboardMetagameSnapsho
 import { DashboardOverview } from "@/components/DashboardOverview";
 import { DeckSummary } from "@/components/DeckSummary";
 import { FirstDeckOnboarding } from "@/components/FirstDeckOnboarding";
+import { fetchCardData } from "@/lib/analyzer";
 import { saveDeckForCurrentUser } from "@/lib/deckStorage";
+import {
+  gateDeckVerification,
+  verifyDeckForSaving,
+  type OnboardingDeckReview,
+  type OnboardingValidationStatus
+} from "@/lib/firstDeckOnboarding";
 import {
   clearGuestDeckIntent,
   clearGuestDeckMigrationState,
@@ -23,6 +30,10 @@ export function DashboardContent() {
   const [guestDeck, setGuestDeck] = useState<GuestDeck | null>(null);
   const [migrationMessage, setMigrationMessage] = useState("");
   const [isMigratingGuestDeck, setIsMigratingGuestDeck] = useState(false);
+  const [guestVerification, setGuestVerification] = useState<OnboardingDeckReview | null>(null);
+  const [guestVerificationStatus, setGuestVerificationStatus] = useState<OnboardingValidationStatus>("empty");
+  const [acknowledgedGuestWarnings, setAcknowledgedGuestWarnings] = useState(false);
+  const [guestVerificationRetry, setGuestVerificationRetry] = useState(0);
   const conversionRef = useRef<HTMLElement | null>(null);
 
   const loadDeckCount = useCallback(async () => {
@@ -66,13 +77,83 @@ export function DashboardContent() {
 
   useEffect(() => {
     if (!guestDeck) {
+      setGuestVerification(null);
+      setGuestVerificationStatus("empty");
       return;
     }
     window.requestAnimationFrame(() => conversionRef.current?.focus());
   }, [guestDeck]);
 
+  useEffect(() => {
+    setAcknowledgedGuestWarnings(false);
+    if (!guestDeck) {
+      setGuestVerification(null);
+      setGuestVerificationStatus("empty");
+      return;
+    }
+
+    setGuestVerificationStatus("checking");
+    setGuestVerification({
+      suggestedName: guestDeck.name,
+      mainCount: guestDeck.parsedMainCount,
+      sideboardCount: guestDeck.parsedSideboardCount,
+      uniqueCount: parseDecklist(guestDeck.decklist).cards.length,
+      status: "checking",
+      messages: ["Checking this deck again before it is attached to your account."],
+      issues: []
+    });
+
+    const controller = new AbortController();
+    verifyDeckForSaving(guestDeck.decklist, guestDeck.format, fetchCardData, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setGuestVerification(result);
+        setGuestVerificationStatus(result.status);
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        setGuestVerification({
+          suggestedName: guestDeck.name,
+          mainCount: guestDeck.parsedMainCount,
+          sideboardCount: guestDeck.parsedSideboardCount,
+          uniqueCount: parseDecklist(guestDeck.decklist).cards.length,
+          status: "lookup-error",
+          messages: ["Opening Edge could not finish checking this deck. You can retry without losing the decklist."],
+          issues: [
+            {
+              code: "LOOKUP_ERROR",
+              severity: "warning",
+              title: "Verification could not finish",
+              detail: "Opening Edge could not finish checking this deck. You can retry without losing the decklist."
+            }
+          ]
+        });
+        setGuestVerificationStatus("lookup-error");
+      });
+
+    return () => controller.abort();
+  }, [guestDeck, guestVerificationRetry]);
+
+  function canContinueGuestConversion() {
+    if (!guestDeck) {
+      return false;
+    }
+    const gate = gateDeckVerification(guestVerificationStatus, acknowledgedGuestWarnings, guestDeck.parsedMainCount);
+    if (!gate.allowed) {
+      setMigrationMessage(gate.message ?? "Review this deck before continuing.");
+    }
+    return gate.allowed;
+  }
+
   async function saveGuestDeckAndAnalyze() {
     if (!guestDeck) {
+      return;
+    }
+    if (!canContinueGuestConversion()) {
       return;
     }
 
@@ -98,6 +179,9 @@ export function DashboardContent() {
   }
 
   function continueWithGuestDeck() {
+    if (!canContinueGuestConversion()) {
+      return;
+    }
     clearGuestDeckIntent();
     window.location.href = "/analyzer?guest=1&step=hand";
   }
@@ -162,15 +246,44 @@ export function DashboardContent() {
               <em>Import source</em>
             </span>
             <span>
-              <strong>{guestDeck.parsedMainCount > 0 ? "Ready to save" : "Needs review"}</strong>
+              <strong>{guestVerificationStatus === "checking" ? "Checking" : guestVerificationStatus.replace("-", " ")}</strong>
               <em>Status</em>
             </span>
           </div>
+          {guestVerification ? (
+            <div className={`deck-review-card ${guestVerificationStatus}`} aria-live="polite">
+              <ul className="validation-list">
+                {guestVerification.messages.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+                {guestVerification.issues.slice(0, 8).map((issue) => (
+                  <li key={`${issue.code}-${issue.cardName ?? issue.title}-${issue.detail}`} className={`validation-${issue.severity}`}>
+                    <strong>{issue.title}:</strong> {issue.detail}
+                  </li>
+                ))}
+              </ul>
+              {guestVerificationStatus === "lookup-error" ? (
+                <button className="text-button" onClick={() => setGuestVerificationRetry((value) => value + 1)} type="button">
+                  Retry deck check
+                </button>
+              ) : null}
+              {guestVerificationStatus === "warnings" || guestVerificationStatus === "incomplete" || guestVerificationStatus === "lookup-error" ? (
+                <label className="checkbox-row">
+                  <input
+                    checked={acknowledgedGuestWarnings}
+                    onChange={(event) => setAcknowledgedGuestWarnings(event.target.checked)}
+                    type="checkbox"
+                  />
+                  I understand these warnings and want to continue.
+                </label>
+              ) : null}
+            </div>
+          ) : null}
           <div className="action-row">
-            <button className="primary-button" disabled={isMigratingGuestDeck} onClick={saveGuestDeckAndAnalyze} type="button">
-              {isMigratingGuestDeck ? "Saving..." : "Save Deck and Analyze"}
+            <button className="primary-button" disabled={isMigratingGuestDeck || guestVerificationStatus === "checking"} onClick={saveGuestDeckAndAnalyze} type="button">
+              {isMigratingGuestDeck ? "Saving..." : guestVerificationStatus === "checking" ? "Checking..." : "Save Deck and Analyze"}
             </button>
-            <button className="secondary-button" disabled={isMigratingGuestDeck} onClick={continueWithGuestDeck} type="button">
+            <button className="secondary-button" disabled={isMigratingGuestDeck || guestVerificationStatus === "checking"} onClick={continueWithGuestDeck} type="button">
               Continue Without Saving
             </button>
             <button className="text-button" disabled={isMigratingGuestDeck} onClick={discardGuestDeck} type="button">

@@ -1,7 +1,6 @@
 "use client";
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   inferDeckName,
@@ -13,6 +12,7 @@ import { fetchCardData } from "@/lib/analyzer";
 import { deckFormatOptions } from "@/lib/formats";
 import {
   buildOnboardingReview,
+  gateDeckVerification,
   onboardingExampleDeck,
   verifyDeckForOnboarding,
   type OnboardingDeckReview,
@@ -177,13 +177,19 @@ export function FirstDeckOnboarding({
   }
 
   function prepareGuestSaveIntent() {
-    if (parsed.mainCount > 0) {
-      storeGuestDeck();
-    }
+    storeGuestDeck();
     saveGuestDeckIntent({
       action: "save-after-auth",
       returnPath: "/dashboard?importGuest=1"
     });
+  }
+
+  function beginGuestAuthentication(destination: "signup" | "login") {
+    if (!canContinueAfterVerification()) {
+      return;
+    }
+    prepareGuestSaveIntent();
+    router.push(`/${destination}?intent=save-guest-deck`);
   }
 
   async function analyzeGuestDeck() {
@@ -231,24 +237,14 @@ export function FirstDeckOnboarding({
   const primaryAction = mode === "account" ? saveAndContinue : analyzeGuestDeck;
 
   function canContinueAfterVerification() {
-    if (validationStatus === "checking") {
-      setMessage("Checking card names, deck construction, and available format legality...");
-      return false;
+    const gate = gateDeckVerification(validationStatus, acknowledgedWarnings, parsed.mainCount);
+    if (!gate.allowed) {
+      setMessage(gate.message ?? "Review this deck before continuing.");
+      if (validationStatus === "empty") {
+        focusFirstInput();
+      }
     }
-    if (validationStatus === "empty") {
-      setMessage("Import a `.dek` file or paste a decklist to begin.");
-      focusFirstInput();
-      return false;
-    }
-    if ((validationStatus === "warnings" || validationStatus === "incomplete" || validationStatus === "lookup-error") && !acknowledgedWarnings) {
-      setMessage(
-        validationStatus === "lookup-error"
-          ? "Opening Edge could not finish checking this deck. Acknowledge the warning or retry before continuing."
-          : "Review and acknowledge the deck warnings before continuing."
-      );
-      return false;
-    }
-    return true;
+    return gate.allowed;
   }
 
   const actionsDisabled = isBusy || validationStatus === "checking";
@@ -405,12 +401,12 @@ export function FirstDeckOnboarding({
           </button>
         ) : (
           <>
-            <Link className="secondary-button" href="/signup?intent=save-guest-deck" onClick={prepareGuestSaveIntent}>
+            <button className="secondary-button" onClick={() => beginGuestAuthentication("signup")} type="button">
               Create an Account to Save It
-            </Link>
-            <Link className="text-button" href="/login?intent=save-guest-deck" onClick={prepareGuestSaveIntent}>
+            </button>
+            <button className="text-button" onClick={() => beginGuestAuthentication("login")} type="button">
               Sign in to Save It
-            </Link>
+            </button>
           </>
         )}
       </div>
