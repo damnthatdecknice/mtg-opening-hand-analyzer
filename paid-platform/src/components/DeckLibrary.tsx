@@ -140,7 +140,7 @@ export function DeckLibrary() {
 
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
-      verifyDeckForSaving(decklist, format, fetchCardData, controller.signal)
+      verifyDeckForSaving(decklist, format, fetchCardData, controller.signal, { retryFailures: verificationRetry > 0 })
         .then((result) => {
           if (controller.signal.aborted) {
             return;

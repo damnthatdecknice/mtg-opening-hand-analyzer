@@ -25,7 +25,8 @@ export type OnboardingDeckReview = {
 };
 
 export type OnboardingCardDataFetcher = (
-  cardNames: string[]
+  cardNames: string[],
+  options?: { signal?: AbortSignal; retryFailures?: boolean }
 ) => Promise<{ lookups: Map<string, ManaCurveCardData>; failures: string[] }>;
 
 export type DeckVerificationGate = {
@@ -152,7 +153,8 @@ export async function verifyDeckForSaving(
   decklist: string,
   format: string,
   fetchCardData: OnboardingCardDataFetcher,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options: { retryFailures?: boolean } = {}
 ): Promise<OnboardingDeckReview> {
   const parsed = parseDecklist(decklist);
   if (parsed.mainCount === 0) {
@@ -162,7 +164,10 @@ export async function verifyDeckForSaving(
   const names = parsed.cards.map((card) => card.name);
 
   try {
-    const { lookups, failures } = await fetchCardData(names);
+    const { lookups, failures } = await fetchCardData(names, {
+      signal,
+      retryFailures: options.retryFailures
+    });
     if (signal?.aborted) {
       throw new DOMException("Aborted", "AbortError");
     }

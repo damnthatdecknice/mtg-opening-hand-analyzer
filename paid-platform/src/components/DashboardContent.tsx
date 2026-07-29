@@ -104,7 +104,7 @@ export function DashboardContent() {
     });
 
     const controller = new AbortController();
-    verifyDeckForSaving(guestDeck.decklist, guestDeck.format, fetchCardData, controller.signal)
+    verifyDeckForSaving(guestDeck.decklist, guestDeck.format, fetchCardData, controller.signal, { retryFailures: guestVerificationRetry > 0 })
       .then((result) => {
         if (controller.signal.aborted) {
           return;

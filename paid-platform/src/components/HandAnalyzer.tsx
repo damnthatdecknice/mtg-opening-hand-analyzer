@@ -1014,7 +1014,7 @@ export function HandAnalyzer() {
     await runAnalysis(nextHand);
   }
 
-  async function recognizeCrops(nextCrops: CropPreview[]) {
+  async function recognizeCrops(nextCrops: CropPreview[], retryFailures = false) {
     if (!nextCrops.length) {
       return;
     }
@@ -1029,7 +1029,8 @@ export function HandAnalyzer() {
       const { lookups, failures } = await fetchCardData(namesForLookup, {
         exactMtgoImagesOnly: useExactMtgoArt,
         includePrintImages: !useExactMtgoArt,
-        mtgoIdsByName: useExactMtgoArt ? mtgoIdsByName : undefined
+        mtgoIdsByName: useExactMtgoArt ? mtgoIdsByName : undefined,
+        retryFailures
       });
       const recognized = await recognizeCropImages(nextCrops, lookups, options);
       setRecognitionResults(recognized);
@@ -1692,7 +1693,7 @@ export function HandAnalyzer() {
                 <button
                   className="secondary-button"
                   disabled={isRecognizing}
-                  onClick={() => recognizeCrops(crops)}
+                  onClick={() => recognizeCrops(crops, true)}
                   type="button"
                 >
                   Retry Recognition

@@ -84,6 +84,10 @@ assert.ok(incomplete.issues.some((issue) => issue.code === "MAIN_DECK_INCOMPLETE
 const unknown = validateDeckConstruction("Deck\n4 Definitely Not A Card\n56 Mountain", cardData, "Modern");
 assert.equal(unknown.isCompleteEnoughForPosture, false, "unknown cards withhold posture");
 assert.ok(unknown.issues.some((issue) => issue.code === "UNKNOWN_CARD"), "unknown cards are reported");
+assert.ok(
+  !unknown.issues.some((issue) => issue.code === "COPY_LIMIT"),
+  "unknown cards at normal copy counts do not also receive modeled copy-limit warnings"
+);
 
 const copyLimit = validateDeckConstruction("Deck\n5 Lightning Bolt\n55 Mountain", cardData, "Modern");
 assert.ok(copyLimit.issues.some((issue) => issue.code === "COPY_LIMIT"), "nonbasic four-copy violations are reported");
@@ -158,9 +162,50 @@ assert.ok(
 );
 
 const unknownTooMany = validateDeckConstruction("Deck\n5 Mystery Card\n55 Mountain", cardData, "Modern");
+assert.equal(
+  unknownTooMany.issues.filter((issue) => issue.code === "UNKNOWN_COPY_RULE" && issue.cardName === "Mystery Card").length,
+  1,
+  "unknown cards over four copies get one special copy-rule review warning"
+);
 assert.ok(
-  unknownTooMany.issues.some((issue) => issue.code === "UNKNOWN_COPY_RULE"),
-  "unknown cards over four copies warn instead of assuming a special exception"
+  !unknownTooMany.issues.some((issue) => issue.code === "COPY_LIMIT" && issue.cardName === "Mystery Card"),
+  "unknown cards over four copies do not receive normal modeled copy-limit warnings"
+);
+
+const unknownCommanderCopies = validateDeckConstruction("Deck\n2 Mystery Commander Card\n97 Mountain", cardData, "Commander");
+assert.equal(
+  unknownCommanderCopies.issues.filter((issue) => issue.code === "UNKNOWN_COPY_RULE" && issue.cardName === "Mystery Commander Card").length,
+  1,
+  "unknown singleton-format duplicates get one unknown copy-rule warning"
+);
+assert.ok(
+  !unknownCommanderCopies.issues.some(
+    (issue) => (issue.code === "SINGLETON_LIMIT" || issue.code === "COPY_LIMIT") && issue.cardName === "Mystery Commander Card"
+  ),
+  "unknown singleton-format duplicates do not receive known-card singleton or copy-limit warnings"
+);
+
+const unknownVintageReview = validateDeckConstruction("Deck\n2 Mystery Vintage Card\n58 Mountain", cardData, "Vintage");
+assert.equal(
+  unknownVintageReview.issues.filter((issue) => issue.code === "UNKNOWN_CARD" && issue.cardName === "Mystery Vintage Card").length,
+  1,
+  "unknown Vintage cards receive one unknown-card warning"
+);
+assert.match(
+  unknownVintageReview.issues.find((issue) => issue.code === "UNKNOWN_CARD" && issue.cardName === "Mystery Vintage Card")?.detail ?? "",
+  /restricted status could not be checked/i,
+  "unknown Vintage card warnings disclose that restricted status is unknown"
+);
+assert.ok(
+  !unknownVintageReview.issues.some((issue) => issue.code === "UNKNOWN_COPY_RULE" && issue.cardName === "Mystery Vintage Card"),
+  "unknown Vintage cards at two to four copies do not receive unknown-copy warnings"
+);
+
+const unknownVintageTooMany = validateDeckConstruction("Deck\n5 Mystery Vintage Card\n55 Mountain", cardData, "Vintage");
+assert.equal(
+  unknownVintageTooMany.issues.filter((issue) => issue.code === "UNKNOWN_COPY_RULE" && issue.cardName === "Mystery Vintage Card").length,
+  1,
+  "unknown Vintage cards above four copies receive one unknown-copy warning"
 );
 
 const splitData = new Map(cardData);

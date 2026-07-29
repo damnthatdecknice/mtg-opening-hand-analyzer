@@ -167,7 +167,9 @@ export function ManaCurveDashboard() {
       const candidateNames = extractTournamentCurveCandidateNames(activeDecklist, metagameDecks);
       const names = Array.from(new Set([...deckNames, ...candidateNames].map((name) => name.trim()).filter(Boolean)));
       const missingNames = names.filter((name) => !cardLookupCache.current.has(name.toLowerCase()));
-      const fetched = missingNames.length ? await fetchCardData(missingNames) : { lookups: new Map<string, CardLookup>(), failures: [] };
+      const fetched = missingNames.length
+        ? await fetchCardData(missingNames, { retryFailures: lookupRetryNonce > 0 })
+        : { lookups: new Map<string, CardLookup>(), failures: [] };
       if (!isActive) {
         return;
       }

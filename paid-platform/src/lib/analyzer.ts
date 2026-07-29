@@ -1,5 +1,5 @@
-import { parseDecklist, type ParsedDeckCard } from "@/lib/deckParser";
-import { buildManaCurveAnalysis } from "@/lib/manaCurve";
+import { parseDecklist, type ParsedDeckCard } from "./deckParser";
+import { buildManaCurveAnalysis } from "./manaCurve";
 import {
   castabilityScoreAdjustment,
   manaSufficiencyAdjustment,
@@ -471,6 +471,119 @@ function scryfallErrorMessage(status: number) {
   return `Scryfall returned ${status}`;
 }
 
+type FetchCardDataOptions = {
+  exactMtgoImagesOnly?: boolean;
+  includePrintImages?: boolean;
+  mtgoIdsByName?: Record<string, number[]>;
+  retryFailures?: boolean;
+  signal?: AbortSignal;
+};
+
+type CachedCardLookup = {
+  lookup: CardLookup;
+  expiresAt: number;
+};
+
+type CachedLookupFailure = {
+  failure: string;
+  expiresAt: number;
+};
+
+const SUCCESS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const NOT_FOUND_CACHE_TTL_MS = 10 * 60 * 1000;
+const TRANSIENT_FAILURE_CACHE_TTL_MS = 15 * 1000;
+const MAX_CARD_DATA_CACHE_ENTRIES = 1500;
+
+const successfulCardLookupCache = new Map<string, CachedCardLookup>();
+const failedCardLookupCache = new Map<string, CachedLookupFailure>();
+const inflightCardLookupBatches = new Map<string, Promise<{ lookups: Map<string, CardLookup>; failures: string[] }>>();
+
+function lookupAliasKeys(lookup: CardLookup) {
+  return new Set([lookup.name, ...lookup.faces.map((face) => face.name)].map(normalizeName).filter(Boolean));
+}
+
+function pruneCache<T>(cache: Map<string, T>) {
+  while (cache.size > MAX_CARD_DATA_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value as string | undefined;
+    if (!oldestKey) {
+      return;
+    }
+    cache.delete(oldestKey);
+  }
+}
+
+function cacheLookupSuccess(lookup: CardLookup, requestedNames: string[] = []) {
+  const expiresAt = Date.now() + SUCCESS_CACHE_TTL_MS;
+  for (const key of Array.from(new Set([...Array.from(lookupAliasKeys(lookup)), ...requestedNames.map(normalizeName)].filter(Boolean)))) {
+    successfulCardLookupCache.set(key, { lookup, expiresAt });
+  }
+  pruneCache(successfulCardLookupCache);
+}
+
+function getCachedLookup(name: string) {
+  const key = normalizeName(name);
+  const cached = successfulCardLookupCache.get(key);
+  if (!cached) {
+    return null;
+  }
+  if (cached.expiresAt <= Date.now()) {
+    successfulCardLookupCache.delete(key);
+    return null;
+  }
+  return cached.lookup;
+}
+
+function failureTtl(status?: number) {
+  return status === 404 ? NOT_FOUND_CACHE_TTL_MS : TRANSIENT_FAILURE_CACHE_TTL_MS;
+}
+
+function cacheLookupFailure(name: string, failure: string, status?: number) {
+  if (!failure) {
+    return;
+  }
+  failedCardLookupCache.set(normalizeName(name), { failure, expiresAt: Date.now() + failureTtl(status) });
+  pruneCache(failedCardLookupCache);
+}
+
+function getCachedFailure(name: string) {
+  const key = normalizeName(name);
+  const cached = failedCardLookupCache.get(key);
+  if (!cached) {
+    return null;
+  }
+  if (cached.expiresAt <= Date.now()) {
+    failedCardLookupCache.delete(key);
+    return null;
+  }
+  return cached.failure;
+}
+
+function addLookupAliases(lookups: Map<string, CardLookup>, lookup: CardLookup, requestedName?: string) {
+  if (requestedName) {
+    lookups.set(normalizeName(requestedName), lookup);
+  }
+  lookups.set(normalizeName(lookup.name), lookup);
+  for (const face of lookup.faces) {
+    if (face.name) {
+      lookups.set(normalizeName(face.name), lookup);
+    }
+  }
+}
+
+export function clearCardDataCacheForTests() {
+  successfulCardLookupCache.clear();
+  failedCardLookupCache.clear();
+  inflightCardLookupBatches.clear();
+}
+
+export function cardDataCacheStatsForTests() {
+  return {
+    successes: successfulCardLookupCache.size,
+    failures: failedCardLookupCache.size,
+    inflight: inflightCardLookupBatches.size
+  };
+}
+
 async function fetchWithRetries(url: string, init?: RequestInit, attempts = 4) {
   let response: Response | null = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -484,25 +597,26 @@ async function fetchWithRetries(url: string, init?: RequestInit, attempts = 4) {
   return response;
 }
 
-async function fetchSingleCard(name: string) {
-  const response = await fetchWithRetries(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`);
+async function fetchSingleCard(name: string, signal?: AbortSignal) {
+  const response = await fetchWithRetries(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`, { signal });
   if (!response?.ok) {
-    return { card: null, failure: `${name}: ${response ? scryfallErrorMessage(response.status) : "Network error"}` };
+    return { card: null, failure: `${name}: ${response ? scryfallErrorMessage(response.status) : "Network error"}`, status: response?.status };
   }
-  return { card: (await response.json()) as ScryfallCard, failure: "" };
+  return { card: (await response.json()) as ScryfallCard, failure: "", status: response.status };
 }
 
-async function fetchMtgoCard(mtgoId: number) {
-  const response = await fetchWithRetries(`https://api.scryfall.com/cards/mtgo/${mtgoId}`);
+async function fetchMtgoCard(mtgoId: number, signal?: AbortSignal) {
+  const response = await fetchWithRetries(`https://api.scryfall.com/cards/mtgo/${mtgoId}`, { signal });
   if (!response?.ok) {
     return { card: null, failure: `Exact .dek art lookup: ${response ? scryfallErrorMessage(response.status) : "Network error"}` };
   }
   return { card: (await response.json()) as ScryfallCard, failure: "" };
 }
 
-async function fetchPrintImages(name: string) {
+async function fetchPrintImages(name: string, signal?: AbortSignal) {
   const response = await fetchWithRetries(
-    `https://api.scryfall.com/cards/search?unique=prints&order=released&q=${encodeURIComponent(`!"${name}"`)}`
+    `https://api.scryfall.com/cards/search?unique=prints&order=released&q=${encodeURIComponent(`!"${name}"`)}`,
+    { signal }
   );
   if (!response?.ok) {
     return { imageUrls: [], artCropUrls: [] };
@@ -527,14 +641,7 @@ async function fetchPrintImages(name: string) {
   };
 }
 
-export async function fetchCardData(
-  cardNames: string[],
-  options: {
-    exactMtgoImagesOnly?: boolean;
-    includePrintImages?: boolean;
-    mtgoIdsByName?: Record<string, number[]>;
-  } = {}
-) {
+async function fetchUncachedBaseCardData(cardNames: string[], options: Pick<FetchCardDataOptions, "signal"> = {}) {
   const uniqueNames = Array.from(new Set(cardNames.map((name) => name.trim()).filter(Boolean)));
   const lookups = new Map<string, CardLookup>();
   const failures: string[] = [];
@@ -546,23 +653,21 @@ export async function fetchCardData(
     response = await fetchWithRetries("https://api.scryfall.com/cards/collection", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ identifiers: batch.map((name) => ({ name })) })
+        body: JSON.stringify({ identifiers: batch.map((name) => ({ name })) }),
+        signal: options.signal
       });
 
     if (!response?.ok) {
       for (const name of batch) {
-        const fallback = await fetchSingleCard(name);
+        const fallback = await fetchSingleCard(name, options.signal);
         if (fallback.card) {
           const mapped = mapScryfallCard(fallback.card);
-          lookups.set(normalizeName(name), mapped);
-          lookups.set(normalizeName(mapped.name), mapped);
-          for (const face of mapped.faces) {
-            if (face.name) {
-              lookups.set(normalizeName(face.name), mapped);
-            }
-          }
+          addLookupAliases(lookups, mapped, name);
+          cacheLookupSuccess(mapped, [name]);
         } else {
-          failures.push(fallback.failure || `${name}: ${scryfallErrorMessage(response?.status ?? 0)}`);
+          const failure = fallback.failure || `${name}: ${scryfallErrorMessage(response?.status ?? 0)}`;
+          failures.push(failure);
+          cacheLookupFailure(name, failure, fallback.status ?? response?.status);
         }
       }
       continue;
@@ -575,31 +680,73 @@ export async function fetchCardData(
 
     for (const card of payload.data ?? []) {
       const mapped = mapScryfallCard(card);
-      lookups.set(normalizeName(mapped.name), mapped);
-      for (const face of mapped.faces) {
-        if (face.name) {
-          lookups.set(normalizeName(face.name), mapped);
-        }
-      }
+      const aliasKeys = lookupAliasKeys(mapped);
+      const requestedAliases = batch.filter((name) => aliasKeys.has(normalizeName(name)));
+      addLookupAliases(lookups, mapped, requestedAliases[0]);
+      cacheLookupSuccess(mapped, requestedAliases);
     }
 
     for (const missing of payload.not_found ?? []) {
       if (missing.name) {
-        const fallback = await fetchSingleCard(missing.name);
+        const fallback = await fetchSingleCard(missing.name, options.signal);
         if (fallback.card) {
           const mapped = mapScryfallCard(fallback.card);
-          lookups.set(normalizeName(missing.name), mapped);
-          lookups.set(normalizeName(mapped.name), mapped);
-          for (const face of mapped.faces) {
-            if (face.name) {
-              lookups.set(normalizeName(face.name), mapped);
-            }
-          }
+          addLookupAliases(lookups, mapped, missing.name);
+          cacheLookupSuccess(mapped, [missing.name]);
         } else {
-          failures.push(fallback.failure || `${missing.name}: Card name not found`);
+          const failure = fallback.failure || `${missing.name}: Card name not found`;
+          failures.push(failure);
+          cacheLookupFailure(missing.name, failure, fallback.status ?? 404);
         }
       }
     }
+  }
+
+  return { lookups, failures };
+}
+
+async function fetchBaseCardDataWithInflightDedupe(cardNames: string[], options: FetchCardDataOptions) {
+  if (options.signal) {
+    return fetchUncachedBaseCardData(cardNames, { signal: options.signal });
+  }
+  const key = cardNames.map(normalizeName).sort().join("|");
+  const existing = inflightCardLookupBatches.get(key);
+  if (existing) {
+    return existing;
+  }
+  const request = fetchUncachedBaseCardData(cardNames).finally(() => {
+    inflightCardLookupBatches.delete(key);
+  });
+  inflightCardLookupBatches.set(key, request);
+  return request;
+}
+
+export async function fetchCardData(cardNames: string[], options: FetchCardDataOptions = {}) {
+  const uniqueNames = Array.from(new Set(cardNames.map((name) => name.trim()).filter(Boolean)));
+  const lookups = new Map<string, CardLookup>();
+  const failures: string[] = [];
+  const uncachedNames: string[] = [];
+
+  for (const name of uniqueNames) {
+    const cached = getCachedLookup(name);
+    if (cached) {
+      addLookupAliases(lookups, cached, name);
+      continue;
+    }
+    const cachedFailure = options.retryFailures ? null : getCachedFailure(name);
+    if (cachedFailure) {
+      failures.push(cachedFailure);
+      continue;
+    }
+    uncachedNames.push(name);
+  }
+
+  if (uncachedNames.length) {
+    const fetched = await fetchBaseCardDataWithInflightDedupe(uncachedNames, options);
+    for (const [key, lookup] of Array.from(fetched.lookups)) {
+      lookups.set(key, lookup);
+    }
+    failures.push(...fetched.failures);
   }
 
   const mtgoEntries = Object.entries(options.mtgoIdsByName ?? {})
@@ -611,7 +758,7 @@ export async function fetchCardData(
 
   for (const entry of mtgoEntries) {
     for (const mtgoId of entry.ids) {
-      const exact = await fetchMtgoCard(mtgoId);
+      const exact = await fetchMtgoCard(mtgoId, options.signal);
       if (!exact.card) {
         failures.push(exact.failure || "Exact .dek art lookup: Card not found");
         continue;
@@ -632,6 +779,7 @@ export async function fetchCardData(
           lookups.set(normalizeName(face.name), merged);
         }
       }
+      cacheLookupSuccess(merged, [entry.name]);
     }
   }
 
@@ -639,9 +787,10 @@ export async function fetchCardData(
     const canonicalCards = Array.from(new Map(Array.from(lookups.values()).map((card) => [card.name, card])).values());
     await Promise.all(
       canonicalCards.map(async (card) => {
-        const printImages = await fetchPrintImages(card.name).catch(() => ({ imageUrls: [], artCropUrls: [] }));
+        const printImages = await fetchPrintImages(card.name, options.signal).catch(() => ({ imageUrls: [], artCropUrls: [] }));
         card.imageUrls = Array.from(new Set([...card.imageUrls, ...printImages.imageUrls]));
         card.artCropUrls = Array.from(new Set([...card.artCropUrls, ...printImages.artCropUrls]));
+        cacheLookupSuccess(card);
       })
     );
   }

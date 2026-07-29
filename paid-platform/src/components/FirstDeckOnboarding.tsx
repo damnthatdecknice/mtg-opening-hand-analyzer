@@ -97,7 +97,7 @@ export function FirstDeckOnboarding({
 
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
-      verifyDeckForOnboarding(decklist, format, fetchCardData, controller.signal)
+      verifyDeckForOnboarding(decklist, format, fetchCardData, controller.signal, { retryFailures: verificationRetry > 0 })
         .then((result) => {
           if (controller.signal.aborted) {
             return;

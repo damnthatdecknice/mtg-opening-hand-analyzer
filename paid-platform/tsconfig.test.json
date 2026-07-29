@@ -10,6 +10,7 @@
   },
   "include": [
     "src/lib/analyzerMode.ts",
+    "src/lib/analyzer.ts",
     "src/lib/authRouting.ts",
     "src/lib/deckParser.ts",
     "src/lib/firstDeckOnboarding.ts",

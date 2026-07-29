@@ -116,7 +116,15 @@ function cardLegality(card: ManaCurveCardData | undefined, format: string) {
   return legalityKey && card?.legalities ? card.legalities[legalityKey] : undefined;
 }
 
+function issueKey(issue: DeckValidationIssue) {
+  return [issue.code, normalizeName(issue.cardName ?? ""), issue.severity, issue.title, issue.detail].join("::");
+}
+
 function addIssue(issues: DeckValidationIssue[], issue: DeckValidationIssue) {
+  const key = issueKey(issue);
+  if (issues.some((existing) => issueKey(existing) === key)) {
+    return;
+  }
   issues.push(issue);
 }
 
@@ -316,6 +324,37 @@ function copyLimitDetail(entry: AggregatedDeckCard, rule: DeckCopyRule, format: 
   return `${entry.canonicalName} appears ${entry.totalCount} times across the registered deck (${breakdown}). Most ${format} deck registrations are limited to four copies total.${unknownSuffix}`;
 }
 
+function missingCardModeledCopyLimit(format: string) {
+  const normalizedFormat = format.trim().toLowerCase();
+  if (normalizedFormat === "commander" || normalizedFormat === "brawl") {
+    return 1;
+  }
+  if (modeledRegisteredCopyLimitFormats.has(normalizedFormat)) {
+    return 4;
+  }
+  return null;
+}
+
+function missingCardDetail(entry: AggregatedDeckCard, format: string) {
+  const normalizedFormat = format.trim().toLowerCase();
+  if (normalizedFormat === "vintage") {
+    return `${entry.canonicalName} could not be verified against loaded card data. Format legality, card-specific rules, and restricted status could not be checked.`;
+  }
+  return `${entry.canonicalName} could not be verified against loaded card data. Format legality and card-specific deck-construction rules may need manual review.`;
+}
+
+function missingCopyRuleDetail(entry: AggregatedDeckCard, format: string, modeledLimit: number | null) {
+  const breakdown = countBreakdown(entry);
+  const normalizedFormat = format.trim().toLowerCase();
+  if (normalizedFormat === "commander" || normalizedFormat === "brawl") {
+    return `${entry.canonicalName} appears ${entry.totalCount} times across the registered deck (${breakdown}). ${format} is normally singleton, but Opening Edge could not verify whether a card-specific exception applies.`;
+  }
+  if (modeledLimit) {
+    return `${entry.canonicalName} appears ${entry.totalCount} times across the registered deck (${breakdown}). Opening Edge could not verify whether this unknown card has a special deck-construction rule above ${modeledLimit} copies.`;
+  }
+  return `${entry.canonicalName} appears ${entry.totalCount} times across the registered deck (${breakdown}), but Opening Edge does not fully model copy limits for ${format}.`;
+}
+
 export function validateDeckConstruction(
   decklist: string,
   cardData: Map<string, ManaCurveCardData>,
@@ -363,6 +402,36 @@ export function validateDeckConstruction(
 
   for (const entry of aggregatedCards) {
     const card = lookupCard(cardData, entry.canonicalName) ?? lookupCard(cardData, entry.sourceRows[0]?.name ?? entry.canonicalName);
+    if (!card) {
+      addIssue(issues, {
+        code: "UNKNOWN_CARD",
+        severity: "warning",
+        title: "Card data missing",
+        detail: missingCardDetail(entry, format),
+        cardName: entry.canonicalName
+      });
+
+      const modeledLimit = missingCardModeledCopyLimit(format);
+      if (modeledLimit !== null && entry.totalCount > modeledLimit) {
+        addIssue(issues, {
+          code: "UNKNOWN_COPY_RULE",
+          severity: "warning",
+          title: "Copy limit needs review",
+          detail: missingCopyRuleDetail(entry, format, modeledLimit),
+          cardName: entry.canonicalName
+        });
+      } else if (modeledLimit === null && entry.totalCount > 4) {
+        addIssue(issues, {
+          code: "UNKNOWN_COPY_RULE",
+          severity: "warning",
+          title: "Copy limit needs review",
+          detail: missingCopyRuleDetail(entry, format, modeledLimit),
+          cardName: entry.canonicalName
+        });
+      }
+      continue;
+    }
+
     const legality = cardLegality(card, format);
     const copyRule = resolveDeckCopyRule({
       card,
@@ -370,16 +439,6 @@ export function validateDeckConstruction(
       format,
       legality
     });
-
-    if (!card) {
-      addIssue(issues, {
-        code: "UNKNOWN_CARD",
-        severity: "warning",
-        title: "Card data missing",
-        detail: `${entry.canonicalName} could not be verified against loaded card data. Copy-limit exceptions and format legality may need manual review.`,
-        cardName: entry.canonicalName
-      });
-    }
 
     if (copyRule.kind === "maximum" && entry.totalCount > copyRule.maximum) {
       const copyIssue = issueForCopyRule(copyRule);
@@ -398,21 +457,6 @@ export function validateDeckConstruction(
         detail: `${entry.canonicalName} appears ${entry.totalCount} times across the registered deck (${countBreakdown(entry)}), but Opening Edge does not fully model copy limits for ${format}.`,
         cardName: entry.canonicalName
       });
-    }
-
-    if (!card && entry.totalCount > 4) {
-      addIssue(issues, {
-        code: "UNKNOWN_COPY_RULE",
-        severity: "warning",
-        title: "Copy limit needs review",
-        detail: `${entry.canonicalName} appears ${entry.totalCount} times across the registered deck (${countBreakdown(entry)}), but Opening Edge could not verify whether it has a special deck-construction rule.`,
-        cardName: entry.canonicalName
-      });
-      continue;
-    }
-
-    if (!card) {
-      continue;
     }
 
     if (legality === "not_legal" || legality === "banned") {
