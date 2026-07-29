@@ -63,6 +63,22 @@ export function AuthForm({ mode }: AuthFormProps) {
           display_name: displayName.trim()
         });
       }
+
+      if (result.data.session) {
+        await supabase.auth
+          .setSession({
+            access_token: result.data.session.access_token,
+            refresh_token: result.data.session.refresh_token
+          })
+          .catch(() => null);
+        saveAuthFallback(result.data.session);
+
+        const returnPath = resolveAuthReturnPath(window.location.search);
+        setMessage("Account created. Opening your workspace...");
+        window.location.replace(returnPath);
+        return;
+      }
+
       setMessage(
         hasGuestSaveIntent
           ? "Account created. After confirming your email and signing in, your imported deck will be ready to save."
