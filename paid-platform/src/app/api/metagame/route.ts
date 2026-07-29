@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerAnonSupabaseClient, isServerAnonSupabaseConfigured } from "@/lib/serverSupabase";
 import {
+  isMatchingMetagameEventName,
   isMetagameFormat,
   isMetagameWindowDays,
   type MetagameArchetype,
@@ -338,7 +339,7 @@ async function fetchRecentIndexEvents(format: MetagameFormat, windowDays: Metaga
 
     if (
       timestamp >= cutoff &&
-      name.toLowerCase().includes(format.toLowerCase()) &&
+      isMatchingMetagameEventName(name, format) &&
       eventNamePattern.test(name) &&
       !/league/i.test(name)
     ) {

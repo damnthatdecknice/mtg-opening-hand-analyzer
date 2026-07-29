@@ -62,3 +62,7 @@ export function isMetagameFormat(value: string | null): value is MetagameFormat 
 export function isMetagameWindowDays(value: number): value is MetagameWindowDays {
   return metagameWindowOptions.includes(value as MetagameWindowDays);
 }
+
+export function isMatchingMetagameEventName(name: string, format: MetagameFormat) {
+  return new RegExp(`(^|[^a-z])${format.toLowerCase()}([^a-z]|$)`, "i").test(name);
+}
