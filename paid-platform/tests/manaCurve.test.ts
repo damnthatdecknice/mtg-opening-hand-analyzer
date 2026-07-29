@@ -121,7 +121,14 @@ const postureCards = data([
   card("March of Otherworldly Light", 1, "Instant", ["W"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Exile target artifact, creature, or enchantment."),
   card("Llanowar Elves", 1, "Creature - Elf Druid", ["G"], { modern: "legal", pioneer: "legal", standard: "legal" }, "{T}: Add {G}."),
   card("Paradise Druid", 2, "Creature - Elf Druid", ["G"], { modern: "legal", pioneer: "legal", standard: "legal" }, "{T}: Add one mana of any color."),
-  card("Cultivate", 3, "Sorcery", ["G"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Search your library for up to two basic land cards."),
+  card(
+    "Cultivate",
+    3,
+    "Sorcery",
+    ["G"],
+    { modern: "legal", pioneer: "legal", standard: "legal" },
+    "Search your library for up to two basic land cards, put one onto the battlefield tapped, and the other into your hand."
+  ),
   card("Titan of Industry", 7, "Creature - Elemental", ["G"]),
   card("Ugin, the Spirit Dragon", 8, "Legendary Planeswalker - Ugin", []),
   card("Rampaging Baloths", 6, "Creature - Beast", ["G"]),
@@ -134,6 +141,8 @@ const postureCards = data([
   card("Flusterstorm", 1, "Instant", ["U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Counter target instant or sorcery spell unless its controller pays {1}."),
   card("Addendum Lesson", 2, "Instant", ["W"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Addendum - If you cast this spell during your main phase, draw a card."),
   card("Sacrifice Outlet", 2, "Creature - Vampire", ["B"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Sacrifice another creature: Scry 1."),
+  card("Value Trigger", 2, "Creature - Wizard", ["U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Whenever you cast your second spell each turn, draw a card."),
+  card("Huge Vanilla", 8, "Creature - Giant", ["G"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Vigilance."),
   card("Temple Garden", 0, "Land - Forest Plains"),
   card("Forest", 0, "Basic Land - Forest"),
   card("Island", 0, "Basic Land - Island"),
@@ -472,6 +481,45 @@ const rampPosture = buildManaCurveAnalysis(
 );
 assert.equal(rampPosture.posture.posture, "ramp", "ramp plus expensive payoffs classifies as ramp");
 
+function rampPayoffDeck(payoffCount: number) {
+  const payoffRows = [
+    ["Titan of Industry", Math.min(4, payoffCount)],
+    ["Ugin, the Spirit Dragon", Math.min(4, Math.max(0, payoffCount - 4))],
+    ["Rampaging Baloths", Math.min(4, Math.max(0, payoffCount - 8))],
+    ["Griselbrand", Math.min(4, Math.max(0, payoffCount - 12))]
+  ].filter((row): row is [string, number] => typeof row[0] === "string" && typeof row[1] === "number" && row[1] > 0);
+  const landCount = 60 - 8 - payoffCount;
+  return [
+    "Deck",
+    "4 Llanowar Elves",
+    "4 Cultivate",
+    ...payoffRows.map(([cardName, qty]) => `${qty} ${cardName}`),
+    `${landCount} Forest`
+  ].join("\n");
+}
+
+for (const [payoffCount, expectedTitle] of [
+  [3, "Ramp payoff density may be low"],
+  [4, ""],
+  [6, ""],
+  [12, ""],
+  [13, "Top end may be heavy"]
+] as const) {
+  const analysis = buildManaCurveAnalysis(rampPayoffDeck(payoffCount), postureCards, { format: "Modern" });
+  assert.equal(analysis.posture.posture, "ramp", `${payoffCount} payoff ramp fixture classifies as ramp`);
+  const payoffWarnings = analysis.observations.filter((row) =>
+    row.title === "Ramp payoff density may be low" || row.title === "Top end may be heavy"
+  );
+  if (expectedTitle) {
+    assert.ok(
+      payoffWarnings.some((row) => row.title === expectedTitle),
+      `${payoffCount} ramp payoff(s) emits ${expectedTitle}`
+    );
+  } else {
+    assert.equal(payoffWarnings.length, 0, `${payoffCount} ramp payoff(s) is inside the expected payoff range`);
+  }
+}
+
 const comboPosture = buildManaCurveAnalysis(
   `Deck
 4 Reanimate
@@ -504,6 +552,54 @@ const mixedPosture = buildManaCurveAnalysis(
 );
 assert.equal(mixedPosture.posture.posture, "unknown", "mixed sparse inputs do not force a posture");
 
+const mainOnlyWithWarnings = buildManaCurveAnalysis(
+  `Deck
+4 Savannah Cub
+4 Swift Scout
+4 Kird Ape
+4 Raging Goblin
+4 Kumano Faces Kakkazan
+4 Play with Fire
+4 Shock
+4 Lightning Strike
+16 Mountain
+12 Forest
+
+Sideboard
+4 Titan of Industry
+4 Ugin, the Spirit Dragon
+4 Rampaging Baloths
+3 Supreme Verdict`,
+  postureCards,
+  { format: "Pioneer", scope: "main" }
+);
+const mainPlusSideboardWithWarnings = buildManaCurveAnalysis(
+  `Deck
+4 Savannah Cub
+4 Swift Scout
+4 Kird Ape
+4 Raging Goblin
+4 Kumano Faces Kakkazan
+4 Play with Fire
+4 Shock
+4 Lightning Strike
+16 Mountain
+12 Forest
+
+Sideboard
+4 Titan of Industry
+4 Ugin, the Spirit Dragon
+4 Rampaging Baloths
+3 Supreme Verdict`,
+  postureCards,
+  { format: "Pioneer", scope: "main+sideboard" }
+);
+assert.deepEqual(
+  mainPlusSideboardWithWarnings.observations.map((row) => row.code),
+  mainOnlyWithWarnings.observations.map((row) => row.code),
+  "including the sideboard in display scope does not change main-deck posture warnings"
+);
+
 const sideboardOnlyObservations = buildManaCurveAnalysis(
   `Deck
 4 Savannah Cub
@@ -524,6 +620,8 @@ assert.equal(sideboardOnlyObservations.observations[0]?.title, "Sideboard scope 
 
 assert.ok(!detectFunctionalRoles(postureCards.get("addendum lesson")).includes("ramp"), "the word addendum is not treated as ramp");
 assert.ok(!detectFunctionalRoles(postureCards.get("sacrifice outlet")).includes("combo_enabler"), "sacrifice text alone is not treated as combo");
+assert.ok(!detectFunctionalRoles(postureCards.get("value trigger")).includes("combo_enabler"), "generic triggered card advantage is not treated as combo");
+assert.ok(!detectFunctionalRoles(postureCards.get("huge vanilla")).includes("combo_payoff"), "high mana value alone is not treated as combo payoff");
 assert.ok(detectFunctionalRoles(postureCards.get("llanowar elves")).includes("ramp"), "explicit mana production is ramp");
 
 console.log("manaCurve tests passed");

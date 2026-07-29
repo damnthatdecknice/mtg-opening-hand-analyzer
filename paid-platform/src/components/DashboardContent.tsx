@@ -21,10 +21,12 @@ import {
   type GuestDeck
 } from "@/lib/guestDeck";
 import { parseDecklist } from "@/lib/deckParser";
+import { selectRecentDashboardDeck } from "@/lib/dashboard";
 import { supabase } from "@/lib/supabase";
 
 export function DashboardContent() {
   const [deckCount, setDeckCount] = useState<number | null>(null);
+  const [recentDeck, setRecentDeck] = useState<{ id: string; name: string } | null>(null);
   const [loadError, setLoadError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [guestDeck, setGuestDeck] = useState<GuestDeck | null>(null);
@@ -51,18 +53,32 @@ export function DashboardContent() {
         return;
       }
 
-      const { count, error } = await supabase
+      const { data: deckRows, error } = await supabase
         .from("decks")
-        .select("id", { count: "exact", head: true })
+        .select("id,name,updated_at")
         .eq("user_id", userId)
-        .eq("is_archived", false);
+        .eq("is_archived", false)
+        .order("updated_at", { ascending: false });
 
       if (error) {
         setLoadError(error.message);
         return;
       }
 
-      setDeckCount(count ?? 0);
+      const decks = (deckRows ?? []) as Array<{ id: string; name: string; updated_at: string }>;
+      const { data: recentSession } = await supabase
+        .from("hand_sessions")
+        .select("deck_id")
+        .eq("user_id", userId)
+        .not("deck_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const recentSessionDeckId = typeof recentSession?.deck_id === "string" ? recentSession.deck_id : "";
+      const nextRecentDeck = selectRecentDashboardDeck(decks, recentSessionDeckId);
+
+      setRecentDeck(nextRecentDeck ? { id: nextRecentDeck.id, name: nextRecentDeck.name } : null);
+      setDeckCount(decks.length);
   }, []);
 
   useEffect(() => {
@@ -203,7 +219,7 @@ export function DashboardContent() {
             ? "Import a Magic Online .dek or paste a decklist, then analyze your first opening hand."
             : "Tools for opening-hand analysis, deck management, and metagame preparation."}
         </p>
-        {deckCount && deckCount > 0 ? <DashboardActions /> : null}
+        {deckCount && deckCount > 0 ? <DashboardActions recentDeck={recentDeck} /> : null}
       </header>
     );
   }

@@ -297,7 +297,7 @@ const constructedRanges: Record<DeckPosture, Partial<Record<StructureMetricKey, 
     rampCount: { min: 6, label: "ramp pieces" },
     landCount: { min: 24, max: 30, label: "lands" },
     expensiveSpells: { min: 5, max: 14, label: "payoffs and top-end spells" },
-    rampPayoffs: { min: 3, max: 12, label: "ramp payoffs" },
+    rampPayoffs: { min: 4, max: 12, label: "ramp payoffs" },
     finishers: { min: 3, label: "finishers" },
     earlyPlays: { min: 8, label: "early setup" },
     oneOfCards: { max: 10, label: "isolated one-ofs" }
@@ -821,11 +821,11 @@ export function detectFunctionalRoles(card: ManaCurveCardData | undefined): Func
     roles.add("protection");
   }
   if (
-    /\badd \{?[wubrgc]\}?|\badd one mana|\badd two mana|\badd \d+ mana|\btreasure token|\bsearch your library for (a basic land|a land card)|\bput .* land .* battlefield|\byou may play an additional land/i.test(text)
+    /\badd \{?[wubrgc]\}?|\badd one mana|\badd two mana|\badd \d+ mana|\btreasure token|\bsearch your library for .*basic land|\bsearch your library for .*land card|\bput .* land .* battlefield|\byou may play an additional land/i.test(text)
   ) {
     roles.add("ramp");
   }
-  if (/\bsearch your library for (a card|an? .* card)|\btutor\b|\bwish\b/i.test(text) && !/\bsearch your library for (a basic land|a land card)/i.test(text)) {
+  if (/\bsearch your library for (a card|an? .* card)|\btutor\b|\bwish\b/i.test(text) && !/\bsearch your library for .*basic land|\bsearch your library for .*land card/i.test(text)) {
     roles.add("tutor");
   }
   if (/\bdestroy all\b|\bexile all\b|\beach creature\b|\ball creatures\b|\bcreatures get -\d\/-\d until end of turn\b/i.test(text)) {
@@ -838,11 +838,11 @@ export function detectFunctionalRoles(card: ManaCurveCardData | undefined): Func
     roles.add("artifact_enchantment_interaction");
   }
   if (
-    /\bcombo\b|\bcopy target spell\b|\bwhenever you cast\b|\bwhenever you draw\b|\bwhenever you sacrifice\b|\bwhenever .* dies\b|\bcast from your graveyard\b|\breturn target creature card from .* graveyard\b|\bput that card into your graveyard\b/i.test(text)
+    /\bcombo\b|\bcopy target spell\b|\bcast from your graveyard\b|\breturn target creature card from .* graveyard to the battlefield\b|\bput that card into your graveyard\b|\bsearch your library for a card and put that card into your graveyard\b|\benchant creature card in a graveyard\. return that card\b|\bwhenever you cast .* copy\b|\bwhenever you sacrifice .* (draw|create|return|add|untap)\b/i.test(text)
   ) {
     roles.add("combo_enabler");
   }
-  if (/\bwin the game\b|\byou may cast .* without paying|\bfor each\b.*\bcreate\b|\bwhenever .* you win\b|\bgets \+x\/\+x\b/i.test(text) || mv >= 6) {
+  if (/\bwin the game\b|\byou may cast .* without paying|\bfor each\b.*\bcreate\b|\bwhenever .* you win\b|\bgets \+x\/\+x\b/i.test(text)) {
     roles.add("combo_payoff");
   }
   if (!roles.size && (type === "artifacts" || type === "enchantments" || type === "battles")) {
@@ -1259,7 +1259,7 @@ function buildObservations(
   }
 
   const postureRanges = constructedRanges[posture.posture] ?? constructedRanges.unknown;
-  const totalCards = analysisCards.reduce((total, card) => total + card.qty, 0);
+  const totalCards = mainCards.reduce((total, card) => total + card.qty, 0);
   const postureName = posture.posture === "unknown" ? "mixed/unknown" : posture.posture;
   const observationCodeForRange = (key: StructureMetricKey, below: boolean): ManaCurveObservationCode => {
     if (key === "oneManaPlays") return "LOW_ONE_MANA_PLAYS";
@@ -1278,7 +1278,13 @@ function buildObservations(
     return "NO_MAJOR_WARNING";
   };
 
-  const addRangeObservation = (key: StructureMetricKey, title: string, lowDetail: string, highDetail?: string) => {
+  const addRangeObservation = (
+    key: StructureMetricKey,
+    title: string,
+    lowDetail: string,
+    highDetail?: string,
+    highTitle?: string
+  ) => {
     const rawRange = postureRanges[key];
     if (!rawRange) {
       return;
@@ -1299,7 +1305,7 @@ function buildObservations(
     observations.push({
       code: observationCodeForRange(key, below),
       tone: below || key === "expensiveSpells" || key === "oneOfCards" || key === "landCount" ? "bad" : "neutral",
-      title,
+      title: below ? title : highTitle ?? title,
       detail: below ? lowDetail : highDetail ?? lowDetail,
       measuredValue: value,
       expectedRange: { min: range.min, max: range.max },
@@ -1346,13 +1352,15 @@ function buildObservations(
     "rampPayoffs",
     "Ramp payoff density may be low",
     `This looks like a ramp deck, but only ${metrics.rampPayoffs} meaningful payoff card(s) were detected. Ramp-heavy hands may not convert extra mana into pressure or advantage.`,
-    `${metrics.rampPayoffs} payoff card(s) were detected. The top end may be crowded for the amount of ramp and card flow available.`
+    `${metrics.rampPayoffs} payoff card(s) were detected. The top end may be crowded for the amount of ramp and card flow available.`,
+    "Top end may be heavy"
   );
   addRangeObservation(
     "expensiveSpells",
-    "Top end may be heavy",
+    "Top end may be light",
+    `${metrics.expensiveSpells} spell card(s) cost five or more. For this posture, the deck may be light on late-game payoffs.`,
     `${metrics.expensiveSpells} spell card(s) cost five or more. For this posture, that can increase stranded-card risk in opening hands.`,
-    `${metrics.expensiveSpells} spell card(s) cost five or more. For this posture, that can increase stranded-card risk in opening hands.`
+    "Top end may be heavy"
   );
   addRangeObservation(
     "finishers",

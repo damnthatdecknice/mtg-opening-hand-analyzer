@@ -5,34 +5,18 @@ import Link from "next/link";
 import { inferDeckName, parseDecklist, parseDekImport, type DeckImportMetadata } from "@/lib/deckParser";
 import type { DeckInsert, DeckVersion, SavedDeck } from "@/lib/decks";
 import { saveDeckForCurrentUser } from "@/lib/deckStorage";
+import { diffDecklistsBySection } from "@/lib/deckVersionDiff";
 import { deckFormatOptions } from "@/lib/formats";
 import { fetchCardData } from "@/lib/analyzer";
 import {
   gateDeckVerification,
+  onboardingExampleDeck,
   verifyDeckForSaving,
   type OnboardingDeckReview,
   type OnboardingValidationStatus
 } from "@/lib/firstDeckOnboarding";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
-
-const defaultDecklist = `Deck
-4 Monastery Swiftspear
-4 Lightning Strike
-4 Play with Fire
-4 Phoenix Chick
-4 Kumano Faces Kakkazan
-4 Charming Scoundrel
-4 Imodane's Recruiter
-4 Warden of the Inner Sky
-4 Inspiring Vantage
-4 Battlefield Forge
-12 Mountain
-8 Plains
-
-Sideboard
-3 Destroy Evil
-2 Lithomantic Barrage`;
 
 type ExportFormat = "arena" | "mtgo" | "plain" | "moxfield";
 
@@ -60,28 +44,12 @@ function exportDecklist(decklist: string, format: ExportFormat) {
   return [`Deck\n${main}`, sideboard ? `Sideboard\n${sideboard}` : ""].filter(Boolean).join("\n\n");
 }
 
-function diffDecklists(oldDecklist: string, newDecklist: string) {
-  const oldCards = parseDecklist(oldDecklist).cards;
-  const newCards = parseDecklist(newDecklist).cards;
-  const oldCounts = new Map(oldCards.map((card) => [`${card.section}:${card.name}`, card.qty]));
-  const newCounts = new Map(newCards.map((card) => [`${card.section}:${card.name}`, card.qty]));
-  return Array.from(new Set([...Array.from(oldCounts.keys()), ...Array.from(newCounts.keys())]))
-    .map((key) => {
-      const [, name] = key.split(":");
-      const oldQty = oldCounts.get(key) ?? 0;
-      const newQty = newCounts.get(key) ?? 0;
-      return { name, oldQty, newQty, delta: newQty - oldQty };
-    })
-    .filter((row) => row.delta !== 0)
-    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.name.localeCompare(b.name));
-}
-
 export function DeckLibrary() {
   const entitlements = useEntitlements();
   const [decks, setDecks] = useState<SavedDeck[]>([]);
   const [name, setName] = useState("");
   const [format, setFormat] = useState("Standard");
-  const [decklist, setDecklist] = useState(defaultDecklist);
+  const [decklist, setDecklist] = useState("");
   const [importMetadata, setImportMetadata] = useState<DeckImportMetadata | undefined>();
   const [editingDeck, setEditingDeck] = useState<SavedDeck | null>(null);
   const [versions, setVersions] = useState<DeckVersion[]>([]);
@@ -102,7 +70,7 @@ export function DeckLibrary() {
   const activeDecks = decks.filter((deck) => !deck.is_archived);
   const visibleDecks = decks.filter((deck) => showArchived || !deck.is_archived);
   const selectedVersion = versions.find((version) => version.id === selectedVersionId) ?? versions[0];
-  const versionDiff = selectedVersion ? diffDecklists(selectedVersion.decklist, decklist).slice(0, 12) : [];
+  const versionDiff = selectedVersion ? diffDecklistsBySection(selectedVersion.decklist, decklist).slice(0, 12) : [];
 
   useEffect(() => {
     if (entitlements.canUseDeckVault) {
@@ -234,8 +202,21 @@ export function DeckLibrary() {
     setVersions([]);
     setSelectedVersionId("");
     setName("");
+    setFormat("Standard");
+    setDecklist("");
     setImportMetadata(undefined);
     setMessage("");
+  }
+
+  function loadExampleDeck() {
+    setEditingDeck(null);
+    setVersions([]);
+    setSelectedVersionId("");
+    setName("Monastery Swiftspear Deck");
+    setFormat("Standard");
+    setDecklist(onboardingExampleDeck);
+    setImportMetadata(undefined);
+    setMessage("Example deck loaded. Review it, then save only if you want this sample in your vault.");
   }
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
@@ -284,26 +265,14 @@ export function DeckLibrary() {
     setIsBusy(true);
     let error;
     if (editingDeck) {
-      const previousVersionNumber = versions[0]?.version_number ?? 0;
-      const versionResult = await supabase.from("deck_versions").insert({
-        deck_id: editingDeck.id,
-        user_id: userData.user.id,
-        version_number: previousVersionNumber + 1,
-        name: editingDeck.name,
-        format: editingDeck.format,
-        decklist: editingDeck.decklist,
-        sideboard: editingDeck.sideboard,
-        parsed_json: editingDeck.parsed_json
+      const updateResult = await supabase.rpc("update_deck_with_version", {
+        p_deck_id: editingDeck.id,
+        p_name: deck.name,
+        p_format: deck.format,
+        p_decklist: deck.decklist,
+        p_sideboard: deck.sideboard,
+        p_parsed_json: deck.parsed_json
       });
-      if (versionResult.error) {
-        setIsBusy(false);
-        setMessage(`Could not create deck version history: ${versionResult.error.message}`);
-        return;
-      }
-      const updateResult = await supabase
-        .from("decks")
-        .update({ ...deck, updated_at: new Date().toISOString() })
-        .eq("id", editingDeck.id);
       error = updateResult.error;
     } else {
       const insertResult = await saveDeckForCurrentUser({
@@ -325,6 +294,8 @@ export function DeckLibrary() {
     setEditingDeck(null);
     setVersions([]);
     setSelectedVersionId("");
+    setDecklist("");
+    setImportMetadata(undefined);
     setMessage(editingDeck ? "Deck updated. Previous 75 saved to version history." : "Deck saved.");
     await loadDecks();
   }
@@ -414,6 +385,11 @@ export function DeckLibrary() {
               </button>
             </div>
           ) : null}
+          {!editingDeck ? (
+            <button className="secondary-button" onClick={loadExampleDeck} type="button">
+              Load Example Deck
+            </button>
+          ) : null}
         </div>
 
         <form className="deck-form" onSubmit={handleSave}>
@@ -480,7 +456,7 @@ export function DeckLibrary() {
               ) : null}
               <span>{verificationStatus === "checking" ? "checking" : verificationStatus.replace("-", " ")}</span>
             </div>
-            <button className="primary-button" disabled={isBusy || verificationStatus === "checking"} type="submit">
+            <button className="primary-button" disabled={isBusy || verificationStatus === "checking" || parsed.mainCount === 0} type="submit">
               {isBusy ? "Saving..." : verificationStatus === "checking" ? "Checking..." : editingDeck ? "Save new version" : "Save deck"}
             </button>
           </div>
@@ -542,6 +518,7 @@ export function DeckLibrary() {
                   <table className="data-table">
                     <thead>
                       <tr>
+                        <th>Section</th>
                         <th>Card</th>
                         <th>Old</th>
                         <th>New</th>
@@ -550,7 +527,8 @@ export function DeckLibrary() {
                     </thead>
                     <tbody>
                       {versionDiff.map((row) => (
-                        <tr key={row.name}>
+                        <tr key={row.key}>
+                          <td>{row.section === "main" ? "Main" : "Sideboard"}</td>
                           <td>{row.name}</td>
                           <td>{row.oldQty}</td>
                           <td>{row.newQty}</td>
