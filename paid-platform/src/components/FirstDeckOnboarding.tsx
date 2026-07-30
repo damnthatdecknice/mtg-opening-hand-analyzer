@@ -8,7 +8,7 @@ import {
   parseDekImport,
   type DeckImportMetadata
 } from "@/lib/deckParser";
-import { fetchCardData } from "@/lib/analyzer";
+import { fetchCardData, type CardDataProgress } from "@/lib/analyzer";
 import { deckFormatOptions } from "@/lib/formats";
 import {
   buildDeckFingerprint,
@@ -52,6 +52,7 @@ export function FirstDeckOnboarding({
   const [isBusy, setIsBusy] = useState(false);
   const [verification, setVerification] = useState<OnboardingDeckReview | null>(null);
   const [validationStatus, setValidationStatus] = useState<OnboardingValidationStatus>("empty");
+  const [validationProgress, setValidationProgress] = useState<CardDataProgress | null>(null);
   const [acknowledgedWarnings, setAcknowledgedWarnings] = useState(false);
   const [verificationRetry, setVerificationRetry] = useState(0);
 
@@ -87,30 +88,50 @@ export function FirstDeckOnboarding({
     if (localReview.status === "empty" || localReview.status === "unparseable") {
       setVerification(localReview);
       setValidationStatus(localReview.status);
+      setValidationProgress(null);
       return;
     }
 
     setValidationStatus("checking");
+    setValidationProgress({ completed: 0, total: localReview.uniqueCount, percent: 0 });
     setVerification({
       ...localReview,
       status: "checking",
-      messages: ["Checking card names, deck construction, and available format legality..."]
+      messages: ["Loading card data 0%..."]
     });
 
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
-      verifyDeckForOnboarding(decklist, format, fetchCardData, controller.signal, { retryFailures: verificationRetry > 0 })
+      verifyDeckForOnboarding(decklist, format, fetchCardData, controller.signal, {
+        onProgress: (progress) => {
+          if (controller.signal.aborted) {
+            return;
+          }
+          setValidationProgress(progress);
+          setVerification((current) =>
+            current?.status === "checking"
+              ? {
+                  ...current,
+                  messages: [`Loading card data ${progress.percent}%...`]
+                }
+              : current
+          );
+        },
+        retryFailures: verificationRetry > 0
+      })
         .then((result) => {
           if (controller.signal.aborted) {
             return;
           }
           setVerification(result);
           setValidationStatus(result.status);
+          setValidationProgress(null);
         })
         .catch((error) => {
           if (error instanceof DOMException && error.name === "AbortError") {
             return;
           }
+          setValidationProgress(null);
           setVerification({
             ...localReview,
             status: "lookup-error",
@@ -370,7 +391,11 @@ export function FirstDeckOnboarding({
           <span>{review.sideboardCount} sideboard</span>
           <span>{review.uniqueCount} unique cards</span>
           <span>{importMetadata?.source === "mtgo_dek" ? ".dek import" : "decklist"}</span>
-          <span>{validationStatus === "checking" ? "checking" : validationStatus.replace("-", " ")}</span>
+          <span>
+            {validationStatus === "checking"
+              ? `loading ${validationProgress?.percent ?? 0}%`
+              : validationStatus.replace("-", " ")}
+          </span>
         </div>
 
         <ValidationIssueList issues={review.issues} messages={review.messages} />

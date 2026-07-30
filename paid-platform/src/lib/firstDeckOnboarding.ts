@@ -2,6 +2,7 @@ import { inferDeckName, parseDecklist, type ParsedDeck } from "./deckParser";
 import { validateDeckConstruction, type DeckValidationIssue } from "./deckValidation";
 import { normalizeFormat } from "./formats";
 import type { ManaCurveCardData } from "./manaCurve";
+import type { CardDataProgress } from "./analyzer";
 
 export type OnboardingValidationStatus =
   | "empty"
@@ -27,7 +28,7 @@ export type OnboardingDeckReview = {
 
 export type OnboardingCardDataFetcher = (
   cardNames: string[],
-  options?: { signal?: AbortSignal; retryFailures?: boolean }
+  options?: { onProgress?: (progress: CardDataProgress) => void; signal?: AbortSignal; retryFailures?: boolean }
 ) => Promise<{ lookups: Map<string, ManaCurveCardData>; failures: string[] }>;
 
 export type DeckVerificationGate = {
@@ -216,7 +217,7 @@ export async function verifyDeckForSaving(
   format: string,
   fetchCardData: OnboardingCardDataFetcher,
   signal?: AbortSignal,
-  options: { retryFailures?: boolean } = {}
+  options: { onProgress?: (progress: CardDataProgress) => void; retryFailures?: boolean } = {}
 ): Promise<OnboardingDeckReview> {
   const parsed = parseDecklist(decklist);
   if (!decklist.trim()) {
@@ -230,6 +231,7 @@ export async function verifyDeckForSaving(
 
   try {
     const { lookups, failures } = await fetchCardData(names, {
+      onProgress: options.onProgress,
       signal,
       retryFailures: options.retryFailures
     });

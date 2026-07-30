@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { fetchCardData, type CardLookup } from "@/lib/analyzer";
+import { fetchCardData, type CardDataProgress, type CardLookup } from "@/lib/analyzer";
 import { parseDecklist } from "@/lib/deckParser";
 import type { SavedDeck } from "@/lib/decks";
 import { deckFormatOptions } from "@/lib/formats";
@@ -68,6 +68,7 @@ export function ManaCurveDashboard() {
   const [isLoadingCards, setIsLoadingCards] = useState(false);
   const [message, setMessage] = useState("");
   const [lookupFailureCount, setLookupFailureCount] = useState(0);
+  const [lookupProgress, setLookupProgress] = useState<CardDataProgress | null>(null);
   const [lastAnalyzedAt, setLastAnalyzedAt] = useState("");
   const [lookupRetryNonce, setLookupRetryNonce] = useState(0);
   const cardLookupCache = useRef(new Map<string, CardLookup>());
@@ -158,9 +159,11 @@ export function ManaCurveDashboard() {
       if (!activeDecklist.trim()) {
         setCardData(new Map());
         setLookupFailureCount(0);
+        setLookupProgress(null);
         return;
       }
       setIsLoadingCards(true);
+      setLookupProgress({ completed: 0, total: 0, percent: 0 });
       setMessage("");
       const parsed = parseDecklist(activeDecklist);
       const deckNames = parsed.cards.map((card) => card.name);
@@ -168,7 +171,14 @@ export function ManaCurveDashboard() {
       const names = Array.from(new Set([...deckNames, ...candidateNames].map((name) => name.trim()).filter(Boolean)));
       const missingNames = names.filter((name) => !cardLookupCache.current.has(name.toLowerCase()));
       const fetched = missingNames.length
-        ? await fetchCardData(missingNames, { retryFailures: lookupRetryNonce > 0 })
+        ? await fetchCardData(missingNames, {
+            onProgress: (progress) => {
+              if (isActive) {
+                setLookupProgress(progress);
+              }
+            },
+            retryFailures: lookupRetryNonce > 0
+          })
         : { lookups: new Map<string, CardLookup>(), failures: [] };
       if (!isActive) {
         return;
@@ -186,6 +196,7 @@ export function ManaCurveDashboard() {
       setCardData(nextLookups);
       setLookupFailureCount(fetched.failures.length);
       setMessage(fetched.failures.length ? `Some card data could not load: ${fetched.failures.slice(0, 3).join(", ")}` : "");
+      setLookupProgress(null);
       setIsLoadingCards(false);
     }
 
@@ -318,7 +329,7 @@ export function ManaCurveDashboard() {
           Retry card lookups
         </button>
       ) : null}
-      {isLoadingCards ? <p className="muted-copy">Loading Scryfall card data...</p> : null}
+      {isLoadingCards ? <p className="muted-copy">Loading card data {lookupProgress?.percent ?? 0}%...</p> : null}
 
       {analysis ? (
         <>

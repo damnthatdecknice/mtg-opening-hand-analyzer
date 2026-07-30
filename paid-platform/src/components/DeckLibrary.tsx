@@ -7,7 +7,7 @@ import type { DeckInsert, DeckVersion, SavedDeck } from "@/lib/decks";
 import { saveDeckForCurrentUser } from "@/lib/deckStorage";
 import { diffDecklistsBySection } from "@/lib/deckVersionDiff";
 import { deckFormatOptions } from "@/lib/formats";
-import { fetchCardData } from "@/lib/analyzer";
+import { fetchCardData, type CardDataProgress } from "@/lib/analyzer";
 import {
   buildDeckFingerprint,
   buildOnboardingReview,
@@ -62,6 +62,7 @@ export function DeckLibrary() {
   const [isBusy, setIsBusy] = useState(false);
   const [verification, setVerification] = useState<OnboardingDeckReview | null>(null);
   const [verificationStatus, setVerificationStatus] = useState<OnboardingValidationStatus>("checking");
+  const [verificationProgress, setVerificationProgress] = useState<CardDataProgress | null>(null);
   const [acknowledgedWarnings, setAcknowledgedWarnings] = useState(false);
   const [verificationRetry, setVerificationRetry] = useState(0);
   const [showAllVersionDiff, setShowAllVersionDiff] = useState(false);
@@ -90,34 +91,54 @@ export function DeckLibrary() {
     if (localReview.status === "empty" || localReview.status === "unparseable") {
       setVerification(localReview);
       setVerificationStatus(localReview.status);
+      setVerificationProgress(null);
       return;
     }
 
     setVerificationStatus("checking");
+    setVerificationProgress({ completed: 0, total: localReview.uniqueCount, percent: 0 });
     setVerification({
       suggestedName: inferDeckName(decklist),
       mainCount: parsed.mainCount,
       sideboardCount: parsed.sideboardCount,
       uniqueCount: localReview.uniqueCount,
       status: "checking",
-      messages: ["Checking card names, deck construction, and available format legality..."],
+      messages: ["Loading card data 0%..."],
       issues: []
     });
 
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
-      verifyDeckForSaving(decklist, format, fetchCardData, controller.signal, { retryFailures: verificationRetry > 0 })
+      verifyDeckForSaving(decklist, format, fetchCardData, controller.signal, {
+        onProgress: (progress) => {
+          if (controller.signal.aborted) {
+            return;
+          }
+          setVerificationProgress(progress);
+          setVerification((current) =>
+            current?.status === "checking"
+              ? {
+                  ...current,
+                  messages: [`Loading card data ${progress.percent}%...`]
+                }
+              : current
+          );
+        },
+        retryFailures: verificationRetry > 0
+      })
         .then((result) => {
           if (controller.signal.aborted) {
             return;
           }
           setVerification(result);
           setVerificationStatus(result.status);
+          setVerificationProgress(null);
         })
         .catch((error) => {
           if (error instanceof DOMException && error.name === "AbortError") {
             return;
           }
+          setVerificationProgress(null);
           setVerification({
             suggestedName: inferDeckName(decklist),
             mainCount: parsed.mainCount,
@@ -465,7 +486,11 @@ export function DeckLibrary() {
               {importMetadata?.source === "mtgo_dek" ? (
                 <span>.dek import ready</span>
               ) : null}
-              <span>{verificationStatus === "checking" ? "checking" : verificationStatus.replace("-", " ")}</span>
+              <span>
+                {verificationStatus === "checking"
+                  ? `loading ${verificationProgress?.percent ?? 0}%`
+                  : verificationStatus.replace("-", " ")}
+              </span>
             </div>
             <button className="primary-button" disabled={isBusy || verificationStatus === "checking" || parsed.mainCount === 0} type="submit">
               {isBusy ? "Saving..." : verificationStatus === "checking" ? "Checking..." : editingDeck ? "Save new version" : "Save deck"}

@@ -617,7 +617,7 @@ function landProduces(card: ManaCurveCardData | undefined): { colors: Set<ManaCo
   const producedMana = colorsFromProducedMana(card);
   if (producedMana.length) {
     producedMana.forEach((color) => colors.add(color));
-    return { colors, confidence: "high", reason: "Scryfall produced_mana" };
+    return { colors, confidence: "high", reason: "card database source data" };
   }
   const typeColors = colorsFromLandTypes(card);
   if (typeColors.length) {
@@ -699,7 +699,7 @@ function buildManaSources(cards: ParsedDeckCard[], cardData: Map<string, ManaCur
         ? "Some lands have unknown production; source totals may be incomplete."
         : approximateSourceCount
           ? "Conditional lands are estimated conservatively and not fully sequenced."
-          : "Scryfall produced_mana or land subtypes supplied source colors."
+          : "Card database source data or land subtypes supplied source colors."
     }))
   };
 }

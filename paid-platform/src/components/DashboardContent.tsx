@@ -5,7 +5,7 @@ import { DashboardMetagameSnapshot } from "@/components/DashboardMetagameSnapsho
 import { DashboardOverview } from "@/components/DashboardOverview";
 import { DeckSummary } from "@/components/DeckSummary";
 import { FirstDeckOnboarding } from "@/components/FirstDeckOnboarding";
-import { fetchCardData } from "@/lib/analyzer";
+import { fetchCardData, type CardDataProgress } from "@/lib/analyzer";
 import { saveDeckForCurrentUser } from "@/lib/deckStorage";
 import {
   buildDeckFingerprint,
@@ -36,6 +36,7 @@ export function DashboardContent() {
   const [isMigratingGuestDeck, setIsMigratingGuestDeck] = useState(false);
   const [guestVerification, setGuestVerification] = useState<OnboardingDeckReview | null>(null);
   const [guestVerificationStatus, setGuestVerificationStatus] = useState<OnboardingValidationStatus>("empty");
+  const [guestVerificationProgress, setGuestVerificationProgress] = useState<CardDataProgress | null>(null);
   const [acknowledgedGuestWarnings, setAcknowledgedGuestWarnings] = useState(false);
   const [guestVerificationRetry, setGuestVerificationRetry] = useState(0);
   const conversionRef = useRef<HTMLElement | null>(null);
@@ -97,6 +98,7 @@ export function DashboardContent() {
     if (!guestDeck) {
       setGuestVerification(null);
       setGuestVerificationStatus("empty");
+      setGuestVerificationProgress(null);
       return;
     }
     window.requestAnimationFrame(() => conversionRef.current?.focus());
@@ -107,33 +109,53 @@ export function DashboardContent() {
     if (!guestDeck) {
       setGuestVerification(null);
       setGuestVerificationStatus("empty");
+      setGuestVerificationProgress(null);
       return;
     }
 
     setGuestVerificationStatus("checking");
+    setGuestVerificationProgress({ completed: 0, total: parseDecklist(guestDeck.decklist).cards.length, percent: 0 });
     setGuestVerification({
       suggestedName: guestDeck.name,
       mainCount: guestDeck.parsedMainCount,
       sideboardCount: guestDeck.parsedSideboardCount,
       uniqueCount: parseDecklist(guestDeck.decklist).cards.length,
       status: "checking",
-      messages: ["Checking this deck again before it is attached to your account."],
+      messages: ["Loading card data 0%..."],
       issues: []
     });
 
     const controller = new AbortController();
-    verifyDeckForSaving(guestDeck.decklist, guestDeck.format, fetchCardData, controller.signal, { retryFailures: guestVerificationRetry > 0 })
+    verifyDeckForSaving(guestDeck.decklist, guestDeck.format, fetchCardData, controller.signal, {
+      onProgress: (progress) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setGuestVerificationProgress(progress);
+        setGuestVerification((current) =>
+          current?.status === "checking"
+            ? {
+                ...current,
+                messages: [`Loading card data ${progress.percent}%...`]
+              }
+            : current
+        );
+      },
+      retryFailures: guestVerificationRetry > 0
+    })
       .then((result) => {
         if (controller.signal.aborted) {
           return;
         }
         setGuestVerification(result);
         setGuestVerificationStatus(result.status);
+        setGuestVerificationProgress(null);
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
+        setGuestVerificationProgress(null);
         setGuestVerification({
           suggestedName: guestDeck.name,
           mainCount: guestDeck.parsedMainCount,
@@ -273,7 +295,11 @@ export function DashboardContent() {
               <em>Import source</em>
             </span>
             <span>
-              <strong>{guestVerificationStatus === "checking" ? "Checking" : guestVerificationStatus.replace("-", " ")}</strong>
+              <strong>
+                {guestVerificationStatus === "checking"
+                  ? `Loading ${guestVerificationProgress?.percent ?? 0}%`
+                  : guestVerificationStatus.replace("-", " ")}
+              </strong>
               <em>Status</em>
             </span>
           </div>

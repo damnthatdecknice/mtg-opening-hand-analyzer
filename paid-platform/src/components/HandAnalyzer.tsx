@@ -6,6 +6,7 @@ import {
   analyzeOpeningHand,
   fetchCardData,
   type AnalyzerResult,
+  type CardDataProgress,
   type CardLookup,
   type PlayDraw
 } from "@/lib/analyzer";
@@ -746,6 +747,7 @@ export function HandAnalyzer() {
   const [recognitionResults, setRecognitionResults] = useState<RecognitionResult[]>([]);
   const [result, setResult] = useState<AnalyzerResult | null>(null);
   const [message, setMessage] = useState("");
+  const [, setCardDataProgress] = useState<CardDataProgress | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [isCropping, setIsCropping] = useState(false);
   const [isRecognizing, setIsRecognizing] = useState(false);
@@ -1019,6 +1021,7 @@ export function HandAnalyzer() {
       return;
     }
     setIsRecognizing(true);
+    setCardDataProgress(null);
     setRecognitionResults([]);
     try {
       const namesForLookup = parsed.cards.map((card) => card.name);
@@ -1030,6 +1033,10 @@ export function HandAnalyzer() {
         exactMtgoImagesOnly: useExactMtgoArt,
         includePrintImages: !useExactMtgoArt,
         mtgoIdsByName: useExactMtgoArt ? mtgoIdsByName : undefined,
+        onProgress: (progress) => {
+          setCardDataProgress(progress);
+          setMessage(`Loading card data ${progress.percent}%...`);
+        },
         retryFailures
       });
       const recognized = await recognizeCropImages(nextCrops, lookups, options);
@@ -1054,6 +1061,7 @@ export function HandAnalyzer() {
           : "Recognition failed. You can still choose the seven cards manually."
       );
     } finally {
+      setCardDataProgress(null);
       setIsRecognizing(false);
     }
   }
@@ -1235,7 +1243,14 @@ export function HandAnalyzer() {
     setIsBusy(true);
     try {
       const namesForLookup = parsed.cards.map((card) => card.name);
-      const { lookups, failures } = await fetchCardData(namesForLookup);
+      setCardDataProgress({ completed: 0, total: namesForLookup.length, percent: 0 });
+      setMessage("Loading card data 0%...");
+      const { lookups, failures } = await fetchCardData(namesForLookup, {
+        onProgress: (progress) => {
+          setCardDataProgress(progress);
+          setMessage(`Loading card data ${progress.percent}%...`);
+        }
+      });
       const analysis = analyzeOpeningHand(decklist, seven, lookups, playDraw, { format: deckFormat });
       const completedAnalysis = { ...analysis, lookupFailures: failures };
       setResult(completedAnalysis);
@@ -1245,11 +1260,12 @@ export function HandAnalyzer() {
         await saveHandSession(seven, completedAnalysis);
       }
       if (failures.length) {
-        setMessage(`Analysis ran, but ${failures.length} Scryfall lookup(s) need review: ${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "..." : ""}`);
+        setMessage(`Analysis ran, but ${failures.length} card lookup(s) need review: ${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "..." : ""}`);
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not analyze this hand.");
     } finally {
+      setCardDataProgress(null);
       setIsBusy(false);
     }
   }
@@ -2235,7 +2251,7 @@ function DeepData({ result }: { result: AnalyzerResult }) {
       </div>
       {result.lookupFailures.length || result.missingCards.length || result.notes.length ? (
         <div className="analysis-notes">
-          {result.lookupFailures.length ? <p>Scryfall lookup failures: {result.lookupFailures.join(", ")}</p> : null}
+          {result.lookupFailures.length ? <p>Card lookup issues: {result.lookupFailures.join(", ")}</p> : null}
           {result.missingCards.length ? <p>Cards not found in main deck: {result.missingCards.join(", ")}</p> : null}
           {result.notes.map((note) => <p key={note}>{note}</p>)}
         </div>
@@ -2267,7 +2283,7 @@ function ManaCurve({ result }: { result: AnalyzerResult }) {
         </div>
       ))}
       <p className="muted-copy">
-        Mana values are pulled from Scryfall with MDFC castable-face handling.
+        Mana values are pulled from card data with MDFC castable-face handling.
       </p>
       <h2>Mana Value Verification</h2>
       <div className="table-wrap">

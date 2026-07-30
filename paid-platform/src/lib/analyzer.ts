@@ -71,7 +71,7 @@ export type CurveRow = {
 };
 
 export type ManaAuditRow = {
-  status: "OK" | "Review" | "Missing" | "Scryfall only";
+  status: "OK" | "Review" | "Missing" | "Card data only";
   card: string;
   qty: number;
   appManaValue: number;
@@ -359,7 +359,7 @@ function checkedManaValueDetails(
 
   return {
     value: card.cmc ?? castableFace?.cmc ?? 0,
-    source: "Scryfall value only",
+    source: "card data value only",
     manaCost: card.mana_cost ?? castableFace?.mana_cost ?? "",
     symbolCheck: null
   };
@@ -463,18 +463,25 @@ function scryfallErrorMessage(status: number) {
     return "Card name not found";
   }
   if (status === 429) {
-    return "Scryfall rate limit";
+    return "Card database rate limit";
   }
   if (status >= 500) {
-    return "Scryfall is temporarily unavailable";
+    return "Card database is temporarily unavailable";
   }
-  return `Scryfall returned ${status}`;
+  return `Card database returned ${status}`;
 }
+
+export type CardDataProgress = {
+  completed: number;
+  total: number;
+  percent: number;
+};
 
 type FetchCardDataOptions = {
   exactMtgoImagesOnly?: boolean;
   includePrintImages?: boolean;
   mtgoIdsByName?: Record<string, number[]>;
+  onProgress?: (progress: CardDataProgress) => void;
   retryFailures?: boolean;
   signal?: AbortSignal;
 };
@@ -647,10 +654,28 @@ async function fetchPrintImages(name: string, signal?: AbortSignal) {
   };
 }
 
-async function fetchUncachedBaseCardData(cardNames: string[], options: Pick<FetchCardDataOptions, "signal"> = {}) {
+function reportCardDataProgress(options: Pick<FetchCardDataOptions, "onProgress">, completed: number, total: number) {
+  if (!options.onProgress) {
+    return;
+  }
+  const safeTotal = Math.max(0, total);
+  const safeCompleted = Math.max(0, Math.min(completed, safeTotal));
+  options.onProgress({
+    completed: safeCompleted,
+    total: safeTotal,
+    percent: safeTotal ? Math.round((safeCompleted / safeTotal) * 100) : 100
+  });
+}
+
+async function fetchUncachedBaseCardData(
+  cardNames: string[],
+  options: Pick<FetchCardDataOptions, "onProgress" | "signal"> = {}
+) {
   const uniqueNames = Array.from(new Set(cardNames.map((name) => name.trim()).filter(Boolean)));
   const lookups = new Map<string, CardLookup>();
   const failures: string[] = [];
+  let completed = 0;
+  reportCardDataProgress(options, completed, uniqueNames.length);
 
   for (let index = 0; index < uniqueNames.length; index += 75) {
     const batch = uniqueNames.slice(index, index + 75);
@@ -675,6 +700,8 @@ async function fetchUncachedBaseCardData(cardNames: string[], options: Pick<Fetc
           failures.push(failure);
           cacheLookupFailure(name, failure, fallback.status ?? response?.status);
         }
+        completed += 1;
+        reportCardDataProgress(options, completed, uniqueNames.length);
       }
       continue;
     }
@@ -706,6 +733,8 @@ async function fetchUncachedBaseCardData(cardNames: string[], options: Pick<Fetc
         }
       }
     }
+    completed += batch.length;
+    reportCardDataProgress(options, completed, uniqueNames.length);
   }
 
   return { lookups, failures };
@@ -713,7 +742,7 @@ async function fetchUncachedBaseCardData(cardNames: string[], options: Pick<Fetc
 
 async function fetchBaseCardDataWithInflightDedupe(cardNames: string[], options: FetchCardDataOptions) {
   if (options.signal) {
-    return fetchUncachedBaseCardData(cardNames, { signal: options.signal });
+    return fetchUncachedBaseCardData(cardNames, { onProgress: options.onProgress, signal: options.signal });
   }
   const key = cardNames.map(normalizeName).sort().join("|");
   const existing = inflightCardLookupBatches.get(key);
@@ -732,27 +761,40 @@ export async function fetchCardData(cardNames: string[], options: FetchCardDataO
   const lookups = new Map<string, CardLookup>();
   const failures: string[] = [];
   const uncachedNames: string[] = [];
+  let completed = 0;
+  reportCardDataProgress(options, completed, uniqueNames.length);
 
   for (const name of uniqueNames) {
     const cached = getCachedLookup(name);
     if (cached) {
       addLookupAliases(lookups, cached, name);
+      completed += 1;
+      reportCardDataProgress(options, completed, uniqueNames.length);
       continue;
     }
     const cachedFailure = options.retryFailures ? null : getCachedFailure(name);
     if (cachedFailure) {
       failures.push(cachedFailure);
+      completed += 1;
+      reportCardDataProgress(options, completed, uniqueNames.length);
       continue;
     }
     uncachedNames.push(name);
   }
 
   if (uncachedNames.length) {
-    const fetched = await fetchBaseCardDataWithInflightDedupe(uncachedNames, options);
+    const fetched = await fetchBaseCardDataWithInflightDedupe(uncachedNames, {
+      ...options,
+      onProgress: (progress) => {
+        reportCardDataProgress(options, completed + progress.completed, uniqueNames.length);
+      }
+    });
     for (const [key, lookup] of Array.from(fetched.lookups)) {
       lookups.set(key, lookup);
     }
     failures.push(...fetched.failures);
+    completed += uncachedNames.length;
+    reportCardDataProgress(options, completed, uniqueNames.length);
   }
 
   const mtgoEntries = Object.entries(options.mtgoIdsByName ?? {})
@@ -1644,8 +1686,8 @@ function manaValueAuditRows(mainCounts: Map<string, number>, cardData: Map<strin
 
     const symbolCheck = card.manaCost ? manaValueFromCost(card.manaCost) : card.isLand ? 0 : null;
     const status =
-      card.manaValueSource === "Scryfall value only"
-        ? "Scryfall only"
+      card.manaValueSource === "card data value only"
+        ? "Card data only"
         : symbolCheck === null
           ? "Review"
           : Math.abs(symbolCheck - card.manaValue) < 0.01
@@ -1970,7 +2012,7 @@ export function analyzeOpeningHand(
   ].filter(Boolean);
 
   if (!landNames.length) {
-    notes.push("No lands were identified from card data. Check Scryfall lookup status.");
+    notes.push("No lands were identified from card data. Check card lookup status.");
   }
   if (hand.length !== 7) {
     notes.push("Enter exactly seven cards for opening-hand math.");
