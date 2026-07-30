@@ -18,6 +18,8 @@ const signatureRuleTable = "metagame_signature_rules";
 const eventNamePattern = /(challenge|showcase|qualifier|championship|premier|preliminary)/i;
 const snapshotRevalidateSeconds = 60 * 60 * 24;
 const cacheMs = 1000 * snapshotRevalidateSeconds;
+const indexFetchTimeoutMs = 12_000;
+const eventFetchTimeoutMs = 25_000;
 
 const defaultSignatureRules: Array<MetagameSignatureRule & { format: MetagameFormat }> = [
   { format: "Modern", cardName: "Galvanic Discharge", archetypeName: "Jeskai Energy", requiredColors: ["W", "U", "R"], priority: 150 },
@@ -188,8 +190,10 @@ async function buildMetagame(format: MetagameFormat, windowDays: MetagameWindowD
     return eventTime >= previousCutoff && eventTime < currentCutoff;
   });
   const eventLimit = getWindowEventLimit(windowDays);
-  const currentSnapshot = await buildWindowSnapshot(format, currentEvents.slice(0, eventLimit), warnings, signatureRules);
-  const previousSnapshot = await buildWindowSnapshot(format, previousEvents.slice(0, eventLimit), warnings, signatureRules);
+  const [currentSnapshot, previousSnapshot] = await Promise.all([
+    buildWindowSnapshot(format, currentEvents.slice(0, eventLimit), warnings, signatureRules),
+    buildWindowSnapshot(format, previousEvents.slice(0, eventLimit), warnings, signatureRules)
+  ]);
   const archetypes = buildArchetypes(currentSnapshot.decks, previousSnapshot.decks, format);
   const topCards = buildTopCards(currentSnapshot.decks);
 
@@ -295,24 +299,43 @@ async function buildWindowSnapshot(
   warnings: string[],
   signatureRules: MetagameSignatureRule[]
 ) {
-  const decks: MetagameDeck[] = [];
-  const events: MetagameEvent[] = [];
-
-  for (const event of indexEvents) {
+  const settledEvents = await Promise.all(
+    indexEvents.map(async (event) => {
     try {
       const data = await fetchEventData(event.url);
       const eventDecks = normalizeEventDecks(data, event.url, format, signatureRules);
-      if (eventDecks.length) {
-        events.push({
+      return {
+        event,
+        decks: eventDecks,
+        sourceEvent: eventDecks.length
+          ? {
           name: data.description ?? event.name,
           date: toIsoDate(data.starttime ?? event.date),
           url: event.url,
           deckCount: eventDecks.length
-        });
-        decks.push(...eventDecks);
-      }
+            }
+          : undefined
+      };
     } catch (error) {
-      warnings.push(`${event.name}: ${error instanceof Error ? error.message : "Could not parse event."}`);
+      return {
+        event,
+        error: error instanceof Error ? error.message : "Could not parse event."
+      };
+    }
+    })
+  );
+
+  const decks: MetagameDeck[] = [];
+  const events: MetagameEvent[] = [];
+
+  for (const result of settledEvents) {
+    if ("error" in result) {
+      warnings.push(`${result.event.name}: ${result.error}`);
+      continue;
+    }
+    if (result.sourceEvent) {
+      events.push(result.sourceEvent);
+      decks.push(...result.decks);
     }
   }
 
@@ -320,11 +343,11 @@ async function buildWindowSnapshot(
 }
 
 async function fetchRecentIndexEvents(format: MetagameFormat, windowDays: MetagameWindowDays) {
-  const html = await fetchText(`${mtgoRoot}/decklists`);
+  const html = await fetchText(`${mtgoRoot}/decklists`, indexFetchTimeoutMs);
   const cutoff = Date.now() - windowDays * 2 * 24 * 60 * 60 * 1000;
   const events: IndexEvent[] = [];
   const eventRegex =
-    /<a\s+href="(\/decklist\/[^"]+)"\s+class="decklists-link">[\s\S]*?<h3>([^<]+)<\/h3>[\s\S]*?<time\s+datetime="([^"]+)"/gi;
+    /<a\b(?=[^>]*\bclass="[^"]*\bdecklists-link\b[^"]*")(?=[^>]*\bhref="(\/decklist\/[^"]+)")[^>]*>[\s\S]*?<h3>([^<]+)<\/h3>[\s\S]*?<time\b[^>]*\bdatetime="([^"]+)"/gi;
 
   let match = eventRegex.exec(html);
   while (match) {
@@ -357,14 +380,14 @@ async function fetchRecentIndexEvents(format: MetagameFormat, windowDays: Metaga
 }
 
 async function fetchEventData(url: string) {
-  const html = await fetchText(url);
-  const marker = "window.MTGO.decklists.data = ";
-  const start = html.indexOf(marker);
-  if (start === -1) {
+  const html = await fetchText(url, eventFetchTimeoutMs);
+  const marker = /window\.MTGO\.decklists\.data\s*=\s*/g;
+  const markerMatch = marker.exec(html);
+  if (!markerMatch) {
     throw new Error("MTGO did not expose structured decklist data.");
   }
 
-  const jsonStart = html.indexOf("{", start);
+  const jsonStart = html.indexOf("{", markerMatch.index + markerMatch[0].length);
   const jsonEnd = findObjectEnd(html, jsonStart);
   if (jsonStart === -1 || jsonEnd === -1) {
     throw new Error("Structured decklist data was incomplete.");
@@ -373,15 +396,29 @@ async function fetchEventData(url: string) {
   return JSON.parse(html.slice(jsonStart, jsonEnd + 1)) as MtgoEventData;
 }
 
-async function fetchText(url: string) {
-  const response = await fetch(url, {
-    headers: {
-      "user-agent": "Opening Edge metagame preview (+https://mtg-opening-hand-analyzer-hsjg.vercel.app)"
-    },
-    next: {
-      revalidate: snapshotRevalidateSeconds
+async function fetchText(url: string, timeoutMs: number) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        "user-agent": "Opening Edge metagame preview (+https://mtg-opening-hand-analyzer-hsjg.vercel.app)"
+      },
+      next: {
+        revalidate: snapshotRevalidateSeconds
+      },
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`MTGO request timed out after ${Math.round(timeoutMs / 1000)} seconds.`);
     }
-  });
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(`MTGO returned ${response.status}.`);

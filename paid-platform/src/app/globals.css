@@ -23,6 +23,15 @@
   --inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   --clip-sm: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
   --clip-md: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+  --field-bg: linear-gradient(135deg, color-mix(in srgb, var(--panel-strong) 92%, black), color-mix(in srgb, var(--bg) 86%, transparent));
+  --field-bg-hover: linear-gradient(135deg, color-mix(in srgb, var(--panel-strong) 96%, var(--accent) 4%), color-mix(in srgb, var(--bg) 82%, var(--accent-2) 8%));
+  --field-border: color-mix(in srgb, var(--border) 70%, var(--amber-border) 22%);
+  --field-border-focus: color-mix(in srgb, var(--accent) 76%, var(--amber) 24%);
+  --field-text: var(--text);
+  --field-placeholder: color-mix(in srgb, var(--muted) 76%, var(--text) 24%);
+  --field-option-bg: color-mix(in srgb, var(--panel-strong) 94%, black);
+  --field-focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent), 0 0 22px color-mix(in srgb, var(--accent) 15%, transparent);
+  --field-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 12px 26px rgba(0, 0, 0, 0.16);
 }
 
 :root[data-large-text="true"] {
@@ -3918,6 +3927,135 @@ button.meta-bar-row {
   box-shadow:
     0 0 18px rgba(181, 106, 134, 0.16),
     inset 0 1px 0 rgba(255, 247, 243, 0.18);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),
+textarea,
+select,
+.text-input,
+.card-select,
+.analyzer-textarea,
+.settings-select {
+  appearance: none;
+  background: var(--field-bg);
+  border: 1px solid var(--field-border);
+  border-radius: 0;
+  box-shadow: var(--field-shadow);
+  box-sizing: border-box;
+  color: var(--field-text);
+  color-scheme: dark;
+  clip-path: var(--clip-sm);
+  font: inherit;
+  font-weight: 800;
+  line-height: 1.45;
+  min-width: 0;
+  outline: none;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    filter 160ms ease;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]),
+select,
+.text-input,
+.card-select,
+.settings-select {
+  min-height: 48px;
+  padding: 0 16px;
+}
+
+textarea,
+.analyzer-textarea {
+  padding: 14px 16px;
+  resize: vertical;
+}
+
+select,
+.card-select,
+.settings-select {
+  background:
+    linear-gradient(45deg, transparent 50%, var(--field-text) 50%) right 21px center / 7px 7px no-repeat,
+    linear-gradient(135deg, var(--field-text) 50%, transparent 50%) right 14px center / 7px 7px no-repeat,
+    var(--field-bg);
+  padding-right: 42px;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]):hover,
+textarea:hover,
+select:hover,
+.text-input:hover,
+.card-select:hover,
+.analyzer-textarea:hover,
+.settings-select:hover {
+  background: var(--field-bg-hover);
+  border-color: color-mix(in srgb, var(--field-border-focus) 62%, var(--field-border));
+}
+
+select:hover,
+.card-select:hover,
+.settings-select:hover {
+  background:
+    linear-gradient(45deg, transparent 50%, var(--field-text) 50%) right 21px center / 7px 7px no-repeat,
+    linear-gradient(135deg, var(--field-text) 50%, transparent 50%) right 14px center / 7px 7px no-repeat,
+    var(--field-bg-hover);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not([type="image"]):focus,
+textarea:focus,
+select:focus,
+.text-input:focus,
+.card-select:focus,
+.analyzer-textarea:focus,
+.settings-select:focus {
+  border-color: var(--field-border-focus);
+  box-shadow:
+    var(--field-focus-ring),
+    var(--field-shadow);
+}
+
+select:focus,
+.card-select:focus,
+.settings-select:focus {
+  background:
+    linear-gradient(45deg, transparent 50%, var(--field-text) 50%) right 21px center / 7px 7px no-repeat,
+    linear-gradient(135deg, var(--field-text) 50%, transparent 50%) right 14px center / 7px 7px no-repeat,
+    var(--field-bg-hover);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--field-placeholder);
+  opacity: 0.9;
+}
+
+select option,
+select optgroup,
+.card-select option,
+.card-select optgroup,
+.settings-select option,
+.settings-select optgroup {
+  background: var(--field-option-bg);
+  color: var(--field-text);
+  font-weight: 800;
+}
+
+select option:checked,
+.card-select option:checked,
+.settings-select option:checked {
+  background: color-mix(in srgb, var(--accent-2) 44%, var(--field-option-bg));
+  color: var(--field-text);
+}
+
+input:disabled,
+textarea:disabled,
+select:disabled,
+input[readonly],
+textarea[readonly] {
+  cursor: not-allowed;
+  filter: grayscale(0.35);
+  opacity: 0.68;
 }
 
 @media (max-width: 900px) {
