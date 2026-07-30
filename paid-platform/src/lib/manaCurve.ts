@@ -48,8 +48,11 @@ export type ManaCurveObservationCode =
   | "LOW_CARD_FLOW"
   | "LOW_RAMP"
   | "LOW_RAMP_PAYOFFS"
+  | "EXCESS_RAMP_PAYOFFS"
+  | "LOW_TOP_END"
   | "HEAVY_TOP_END"
   | "LOW_FINISHERS"
+  | "EXCESS_FINISHERS"
   | "LOW_SWEEPERS"
   | "LOW_COMBO_PIECES"
   | "LAND_COUNT_LOW"
@@ -249,6 +252,8 @@ type StructureMetricRange = {
   max?: number;
   label: string;
 };
+
+type RangeDirection = "below" | "above";
 
 type StructuralMetrics = Record<StructureMetricKey, number> & {
   spellCount: number;
@@ -1261,21 +1266,28 @@ function buildObservations(
   const postureRanges = constructedRanges[posture.posture] ?? constructedRanges.unknown;
   const totalCards = mainCards.reduce((total, card) => total + card.qty, 0);
   const postureName = posture.posture === "unknown" ? "mixed/unknown" : posture.posture;
-  const observationCodeForRange = (key: StructureMetricKey, below: boolean): ManaCurveObservationCode => {
+  const observationCodeForRange = (key: StructureMetricKey, direction: RangeDirection): ManaCurveObservationCode => {
     if (key === "oneManaPlays") return "LOW_ONE_MANA_PLAYS";
     if (key === "earlyPlays") return "LOW_EARLY_ACTION";
     if (key === "earlyThreats") return "LOW_EARLY_THREATS";
     if (key === "cheapInteraction") return "LOW_CHEAP_INTERACTION";
     if (key === "drawSelection") return "LOW_CARD_FLOW";
     if (key === "rampCount") return "LOW_RAMP";
-    if (key === "rampPayoffs") return "LOW_RAMP_PAYOFFS";
-    if (key === "finishers") return "LOW_FINISHERS";
+    if (key === "rampPayoffs") return direction === "below" ? "LOW_RAMP_PAYOFFS" : "EXCESS_RAMP_PAYOFFS";
+    if (key === "finishers") return direction === "below" ? "LOW_FINISHERS" : "EXCESS_FINISHERS";
     if (key === "boardWipes") return "LOW_SWEEPERS";
     if (key === "comboPieces") return "LOW_COMBO_PIECES";
-    if (key === "landCount") return below ? "LAND_COUNT_LOW" : "LAND_COUNT_HIGH";
-    if (key === "expensiveSpells") return "HEAVY_TOP_END";
+    if (key === "landCount") return direction === "below" ? "LAND_COUNT_LOW" : "LAND_COUNT_HIGH";
+    if (key === "expensiveSpells") return direction === "below" ? "LOW_TOP_END" : "HEAVY_TOP_END";
     if (key === "oneOfCards") return "MANY_ONE_OFS";
     return "NO_MAJOR_WARNING";
+  };
+
+  const toneForObservation = (code: ManaCurveObservationCode): ManaCurveObservation["tone"] => {
+    if (code === "NO_MAJOR_WARNING") {
+      return "good";
+    }
+    return "bad";
   };
 
   const addRangeObservation = (
@@ -1299,12 +1311,14 @@ function buildObservations(
     if (!below && !above) {
       return;
     }
+    const direction: RangeDirection = below ? "below" : "above";
+    const code = observationCodeForRange(key, direction);
     const distance = below && range.min ? (range.min - value) / Math.max(1, range.min) : above && range.max ? (value - range.max) / Math.max(1, range.max) : 0;
     const confidence: ManaCurveObservation["confidence"] =
       posture.confidence === "high" && distance >= 0.3 ? "high" : posture.confidence === "low" ? "low" : "medium";
     observations.push({
-      code: observationCodeForRange(key, below),
-      tone: below || key === "expensiveSpells" || key === "oneOfCards" || key === "landCount" ? "bad" : "neutral",
+      code,
+      tone: toneForObservation(code),
       title: below ? title : highTitle ?? title,
       detail: below ? lowDetail : highDetail ?? lowDetail,
       measuredValue: value,
@@ -1364,9 +1378,10 @@ function buildObservations(
   );
   addRangeObservation(
     "finishers",
-    "Finisher density may need review",
+    "Finisher density may be low",
     `${metrics.finishers} finisher or payoff card(s) were detected, which may leave late-game plans light for this posture.`,
-    `${metrics.finishers} finisher or payoff card(s) were detected, which may overload openers for this posture.`
+    `${metrics.finishers} finisher or payoff card(s) were detected, which may overload openers for this posture.`,
+    "Finisher density may be high"
   );
   addRangeObservation(
     "boardWipes",
@@ -1632,6 +1647,27 @@ function sideboardCandidates(sideboardCards: ParsedDeckCard[], mainCards: Parsed
     .map((card) => ({ name: card.name, qty: card.qty, source: "sideboard" as const }));
 }
 
+const needsTopEndProblems = new Set<ManaCurveObservationCode>(["LOW_RAMP_PAYOFFS", "LOW_TOP_END", "LOW_FINISHERS"]);
+const excessTopEndProblems = new Set<ManaCurveObservationCode>(["EXCESS_RAMP_PAYOFFS", "HEAVY_TOP_END", "EXCESS_FINISHERS"]);
+
+function isMeaningfulLateGameEngine(card: ManaCurveCardData | undefined) {
+  if (!card) {
+    return false;
+  }
+  const mv = physicalManaValueForCard(card);
+  const roles = detectFunctionalRoles(card);
+  const text = cardText(card);
+  return (
+    mv >= 4 &&
+    (roles.includes("finisher") ||
+      roles.includes("combo_payoff") ||
+      roles.includes("card_draw") ||
+      roles.includes("tutor") ||
+      roles.includes("board_wipe") ||
+      /\bwhenever\b|\bat the beginning\b|\bdraw\b|\bcreate\b|\breturn\b|\bplaneswalker\b/i.test(text))
+  );
+}
+
 function candidateAddressesObservation(card: ManaCurveCardData | undefined, observation: ManaCurveObservation) {
   const mv = physicalManaValueForCard(card);
   const type = card ? primaryCardType(card) : "other";
@@ -1657,14 +1693,28 @@ function candidateAddressesObservation(card: ManaCurveCardData | undefined, obse
     case "LOW_RAMP":
       return roles.includes("ramp");
     case "LOW_RAMP_PAYOFFS":
+    case "LOW_TOP_END":
     case "LOW_FINISHERS":
-      return roles.includes("finisher") || roles.includes("combo_payoff") || mv >= 5;
+      return roles.includes("finisher") || roles.includes("combo_payoff") || isMeaningfulLateGameEngine(card);
     case "LOW_SWEEPERS":
       return roles.includes("board_wipe");
     case "LOW_COMBO_PIECES":
       return roles.includes("combo_enabler") || roles.includes("combo_payoff") || roles.includes("tutor");
+    case "EXCESS_RAMP_PAYOFFS":
     case "HEAVY_TOP_END":
-      return mv <= 3 && !roles.includes("finisher");
+    case "EXCESS_FINISHERS":
+      return (
+        mv <= 3 &&
+        !roles.includes("finisher") &&
+        (roles.includes("removal") ||
+          roles.includes("countermagic") ||
+          roles.includes("card_selection") ||
+          roles.includes("card_draw") ||
+          roles.includes("ramp") ||
+          roles.includes("threat") ||
+          roles.includes("protection") ||
+          type === "instants")
+      );
     case "HIGH_COLOR_STRAIN":
       return cardColors(card).length <= 1;
     default:
@@ -1682,13 +1732,14 @@ function detectedProblemForCard(card: ManaCurveCardData | undefined, observation
   return { code: problem.code, label: problem.title };
 }
 
-function protectedFromCuts(row: { entry: ParsedDeckCard; card?: ManaCurveCardData }) {
+function protectedFromCuts(row: { entry: ParsedDeckCard; card?: ManaCurveCardData }, problem?: ManaCurveObservationCode) {
   const roles = detectFunctionalRoles(row.card);
+  const excessTopEnd = problem ? excessTopEndProblems.has(problem) : false;
   return (
     roles.includes("combo_enabler") ||
     roles.includes("combo_payoff") ||
     roles.includes("tutor") ||
-    roles.includes("finisher") ||
+    (!excessTopEnd && roles.includes("finisher")) ||
     roles.includes("board_wipe") ||
     (roles.some((role) => ["removal", "countermagic", "discard", "protection"].includes(role)) && row.entry.qty <= 2)
   );
@@ -1701,11 +1752,18 @@ function possibleCutsForProblem(mainCards: ParsedDeckCard[], cardData: Map<strin
       const card = cardData.get(normalizeName(entry.name));
       return { entry, card, manaValue: physicalManaValueForCard(card), type: card ? primaryCardType(card) : "other" };
     })
-    .filter((row) => row.card && !row.card.isLand && !protectedFromCuts(row));
+    .filter((row) => row.card && !row.card.isLand && !protectedFromCuts(row, problem));
 
   const candidates = rows
     .filter((row) => {
-      if (problem === "LOW_ONE_MANA_PLAYS" || problem === "LOW_EARLY_ACTION" || problem === "LOW_CHEAP_INTERACTION" || problem === "HEAVY_TOP_END") {
+      const roles = detectFunctionalRoles(row.card);
+      if (excessTopEndProblems.has(problem)) {
+        return row.manaValue >= 4 || roles.includes("finisher") || row.entry.qty === 1;
+      }
+      if (needsTopEndProblems.has(problem)) {
+        return row.entry.qty === 1 || (row.manaValue <= 2 && !roles.includes("ramp"));
+      }
+      if (problem === "LOW_ONE_MANA_PLAYS" || problem === "LOW_EARLY_ACTION" || problem === "LOW_CHEAP_INTERACTION") {
         return row.manaValue >= 4 || row.entry.qty === 1;
       }
       if (problem === "HIGH_COLOR_STRAIN") {
@@ -1852,22 +1910,7 @@ function buildSuggestions(
   }
 
   if (!suggestions.length) {
-    if (activeCodes.has("LOW_ONE_MANA_PLAYS") || activeCodes.has("LOW_EARLY_ACTION")) {
-      suggestions.push({
-        cardName: "Add a one- or two-mana spell in your colors",
-        suggestedQuantity: 2,
-        role: "Early play",
-        slot: "1-2 mana",
-        problemAddressed: "insufficient early plays",
-        reason: "The deck needs more early actions; choose a format-legal threat, cantrip, or interactive spell that matches your plan.",
-        supportingDeckCount: 0,
-        similarityConfidence: "low",
-        formatLegality: "unknown",
-        colorCompatibility: "fits",
-        possibleCuts: possibleCutsForProblem(mainCards, cardData, "LOW_EARLY_ACTION"),
-        source: "structural"
-      });
-    } else if (activeCodes.has("HEAVY_TOP_END")) {
+    if (activeCodes.has("HEAVY_TOP_END")) {
       suggestions.push({
         cardName: "Replace a top-end spell with a cheaper role player",
         suggestedQuantity: 1,
@@ -1880,6 +1923,96 @@ function buildSuggestions(
         formatLegality: "unknown",
         colorCompatibility: "fits",
         possibleCuts: possibleCutsForProblem(mainCards, cardData, "HEAVY_TOP_END"),
+        source: "structural"
+      });
+    } else if (activeCodes.has("EXCESS_RAMP_PAYOFFS")) {
+      suggestions.push({
+        cardName: "Replace a redundant payoff with a cheaper role player",
+        suggestedQuantity: 1,
+        role: "Curve compression",
+        slot: "1-3 mana",
+        problemAddressed: "excess ramp payoff density",
+        reason: "The deck has more expensive payoffs than its ramp and card flow are likely to support.",
+        supportingDeckCount: 0,
+        similarityConfidence: "low",
+        formatLegality: "unknown",
+        colorCompatibility: "fits",
+        possibleCuts: possibleCutsForProblem(mainCards, cardData, "EXCESS_RAMP_PAYOFFS"),
+        source: "structural"
+      });
+    } else if (activeCodes.has("EXCESS_FINISHERS")) {
+      suggestions.push({
+        cardName: "Replace a redundant finisher with early interaction",
+        suggestedQuantity: 1,
+        role: "Curve balance",
+        slot: "1-3 mana",
+        problemAddressed: "excess finisher density",
+        reason: "Too many closing threats can produce slow or redundant opening hands.",
+        supportingDeckCount: 0,
+        similarityConfidence: "low",
+        formatLegality: "unknown",
+        colorCompatibility: "fits",
+        possibleCuts: possibleCutsForProblem(mainCards, cardData, "EXCESS_FINISHERS"),
+        source: "structural"
+      });
+    } else if (activeCodes.has("LOW_RAMP_PAYOFFS")) {
+      suggestions.push({
+        cardName: "Add a high-impact ramp payoff",
+        suggestedQuantity: 2,
+        role: "Ramp payoff",
+        slot: "5+ mana",
+        problemAddressed: "low ramp payoff density",
+        reason: "The deck has acceleration but too few high-impact cards that convert extra mana into pressure or card advantage.",
+        supportingDeckCount: 0,
+        similarityConfidence: "low",
+        formatLegality: "unknown",
+        colorCompatibility: "fits",
+        possibleCuts: possibleCutsForProblem(mainCards, cardData, "LOW_RAMP_PAYOFFS"),
+        source: "structural"
+      });
+    } else if (activeCodes.has("LOW_TOP_END")) {
+      suggestions.push({
+        cardName: "Add a meaningful late-game payoff",
+        suggestedQuantity: 1,
+        role: "Top-end payoff",
+        slot: "4+ mana",
+        problemAddressed: "light top end",
+        reason: "The deck appears able to support more late-game power but currently has few cards that convert that setup into an advantage.",
+        supportingDeckCount: 0,
+        similarityConfidence: "low",
+        formatLegality: "unknown",
+        colorCompatibility: "fits",
+        possibleCuts: possibleCutsForProblem(mainCards, cardData, "LOW_TOP_END"),
+        source: "structural"
+      });
+    } else if (activeCodes.has("LOW_FINISHERS")) {
+      suggestions.push({
+        cardName: "Add a card with real closing power",
+        suggestedQuantity: 1,
+        role: "Finisher",
+        slot: "4+ mana",
+        problemAddressed: "low finisher density",
+        reason: "The deck may need another threat, engine, or payoff that can actually close games once it stabilizes.",
+        supportingDeckCount: 0,
+        similarityConfidence: "low",
+        formatLegality: "unknown",
+        colorCompatibility: "fits",
+        possibleCuts: possibleCutsForProblem(mainCards, cardData, "LOW_FINISHERS"),
+        source: "structural"
+      });
+    } else if (activeCodes.has("LOW_ONE_MANA_PLAYS") || activeCodes.has("LOW_EARLY_ACTION")) {
+      suggestions.push({
+        cardName: "Add a one- or two-mana spell in your colors",
+        suggestedQuantity: 2,
+        role: "Early play",
+        slot: "1-2 mana",
+        problemAddressed: "insufficient early plays",
+        reason: "The deck needs more early actions; choose a format-legal threat, cantrip, or interactive spell that matches your plan.",
+        supportingDeckCount: 0,
+        similarityConfidence: "low",
+        formatLegality: "unknown",
+        colorCompatibility: "fits",
+        possibleCuts: possibleCutsForProblem(mainCards, cardData, "LOW_EARLY_ACTION"),
         source: "structural"
       });
     } else if (activeCodes.has("LOW_CHEAP_INTERACTION")) {

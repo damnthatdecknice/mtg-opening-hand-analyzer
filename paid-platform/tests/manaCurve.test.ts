@@ -520,6 +520,114 @@ for (const [payoffCount, expectedTitle] of [
   }
 }
 
+const lowRampPayoffs = buildManaCurveAnalysis(rampPayoffDeck(3), postureCards, { format: "Modern" });
+const lowRampPayoffWarning = lowRampPayoffs.observations.find((row) => row.code === "LOW_RAMP_PAYOFFS");
+assert.equal(lowRampPayoffWarning?.title, "Ramp payoff density may be low", "low ramp payoff warnings use the low-payoff code");
+assert.ok(lowRampPayoffWarning?.detail.includes("only 3"), "low ramp payoff detail describes a shortage");
+assert.ok(!lowRampPayoffs.observations.some((row) => row.code === "EXCESS_RAMP_PAYOFFS"), "low ramp payoff decks do not carry the excess-payoff code");
+assert.ok(
+  lowRampPayoffs.suggestions.some((row) => /payoff|finisher|late-game/i.test(`${row.cardName} ${row.role} ${row.problemAddressed}`)),
+  "low ramp payoff suggestions add payoff-style cards"
+);
+assert.ok(
+  lowRampPayoffs.suggestions.every((row) => row.possibleCuts.every((cut) => !["Titan of Industry", "Ugin, the Spirit Dragon", "Rampaging Baloths"].includes(cut.cardName))),
+  "low ramp payoff cuts do not target the few existing payoff cards"
+);
+
+const minimumRampPayoffs = buildManaCurveAnalysis(rampPayoffDeck(4), postureCards, { format: "Modern" });
+assert.ok(
+  !minimumRampPayoffs.observations.some((row) => row.code === "LOW_RAMP_PAYOFFS" || row.code === "EXCESS_RAMP_PAYOFFS"),
+  "minimum ramp payoff count does not emit a directional ramp-payoff code"
+);
+
+const maximumRampPayoffs = buildManaCurveAnalysis(rampPayoffDeck(12), postureCards, { format: "Modern" });
+assert.ok(
+  !maximumRampPayoffs.observations.some((row) => row.code === "LOW_RAMP_PAYOFFS" || row.code === "EXCESS_RAMP_PAYOFFS"),
+  "maximum ramp payoff count does not emit a directional ramp-payoff code"
+);
+
+const excessRampPayoffs = buildManaCurveAnalysis(rampPayoffDeck(13), postureCards, { format: "Modern" });
+const excessRampPayoffWarning = excessRampPayoffs.observations.find((row) => row.code === "EXCESS_RAMP_PAYOFFS");
+assert.equal(excessRampPayoffWarning?.title, "Top end may be heavy", "excess ramp payoff warnings can share the heavy-top-end title with a distinct code");
+assert.ok(excessRampPayoffWarning?.detail.includes("crowded"), "excess ramp payoff detail describes crowding");
+assert.ok(!excessRampPayoffs.observations.some((row) => row.code === "LOW_RAMP_PAYOFFS"), "excess ramp payoff decks do not carry the low-payoff code");
+assert.ok(
+  !excessRampPayoffs.suggestions.some((row) => /Add a high-impact ramp payoff|Add a meaningful late-game payoff/i.test(row.cardName)),
+  "excess ramp payoff suggestions do not add another payoff"
+);
+assert.ok(
+  excessRampPayoffs.suggestions.some((row) => row.possibleCuts.some((cut) => ["Griselbrand", "Rampaging Baloths", "Ugin, the Spirit Dragon", "Titan of Industry"].includes(cut.cardName))),
+  "excess ramp payoff cuts prefer redundant expensive cards"
+);
+
+const lowTopEnd = buildManaCurveAnalysis(rampPayoffDeck(4), postureCards, { format: "Modern" });
+const lowTopEndWarning = lowTopEnd.observations.find((row) => row.code === "LOW_TOP_END");
+assert.equal(lowTopEndWarning?.title, "Top end may be light", "below-minimum expensive spells use LOW_TOP_END");
+assert.ok(!lowTopEnd.observations.some((row) => row.code === "HEAVY_TOP_END"), "light top end does not carry HEAVY_TOP_END");
+assert.ok(
+  lowTopEnd.suggestions.some((row) => /late-game|payoff|finisher/i.test(`${row.cardName} ${row.role} ${row.problemAddressed}`)),
+  "light top-end suggestions add late-game power"
+);
+
+const heavyTopEnd = buildManaCurveAnalysis(rampPayoffDeck(15), postureCards, { format: "Modern" });
+const heavyTopEndWarning = heavyTopEnd.observations.find((row) => row.code === "HEAVY_TOP_END");
+assert.equal(heavyTopEndWarning?.title, "Top end may be heavy", "above-maximum expensive spells use HEAVY_TOP_END");
+assert.ok(!heavyTopEnd.observations.some((row) => row.code === "LOW_TOP_END"), "heavy top end does not carry LOW_TOP_END");
+assert.ok(
+  heavyTopEnd.suggestions.some((row) => /cheaper|Curve compression|role player/i.test(`${row.cardName} ${row.role} ${row.reason}`)),
+  "heavy top-end suggestions favor cheaper cards or curve compression"
+);
+
+const lowFinisherControl = buildManaCurveAnalysis(
+  `Deck
+4 Counterspell
+4 Absorb
+4 Opt
+4 Supreme Verdict
+4 Memory Deluge
+4 March of Otherworldly Light
+4 Addendum Lesson
+1 Teferi, Hero of Dominaria
+15 Island
+8 Plains
+8 Temple Garden`,
+  postureCards,
+  { format: "Pioneer" }
+);
+assert.equal(lowFinisherControl.posture.posture, "control", "low-finisher fixture remains a control deck");
+assert.equal(
+  lowFinisherControl.observations.find((row) => row.code === "LOW_FINISHERS")?.title,
+  "Finisher density may be low",
+  "below-minimum finishers use LOW_FINISHERS"
+);
+assert.ok(!lowFinisherControl.observations.some((row) => row.code === "EXCESS_FINISHERS"), "low finisher decks do not carry EXCESS_FINISHERS");
+
+const excessFinisherControl = buildManaCurveAnalysis(
+  `Deck
+4 Counterspell
+4 Absorb
+4 Opt
+4 Supreme Verdict
+4 Memory Deluge
+4 March of Otherworldly Light
+4 Addendum Lesson
+4 Teferi, Hero of Dominaria
+4 Titan of Industry
+1 Ugin, the Spirit Dragon
+11 Island
+8 Plains
+7 Temple Garden`,
+  postureCards,
+  { format: "Pioneer" }
+);
+assert.equal(excessFinisherControl.posture.posture, "control", "excess-finisher fixture remains a control deck");
+assert.equal(
+  excessFinisherControl.observations.find((row) => row.code === "EXCESS_FINISHERS")?.title,
+  "Finisher density may be high",
+  "above-maximum finishers use EXCESS_FINISHERS"
+);
+assert.ok(!excessFinisherControl.observations.some((row) => row.code === "LOW_FINISHERS"), "excess finisher decks do not carry LOW_FINISHERS");
+
 const comboPosture = buildManaCurveAnalysis(
   `Deck
 4 Reanimate
