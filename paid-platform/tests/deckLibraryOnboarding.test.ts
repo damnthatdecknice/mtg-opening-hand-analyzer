@@ -4,7 +4,8 @@ import {
   buildDeckFingerprint,
   buildOnboardingReview,
   gateDeckVerification,
-  onboardingExampleDeck
+  onboardingExampleDeck,
+  verifyDeckForSaving
 } from "../src/lib/firstDeckOnboarding";
 
 const blankReview = buildOnboardingReview("", "Standard");
@@ -110,4 +111,37 @@ const staleGate = gateDeckVerification({
 });
 assert.equal(staleGate.allowed, false, "simulated edit-immediately-before-save action is blocked");
 
-console.log("deckLibraryOnboarding tests passed");
+async function verifyLookupErrorKeepsFingerprint() {
+  const review = await verifyDeckForSaving(onboardingExampleDeck, "Standard", async () => ({
+    lookups: new Map(),
+    failures: [],
+    unresolvedCards: ["Monastery Swiftspear"],
+    operationFailure: {
+      kind: "network",
+      retryable: true,
+      message: "Opening Edge could not reach the card database. Check your connection and retry."
+    }
+  }));
+  assert.equal(review.status, "lookup-error", "operation-level lookup outages produce a lookup-error review");
+  assert.equal(review.deckFingerprint, verifiedFingerprint, "lookup-error reviews keep the current deck fingerprint");
+  assert.equal(
+    gateDeckVerification({
+      status: review.status,
+      acknowledgedWarnings: true,
+      mainCount: review.mainCount,
+      verifiedFingerprint: review.deckFingerprint,
+      currentFingerprint: buildDeckFingerprint(onboardingExampleDeck, "Standard")
+    }).allowed,
+    true,
+    "acknowledging a lookup warning does not create a stale-deck warning"
+  );
+}
+
+void verifyLookupErrorKeepsFingerprint()
+  .then(() => {
+    console.log("deckLibraryOnboarding tests passed");
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

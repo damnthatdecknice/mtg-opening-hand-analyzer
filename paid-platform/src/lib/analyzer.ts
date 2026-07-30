@@ -486,6 +486,26 @@ type FetchCardDataOptions = {
   signal?: AbortSignal;
 };
 
+export type CardDataOperationFailure = {
+  kind: "network" | "rate-limit" | "server" | "timeout" | "request-budget";
+  message: string;
+  retryable: true;
+};
+
+export type CardDataLookupResult = {
+  lookups: Map<string, CardLookup>;
+  failures: string[];
+  unresolvedCards?: string[];
+  operationFailure?: CardDataOperationFailure;
+};
+
+type CardDataRequestBudget = {
+  startedAt: number;
+  deadlineAt: number;
+  requestCount: number;
+  maxRequests: number;
+};
+
 type CachedCardLookup = {
   lookup: CardLookup;
   expiresAt: number;
@@ -500,10 +520,14 @@ const SUCCESS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const NOT_FOUND_CACHE_TTL_MS = 10 * 60 * 1000;
 const TRANSIENT_FAILURE_CACHE_TTL_MS = 15 * 1000;
 const MAX_CARD_DATA_CACHE_ENTRIES = 1500;
+const CARD_DATA_BATCH_SIZE = 75;
+const MAX_BATCH_ATTEMPTS = 3;
+const MAX_OPERATION_MS = 12_000;
+const MAX_ANOMALOUS_FALLBACKS = 5;
 
 const successfulCardLookupCache = new Map<string, CachedCardLookup>();
 const failedCardLookupCache = new Map<string, CachedLookupFailure>();
-const inflightCardLookupBatches = new Map<string, Promise<{ lookups: Map<string, CardLookup>; failures: string[] }>>();
+const inflightCardLookupBatches = new Map<string, Promise<CardDataLookupResult>>();
 
 function lookupAliasKeys(lookup: CardLookup) {
   return new Set([lookup.name, ...lookup.faces.map((face) => face.name)].map(normalizeName).filter(Boolean));
@@ -591,27 +615,151 @@ export function cardDataCacheStatsForTests() {
   };
 }
 
-async function fetchWithRetries(url: string, init?: RequestInit, attempts = 4) {
+export function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function createCardDataBudget(cardCount: number, maxRequests?: number): CardDataRequestBudget {
+  const batchCount = Math.max(1, Math.ceil(Math.max(0, cardCount) / CARD_DATA_BATCH_SIZE));
+  return {
+    startedAt: Date.now(),
+    deadlineAt: Date.now() + MAX_OPERATION_MS,
+    requestCount: 0,
+    maxRequests: maxRequests ?? batchCount * MAX_BATCH_ATTEMPTS + MAX_ANOMALOUS_FALLBACKS
+  };
+}
+
+function operationFailure(kind: CardDataOperationFailure["kind"], message: string): CardDataOperationFailure {
+  return { kind, message, retryable: true };
+}
+
+class CardDataOperationError extends Error {
+  failure: CardDataOperationFailure;
+
+  constructor(failure: CardDataOperationFailure) {
+    super(failure.message);
+    this.name = "CardDataOperationError";
+    this.failure = failure;
+    Object.setPrototypeOf(this, CardDataOperationError.prototype);
+  }
+}
+
+function operationFailureFromStatus(status: number): CardDataOperationFailure {
+  if (status === 429) {
+    return operationFailure("rate-limit", "Opening Edge is being rate limited by the card database. Please retry in a moment.");
+  }
+  if (status === 408) {
+    return operationFailure("timeout", "Opening Edge could not finish card lookup before the request timed out. Please retry.");
+  }
+  if (status >= 500) {
+    return operationFailure("server", "The card database is temporarily unavailable. Please retry in a moment.");
+  }
+  return operationFailure("network", `Opening Edge could not finish card lookup. Please retry. (${status})`);
+}
+
+function isRetryableCardDataStatus(status: number) {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+function checkCardDataBudget(signal: AbortSignal | undefined, budget: CardDataRequestBudget | undefined) {
+  if (signal?.aborted) {
+    throw new DOMException("The operation was aborted.", "AbortError");
+  }
+  if (!budget) {
+    return;
+  }
+  if (Date.now() >= budget.deadlineAt) {
+    throw new CardDataOperationError(
+      operationFailure("timeout", "Opening Edge could not finish card lookup before the time limit. Please retry.")
+    );
+  }
+  if (budget.requestCount >= budget.maxRequests) {
+    throw new CardDataOperationError(
+      operationFailure("request-budget", "Opening Edge stopped card lookup after too many requests. Please retry.")
+    );
+  }
+}
+
+async function abortableSleep(ms: number, signal?: AbortSignal, budget?: CardDataRequestBudget) {
+  checkCardDataBudget(signal, budget);
+  await new Promise<void>((resolve, reject) => {
+    const timeout = globalThis.setTimeout(resolve, ms);
+    const onAbort = () => {
+      globalThis.clearTimeout(timeout);
+      reject(new DOMException("The operation was aborted.", "AbortError"));
+    };
+    if (signal) {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  }).finally(() => {
+    checkCardDataBudget(signal, budget);
+  });
+}
+
+async function fetchWithRetries(
+  url: string,
+  init?: RequestInit,
+  options: {
+    attempts?: number;
+    budget?: CardDataRequestBudget;
+    retryableStatuses?: (status: number) => boolean;
+    signal?: AbortSignal;
+  } = {}
+) {
+  const attempts = options.attempts ?? MAX_BATCH_ATTEMPTS;
+  const signal = options.signal ?? init?.signal ?? undefined;
+  const retryableStatuses = options.retryableStatuses ?? isRetryableCardDataStatus;
   let response: Response | null = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
+      checkCardDataBudget(signal, options.budget);
+      if (options.budget) {
+        options.budget.requestCount += 1;
+      }
       response = await fetch(url, init);
-    } catch {
+    } catch (error) {
+      if (isAbortError(error) || error instanceof CardDataOperationError) {
+        throw error;
+      }
       response = null;
-      await sleep(450 * (attempt + 1));
+      if (attempt === attempts - 1) {
+        throw new CardDataOperationError(
+          operationFailure("network", "Opening Edge could not reach the card database. Check your connection and retry.")
+        );
+      }
+      await abortableSleep(attempt === 0 ? 300 : 900, signal, options.budget);
       continue;
     }
-    if (response.ok || response.status === 404) {
+    if (response.ok || response.status === 404 || !retryableStatuses(response.status)) {
+      return response;
+    }
+    if (attempt === attempts - 1) {
       return response;
     }
     const retryAfter = Number(response.headers.get("retry-after") ?? 0);
-    await sleep(retryAfter ? retryAfter * 1000 : 450 * (attempt + 1));
+    await abortableSleep(retryAfter ? Math.min(retryAfter * 1000, 900) : attempt === 0 ? 300 : 900, signal, options.budget);
   }
   return response;
 }
 
-async function fetchSingleCard(name: string, signal?: AbortSignal) {
-  const response = await fetchWithRetries(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`, { signal });
+async function fetchSingleCard(name: string, signal?: AbortSignal, budget?: CardDataRequestBudget) {
+  let response: Response | null = null;
+  try {
+    response = await fetchWithRetries(
+      `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`,
+      { signal },
+      { attempts: MAX_BATCH_ATTEMPTS, budget, signal }
+    );
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
+    return {
+      card: null,
+      failure: `${name}: ${error instanceof CardDataOperationError ? error.failure.message : "Network error"}`,
+      status: undefined
+    };
+  }
   if (!response?.ok) {
     return { card: null, failure: `${name}: ${response ? scryfallErrorMessage(response.status) : "Network error"}`, status: response?.status };
   }
@@ -619,7 +767,12 @@ async function fetchSingleCard(name: string, signal?: AbortSignal) {
 }
 
 async function fetchMtgoCard(mtgoId: number, signal?: AbortSignal) {
-  const response = await fetchWithRetries(`https://api.scryfall.com/cards/mtgo/${mtgoId}`, { signal });
+  const response = await fetchWithRetries(`https://api.scryfall.com/cards/mtgo/${mtgoId}`, { signal }, { signal }).catch((error) => {
+    if (isAbortError(error)) {
+      throw error;
+    }
+    return null;
+  });
   if (!response?.ok) {
     return { card: null, failure: `Exact .dek art lookup: ${response ? scryfallErrorMessage(response.status) : "Network error"}` };
   }
@@ -629,8 +782,14 @@ async function fetchMtgoCard(mtgoId: number, signal?: AbortSignal) {
 async function fetchPrintImages(name: string, signal?: AbortSignal) {
   const response = await fetchWithRetries(
     `https://api.scryfall.com/cards/search?unique=prints&order=released&q=${encodeURIComponent(`!"${name}"`)}`,
+    { signal },
     { signal }
-  );
+  ).catch((error) => {
+    if (isAbortError(error)) {
+      throw error;
+    }
+    return null;
+  });
   if (!response?.ok) {
     return { imageUrls: [], artCropUrls: [] };
   }
@@ -670,74 +829,110 @@ function reportCardDataProgress(options: Pick<FetchCardDataOptions, "onProgress"
 async function fetchUncachedBaseCardData(
   cardNames: string[],
   options: Pick<FetchCardDataOptions, "onProgress" | "signal"> = {}
-) {
+): Promise<CardDataLookupResult> {
   const uniqueNames = Array.from(new Set(cardNames.map((name) => name.trim()).filter(Boolean)));
   const lookups = new Map<string, CardLookup>();
   const failures: string[] = [];
+  const unresolvedCards: string[] = [];
+  const budget = createCardDataBudget(uniqueNames.length);
   let completed = 0;
   reportCardDataProgress(options, completed, uniqueNames.length);
 
-  for (let index = 0; index < uniqueNames.length; index += 75) {
-    const batch = uniqueNames.slice(index, index + 75);
+  for (let index = 0; index < uniqueNames.length; index += CARD_DATA_BATCH_SIZE) {
+    const batch = uniqueNames.slice(index, index + CARD_DATA_BATCH_SIZE);
     let response: Response | null = null;
 
-    response = await fetchWithRetries("https://api.scryfall.com/cards/collection", {
+    try {
+      response = await fetchWithRetries("https://api.scryfall.com/cards/collection", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ identifiers: batch.map((name) => ({ name })) }),
         signal: options.signal
+      }, {
+        attempts: MAX_BATCH_ATTEMPTS,
+        budget,
+        signal: options.signal,
+        retryableStatuses: isRetryableCardDataStatus
       });
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+      const failure =
+        error instanceof CardDataOperationError
+          ? error.failure
+          : operationFailure("network", "Opening Edge could not reach the card database. Check your connection and retry.");
+      return { lookups, failures, unresolvedCards: uniqueNames.slice(completed), operationFailure: failure };
+    }
 
     if (!response?.ok) {
-      for (const name of batch) {
-        const fallback = await fetchSingleCard(name, options.signal);
-        if (fallback.card) {
-          const mapped = mapScryfallCard(fallback.card);
-          addLookupAliases(lookups, mapped, name);
-          cacheLookupSuccess(mapped, [name]);
-        } else {
-          const failure = fallback.failure || `${name}: ${scryfallErrorMessage(response?.status ?? 0)}`;
-          failures.push(failure);
-          cacheLookupFailure(name, failure, fallback.status ?? response?.status);
-        }
-        completed += 1;
-        reportCardDataProgress(options, completed, uniqueNames.length);
-      }
-      continue;
+      const failure = response
+        ? operationFailureFromStatus(response.status)
+        : operationFailure("network", "Opening Edge could not reach the card database. Check your connection and retry.");
+      return { lookups, failures, unresolvedCards: uniqueNames.slice(completed), operationFailure: failure };
     }
 
     const payload = (await response.json()) as {
       data?: ScryfallCard[];
       not_found?: Array<{ name?: string }>;
     };
+    const resolvedNames = new Set<string>();
+    const authoritativeMissingNames = new Set<string>();
 
     for (const card of payload.data ?? []) {
       const mapped = mapScryfallCard(card);
       const aliasKeys = lookupAliasKeys(mapped);
       const requestedAliases = batch.filter((name) => aliasKeys.has(normalizeName(name)));
+      requestedAliases.forEach((name) => resolvedNames.add(normalizeName(name)));
       addLookupAliases(lookups, mapped, requestedAliases[0]);
       cacheLookupSuccess(mapped, requestedAliases);
     }
 
     for (const missing of payload.not_found ?? []) {
       if (missing.name) {
-        const fallback = await fetchSingleCard(missing.name, options.signal);
-        if (fallback.card) {
-          const mapped = mapScryfallCard(fallback.card);
-          addLookupAliases(lookups, mapped, missing.name);
-          cacheLookupSuccess(mapped, [missing.name]);
-        } else {
-          const failure = fallback.failure || `${missing.name}: Card name not found`;
-          failures.push(failure);
-          cacheLookupFailure(missing.name, failure, fallback.status ?? 404);
-        }
+        const missingName = missing.name;
+        const requestedName = batch.find((name) => normalizeName(name) === normalizeName(missingName)) ?? missingName;
+        authoritativeMissingNames.add(normalizeName(requestedName));
+        const failure = `${requestedName}: Card name not found`;
+        failures.push(failure);
+        cacheLookupFailure(requestedName, failure, 404);
       }
     }
+
+    const anomalousMissing = batch.filter((name) => !resolvedNames.has(normalizeName(name)) && !authoritativeMissingNames.has(normalizeName(name)));
+    for (const name of anomalousMissing.slice(0, MAX_ANOMALOUS_FALLBACKS)) {
+      try {
+        const fallback = await fetchSingleCard(name, options.signal, budget);
+        if (fallback.card) {
+          const mapped = mapScryfallCard(fallback.card);
+          addLookupAliases(lookups, mapped, name);
+          cacheLookupSuccess(mapped, [name]);
+        } else {
+          const failure = fallback.failure || `${name}: Card lookup did not return a card`;
+          failures.push(failure);
+          cacheLookupFailure(name, failure, fallback.status);
+        }
+      } catch (error) {
+        if (isAbortError(error)) {
+          throw error;
+        }
+        const failure = error instanceof CardDataOperationError ? error.failure.message : `${name}: Card lookup failed`;
+        failures.push(`${name}: ${failure}`);
+        cacheLookupFailure(name, `${name}: ${failure}`);
+      }
+    }
+    for (const name of anomalousMissing.slice(MAX_ANOMALOUS_FALLBACKS)) {
+      const failure = `${name}: Card lookup did not return a result`;
+      failures.push(failure);
+      unresolvedCards.push(name);
+      cacheLookupFailure(name, failure);
+    }
+
     completed += batch.length;
     reportCardDataProgress(options, completed, uniqueNames.length);
   }
 
-  return { lookups, failures };
+  return { lookups, failures, unresolvedCards };
 }
 
 async function fetchBaseCardDataWithInflightDedupe(cardNames: string[], options: FetchCardDataOptions) {
@@ -756,7 +951,7 @@ async function fetchBaseCardDataWithInflightDedupe(cardNames: string[], options:
   return request;
 }
 
-export async function fetchCardData(cardNames: string[], options: FetchCardDataOptions = {}) {
+export async function fetchCardData(cardNames: string[], options: FetchCardDataOptions = {}): Promise<CardDataLookupResult> {
   const uniqueNames = Array.from(new Set(cardNames.map((name) => name.trim()).filter(Boolean)));
   const lookups = new Map<string, CardLookup>();
   const failures: string[] = [];
@@ -793,6 +988,14 @@ export async function fetchCardData(cardNames: string[], options: FetchCardDataO
       lookups.set(key, lookup);
     }
     failures.push(...fetched.failures);
+    if (fetched.operationFailure) {
+      return {
+        lookups,
+        failures,
+        unresolvedCards: fetched.unresolvedCards ?? uncachedNames,
+        operationFailure: fetched.operationFailure
+      };
+    }
     completed += uncachedNames.length;
     reportCardDataProgress(options, completed, uniqueNames.length);
   }
@@ -835,7 +1038,12 @@ export async function fetchCardData(cardNames: string[], options: FetchCardDataO
     const canonicalCards = Array.from(new Map(Array.from(lookups.values()).map((card) => [card.name, card])).values());
     await Promise.all(
       canonicalCards.map(async (card) => {
-        const printImages = await fetchPrintImages(card.name, options.signal).catch(() => ({ imageUrls: [], artCropUrls: [] }));
+        const printImages = await fetchPrintImages(card.name, options.signal).catch((error) => {
+          if (isAbortError(error)) {
+            throw error;
+          }
+          return { imageUrls: [], artCropUrls: [] };
+        });
         card.imageUrls = Array.from(new Set([...card.imageUrls, ...printImages.imageUrls]));
         card.artCropUrls = Array.from(new Set([...card.artCropUrls, ...printImages.artCropUrls]));
         cacheLookupSuccess(card);
@@ -843,7 +1051,7 @@ export async function fetchCardData(cardNames: string[], options: FetchCardDataO
     );
   }
 
-  return { lookups, failures };
+  return { lookups, failures, unresolvedCards: [] };
 }
 
 function comb(n: number, k: number): number {

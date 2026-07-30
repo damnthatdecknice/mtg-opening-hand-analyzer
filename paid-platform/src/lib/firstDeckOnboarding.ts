@@ -2,7 +2,7 @@ import { inferDeckName, parseDecklist, type ParsedDeck } from "./deckParser";
 import { validateDeckConstruction, type DeckValidationIssue } from "./deckValidation";
 import { normalizeFormat } from "./formats";
 import type { ManaCurveCardData } from "./manaCurve";
-import type { CardDataProgress } from "./analyzer";
+import type { CardDataLookupResult, CardDataProgress } from "./analyzer";
 
 export type OnboardingValidationStatus =
   | "empty"
@@ -29,7 +29,7 @@ export type OnboardingDeckReview = {
 export type OnboardingCardDataFetcher = (
   cardNames: string[],
   options?: { onProgress?: (progress: CardDataProgress) => void; signal?: AbortSignal; retryFailures?: boolean }
-) => Promise<{ lookups: Map<string, ManaCurveCardData>; failures: string[] }>;
+) => Promise<CardDataLookupResult & { lookups: Map<string, ManaCurveCardData> }>;
 
 export type DeckVerificationGate = {
   allowed: boolean;
@@ -230,13 +230,35 @@ export async function verifyDeckForSaving(
   const names = parsed.cards.map((card) => card.name);
 
   try {
-    const { lookups, failures } = await fetchCardData(names, {
+    const { lookups, failures, unresolvedCards: operationUnresolvedCards, operationFailure } = await fetchCardData(names, {
       onProgress: options.onProgress,
       signal,
       retryFailures: options.retryFailures
     });
     if (signal?.aborted) {
       throw new DOMException("Aborted", "AbortError");
+    }
+
+    if (operationFailure) {
+      return {
+        suggestedName: inferDeckName(decklist),
+        mainCount: parsed.mainCount,
+        sideboardCount: parsed.sideboardCount,
+        uniqueCount: uniqueCardCount(parsed),
+        status: "lookup-error",
+        messages: [operationFailure.message, "Retry deck check when you are ready."],
+        issues: [
+          {
+            code: "LOOKUP_ERROR",
+            severity: "warning",
+            title: "Card data did not finish loading",
+            detail: operationFailure.message
+          }
+        ],
+        unresolvedCards: operationUnresolvedCards ?? [],
+        checkedAt: Date.now(),
+        deckFingerprint: buildDeckFingerprint(decklist, format, parsed)
+      };
     }
 
     const validation = validateDeckConstruction(decklist, lookups, format);

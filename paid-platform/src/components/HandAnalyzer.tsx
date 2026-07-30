@@ -1029,7 +1029,7 @@ export function HandAnalyzer() {
         screenshotSource === "mtgo" ? mtgoIdsByNameFromMetadata(deckImportMetadata) : {};
       const mtgoIdCount = countMtgoIds(mtgoIdsByName);
       const useExactMtgoArt = screenshotSource === "mtgo" && mtgoIdCount > 0;
-      const { lookups, failures } = await fetchCardData(namesForLookup, {
+      const { lookups, failures, operationFailure } = await fetchCardData(namesForLookup, {
         exactMtgoImagesOnly: useExactMtgoArt,
         includePrintImages: !useExactMtgoArt,
         mtgoIdsByName: useExactMtgoArt ? mtgoIdsByName : undefined,
@@ -1039,6 +1039,10 @@ export function HandAnalyzer() {
         },
         retryFailures
       });
+      if (operationFailure) {
+        setMessage(`${operationFailure.message} Your crops and selections were preserved; retry recognition or choose the cards manually.`);
+        return;
+      }
       const recognized = await recognizeCropImages(nextCrops, lookups, options);
       setRecognitionResults(recognized);
       const nextHand = recognized.map((crop) => crop.candidates[0]?.cardName ?? "");
@@ -1245,12 +1249,16 @@ export function HandAnalyzer() {
       const namesForLookup = parsed.cards.map((card) => card.name);
       setCardDataProgress({ completed: 0, total: namesForLookup.length, percent: 0 });
       setMessage("Loading card data 0%...");
-      const { lookups, failures } = await fetchCardData(namesForLookup, {
+      const { lookups, failures, operationFailure } = await fetchCardData(namesForLookup, {
         onProgress: (progress) => {
           setCardDataProgress(progress);
           setMessage(`Loading card data ${progress.percent}%...`);
         }
       });
+      if (operationFailure) {
+        setMessage(`${operationFailure.message} Your deck and hand were preserved; retry analysis when you are ready.`);
+        return;
+      }
       const analysis = analyzeOpeningHand(decklist, seven, lookups, playDraw, { format: deckFormat });
       const completedAnalysis = { ...analysis, lookupFailures: failures };
       setResult(completedAnalysis);
@@ -1261,6 +1269,8 @@ export function HandAnalyzer() {
       }
       if (failures.length) {
         setMessage(`Analysis ran, but ${failures.length} card lookup(s) need review: ${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "..." : ""}`);
+      } else {
+        setMessage("Analysis complete.");
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not analyze this hand.");

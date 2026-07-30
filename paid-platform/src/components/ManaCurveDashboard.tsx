@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { fetchCardData, type CardDataProgress, type CardLookup } from "@/lib/analyzer";
+import { fetchCardData, type CardDataLookupResult, type CardDataProgress, type CardLookup } from "@/lib/analyzer";
 import { parseDecklist } from "@/lib/deckParser";
 import type { SavedDeck } from "@/lib/decks";
 import { deckFormatOptions } from "@/lib/formats";
@@ -170,7 +170,7 @@ export function ManaCurveDashboard() {
       const candidateNames = extractTournamentCurveCandidateNames(activeDecklist, metagameDecks);
       const names = Array.from(new Set([...deckNames, ...candidateNames].map((name) => name.trim()).filter(Boolean)));
       const missingNames = names.filter((name) => !cardLookupCache.current.has(name.toLowerCase()));
-      const fetched = missingNames.length
+      const fetched: CardDataLookupResult = missingNames.length
         ? await fetchCardData(missingNames, {
             onProgress: (progress) => {
               if (isActive) {
@@ -195,7 +195,13 @@ export function ManaCurveDashboard() {
       }
       setCardData(nextLookups);
       setLookupFailureCount(fetched.failures.length);
-      setMessage(fetched.failures.length ? `Some card data could not load: ${fetched.failures.slice(0, 3).join(", ")}` : "");
+      setMessage(
+        fetched.operationFailure
+          ? fetched.operationFailure.message
+          : fetched.failures.length
+            ? `Some card data could not load: ${fetched.failures.slice(0, 3).join(", ")}`
+            : ""
+      );
       setLookupProgress(null);
       setIsLoadingCards(false);
     }
