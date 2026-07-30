@@ -71,15 +71,19 @@ export function DashboardOverview() {
           <span>Saved decks</span>
           <strong>{state.isLoading ? "..." : state.deckCount}</strong>
         </div>
+        <Link className="metric-card add-deck-metric" href="/decks">
+          <span>Deck setup</span>
+          <strong>{state.deckCount > 0 ? "Add Another Deck" : "Add Your First Deck"}</strong>
+          <em>
+            {state.deckCount > 0
+              ? "Import your .dek or paste another decklist"
+              : "Import your .dek file to analyze hands"}
+          </em>
+        </Link>
         <div className="metric-card dashboard-stat-card">
           <span>Hands analyzed</span>
           <strong>{state.isLoading ? "..." : state.handCount}</strong>
         </div>
-        <Link className="metric-card add-deck-metric" href="/decks">
-          <span>Deck setup</span>
-          <strong>Add Another Deck</strong>
-          <em>Import your .dek or paste another decklist</em>
-        </Link>
       </div>
     </>
   );
