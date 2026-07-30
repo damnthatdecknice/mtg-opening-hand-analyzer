@@ -110,6 +110,19 @@ async function main() {
   );
 
   await withMockedFetch(
+    async () => {
+      throw new TypeError("Failed to fetch");
+    },
+    async (calls) => {
+      const result = await fetchCardData(["Opt", "Consider"], { retryFailures: true });
+      assert.equal(result.lookups.size, 0, "network failures do not create fake card data");
+      assert.equal(result.failures.length, 2, "network failures are reported per requested card");
+      assert.match(result.failures[0] ?? "", /Network error/, "network failure is converted to a readable lookup issue");
+      assert.equal(calls.length, 12, "batch lookup and per-card fallbacks are retried without throwing");
+    }
+  );
+
+  await withMockedFetch(
     async (url) => {
       if (url.includes("/cards/collection")) {
         await new Promise((resolve) => setTimeout(resolve, 10));

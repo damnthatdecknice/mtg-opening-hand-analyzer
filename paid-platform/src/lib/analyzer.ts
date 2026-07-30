@@ -587,7 +587,13 @@ export function cardDataCacheStatsForTests() {
 async function fetchWithRetries(url: string, init?: RequestInit, attempts = 4) {
   let response: Response | null = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    response = await fetch(url, init);
+    try {
+      response = await fetch(url, init);
+    } catch {
+      response = null;
+      await sleep(450 * (attempt + 1));
+      continue;
+    }
     if (response.ok || response.status === 404) {
       return response;
     }
