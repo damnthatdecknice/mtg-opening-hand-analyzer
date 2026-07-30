@@ -20,10 +20,7 @@ export function DashboardActions({ recentDeck }: DashboardActionsProps) {
       {entitlements.canUseDeckVault ? (
         <>
           <Link className="primary-button" href={deckHref}>
-            {recentDeck ? `Analyze ${recentDeck.name}` : "Analyze a Hand"}
-          </Link>
-          <Link className="secondary-button" href={recentDeck ? "/analyzer" : "/decks"}>
-            {recentDeck ? "Analyze Another Deck" : "Choose a Deck"}
+            Analyze a Hand
           </Link>
           <Link className="secondary-button" href={deckLabHref}>
             Open Deck Lab
