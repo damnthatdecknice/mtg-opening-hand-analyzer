@@ -9,6 +9,8 @@ import { diffDecklistsBySection } from "@/lib/deckVersionDiff";
 import { deckFormatOptions } from "@/lib/formats";
 import { fetchCardData } from "@/lib/analyzer";
 import {
+  buildDeckFingerprint,
+  buildOnboardingReview,
   gateDeckVerification,
   onboardingExampleDeck,
   verifyDeckForSaving,
@@ -17,6 +19,7 @@ import {
 } from "@/lib/firstDeckOnboarding";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
+import { ValidationIssueList } from "@/components/ValidationIssueList";
 
 type ExportFormat = "arena" | "mtgo" | "plain" | "moxfield";
 
@@ -61,6 +64,7 @@ export function DeckLibrary() {
   const [verificationStatus, setVerificationStatus] = useState<OnboardingValidationStatus>("checking");
   const [acknowledgedWarnings, setAcknowledgedWarnings] = useState(false);
   const [verificationRetry, setVerificationRetry] = useState(0);
+  const [showAllVersionDiff, setShowAllVersionDiff] = useState(false);
 
   const parsed = useMemo(() => parseDecklist(decklist), [decklist]);
   const parsedForSave = useMemo(
@@ -70,7 +74,9 @@ export function DeckLibrary() {
   const activeDecks = decks.filter((deck) => !deck.is_archived);
   const visibleDecks = decks.filter((deck) => showArchived || !deck.is_archived);
   const selectedVersion = versions.find((version) => version.id === selectedVersionId) ?? versions[0];
-  const versionDiff = selectedVersion ? diffDecklistsBySection(selectedVersion.decklist, decklist).slice(0, 12) : [];
+  const localReview = useMemo(() => buildOnboardingReview(decklist, format, parsed), [decklist, format, parsed]);
+  const fullVersionDiff = selectedVersion ? diffDecklistsBySection(selectedVersion.decklist, decklist) : [];
+  const versionDiff = showAllVersionDiff ? fullVersionDiff : fullVersionDiff.slice(0, 12);
 
   useEffect(() => {
     if (entitlements.canUseDeckVault) {
@@ -81,17 +87,9 @@ export function DeckLibrary() {
   useEffect(() => {
     setAcknowledgedWarnings(false);
 
-    if (!decklist.trim() || parsed.mainCount === 0) {
-      setVerification({
-        suggestedName: inferDeckName(decklist),
-        mainCount: parsed.mainCount,
-        sideboardCount: parsed.sideboardCount,
-        uniqueCount: parsed.cards.length,
-        status: "empty",
-        messages: ["Paste a decklist or import your MTGO .dek to begin."],
-        issues: []
-      });
-      setVerificationStatus("empty");
+    if (localReview.status === "empty" || localReview.status === "unparseable") {
+      setVerification(localReview);
+      setVerificationStatus(localReview.status);
       return;
     }
 
@@ -100,7 +98,7 @@ export function DeckLibrary() {
       suggestedName: inferDeckName(decklist),
       mainCount: parsed.mainCount,
       sideboardCount: parsed.sideboardCount,
-      uniqueCount: parsed.cards.length,
+      uniqueCount: localReview.uniqueCount,
       status: "checking",
       messages: ["Checking card names, deck construction, and available format legality..."],
       issues: []
@@ -124,7 +122,7 @@ export function DeckLibrary() {
             suggestedName: inferDeckName(decklist),
             mainCount: parsed.mainCount,
             sideboardCount: parsed.sideboardCount,
-            uniqueCount: parsed.cards.length,
+            uniqueCount: localReview.uniqueCount,
             status: "lookup-error",
             messages: ["Opening Edge could not finish checking this deck. You can retry without losing the decklist."],
             issues: [
@@ -144,7 +142,7 @@ export function DeckLibrary() {
       controller.abort();
       window.clearTimeout(timeout);
     };
-  }, [decklist, format, parsed.cards.length, parsed.mainCount, parsed.sideboardCount, verificationRetry]);
+  }, [decklist, format, localReview, parsed.mainCount, parsed.sideboardCount, verificationRetry]);
 
   async function loadDecks() {
     if (!supabase) {
@@ -193,6 +191,7 @@ export function DeckLibrary() {
     setFormat(deck.format ?? "Standard");
     setDecklist(deck.decklist);
     setImportMetadata(deck.parsed_json.importMetadata);
+    setShowAllVersionDiff(false);
     setMessage(`Editing ${deck.name}. Saving will create a version history entry.`);
     void loadVersions(deck.id);
   }
@@ -201,6 +200,7 @@ export function DeckLibrary() {
     setEditingDeck(null);
     setVersions([]);
     setSelectedVersionId("");
+    setShowAllVersionDiff(false);
     setName("");
     setFormat("Standard");
     setDecklist("");
@@ -212,6 +212,7 @@ export function DeckLibrary() {
     setEditingDeck(null);
     setVersions([]);
     setSelectedVersionId("");
+    setShowAllVersionDiff(false);
     setName("Monastery Swiftspear Deck");
     setFormat("Standard");
     setDecklist(onboardingExampleDeck);
@@ -244,9 +245,18 @@ export function DeckLibrary() {
       return;
     }
 
-    const gate = gateDeckVerification(verificationStatus, acknowledgedWarnings, parsed.mainCount);
+    const gate = gateDeckVerification({
+      status: verificationStatus,
+      acknowledgedWarnings,
+      mainCount: parsed.mainCount,
+      verifiedFingerprint: verification?.deckFingerprint,
+      currentFingerprint: buildDeckFingerprint(decklist, format, parsed)
+    });
     if (!gate.allowed) {
       setMessage(gate.message ?? "Review this deck before saving.");
+      if (gate.message?.startsWith("This deck changed")) {
+        setVerificationStatus("checking");
+      }
       return;
     }
 
@@ -294,9 +304,10 @@ export function DeckLibrary() {
     setEditingDeck(null);
     setVersions([]);
     setSelectedVersionId("");
+    setShowAllVersionDiff(false);
     setDecklist("");
     setImportMetadata(undefined);
-    setMessage(editingDeck ? "Deck updated. Previous 75 saved to version history." : "Deck saved.");
+    setMessage(editingDeck ? "Deck updated. Previous version saved to history." : "Deck saved.");
     await loadDecks();
   }
 
@@ -450,7 +461,7 @@ export function DeckLibrary() {
             <div className="mini-metrics">
               <span>{parsed.mainCount} main</span>
               <span>{parsed.sideboardCount} sideboard</span>
-              <span>{parsed.cards.length} unique rows</span>
+              <span>{localReview.uniqueCount} unique cards</span>
               {importMetadata?.source === "mtgo_dek" ? (
                 <span>.dek import ready</span>
               ) : null}
@@ -462,16 +473,7 @@ export function DeckLibrary() {
           </div>
           {verification ? (
             <div className={`deck-review-card ${verificationStatus}`} aria-live="polite">
-              <ul className="validation-list">
-                {verification.messages.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-                {verification.issues.slice(0, 8).map((issue) => (
-                  <li key={`${issue.code}-${issue.cardName ?? issue.title}-${issue.detail}`} className={`validation-${issue.severity}`}>
-                    <strong>{issue.title}:</strong> {issue.detail}
-                  </li>
-                ))}
-              </ul>
+              <ValidationIssueList issues={verification.issues} messages={verification.messages} />
               {verificationStatus === "lookup-error" ? (
                 <button className="text-button" onClick={() => setVerificationRetry((value) => value + 1)} type="button">
                   Retry deck check
@@ -496,7 +498,7 @@ export function DeckLibrary() {
             <div className="section-heading split-heading">
               <div>
                 <p className="eyebrow">Version history</p>
-                <h2>Compare old/new 75</h2>
+                <h2>Compare saved/current deck</h2>
               </div>
               {versions.length ? (
                 <select
@@ -537,6 +539,16 @@ export function DeckLibrary() {
                       ))}
                     </tbody>
                   </table>
+                  {fullVersionDiff.length > 12 ? (
+                    <button
+                      aria-expanded={showAllVersionDiff}
+                      className="text-button validation-toggle"
+                      onClick={() => setShowAllVersionDiff((current) => !current)}
+                      type="button"
+                    >
+                      {showAllVersionDiff ? "Show fewer changes" : `Showing 12 of ${fullVersionDiff.length} changes - Show all`}
+                    </button>
+                  ) : null}
                 </div>
               ) : (
                 <p className="muted-copy">No card-count changes versus this saved version.</p>

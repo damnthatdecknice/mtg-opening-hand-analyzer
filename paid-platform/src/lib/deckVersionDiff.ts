@@ -1,4 +1,5 @@
 import { parseDecklist } from "./deckParser";
+import { normalizeFingerprintName } from "./firstDeckOnboarding";
 
 export type DeckVersionDiffRow = {
   key: string;
@@ -9,14 +10,10 @@ export type DeckVersionDiffRow = {
   delta: number;
 };
 
-function normalizeDeckDiffName(name: string) {
-  return name.trim().replace(/\s+/g, " ").toLowerCase();
-}
-
 function aggregateDecklist(decklist: string, side: "old" | "new") {
   const rows = new Map<string, DeckVersionDiffRow>();
   for (const card of parseDecklist(decklist).cards) {
-    const normalizedName = normalizeDeckDiffName(card.name);
+    const normalizedName = normalizeFingerprintName(card.name);
     const key = `${card.section}:${normalizedName}`;
     const existing =
       rows.get(key) ??

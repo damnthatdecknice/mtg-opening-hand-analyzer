@@ -1435,7 +1435,7 @@ export function HandAnalyzer() {
           <div className="mini-metrics">
             <span>{parsed.mainCount} main</span>
             <span>{parsed.sideboardCount} sideboard</span>
-            <span>{parsed.cards.length} unique rows</span>
+            <span>{parsed.cards.length} parsed rows</span>
             {deckImportMetadata?.source === "mtgo_dek" ? (
               <span>.dek import ready</span>
             ) : null}

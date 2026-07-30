@@ -142,6 +142,8 @@ const postureCards = data([
   card("Addendum Lesson", 2, "Instant", ["W"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Addendum - If you cast this spell during your main phase, draw a card."),
   card("Sacrifice Outlet", 2, "Creature - Vampire", ["B"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Sacrifice another creature: Scry 1."),
   card("Value Trigger", 2, "Creature - Wizard", ["U"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Whenever you cast your second spell each turn, draw a card."),
+  card("Generic Trigger", 4, "Creature - Cleric", ["W"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Whenever you gain life, scry 1."),
+  card("Small Token Maker", 4, "Creature - Elf", ["G"], { modern: "legal", pioneer: "legal", standard: "legal" }, "When Small Token Maker enters, create a 1/1 green Elf creature token."),
   card("Huge Vanilla", 8, "Creature - Giant", ["G"], { modern: "legal", pioneer: "legal", standard: "legal" }, "Vigilance."),
   card("Temple Garden", 0, "Land - Forest Plains"),
   card("Forest", 0, "Basic Land - Forest"),
@@ -559,6 +561,14 @@ assert.ok(
   excessRampPayoffs.suggestions.some((row) => row.possibleCuts.some((cut) => ["Griselbrand", "Rampaging Baloths", "Ugin, the Spirit Dragon", "Titan of Industry"].includes(cut.cardName))),
   "excess ramp payoff cuts prefer redundant expensive cards"
 );
+assert.ok(
+  excessRampPayoffs.suggestions.some((row) => row.cardName === "Replace a redundant payoff with a cheaper role player"),
+  "excess ramp payoff fallback uses the ramp-specific recommendation"
+);
+assert.ok(
+  !excessRampPayoffs.suggestions.some((row) => row.cardName === "Replace a top-end spell with a cheaper role player"),
+  "excess ramp payoff fallback does not fall through to generic top-end advice"
+);
 
 const lowTopEnd = buildManaCurveAnalysis(rampPayoffDeck(4), postureCards, { format: "Modern" });
 const lowTopEndWarning = lowTopEnd.observations.find((row) => row.code === "LOW_TOP_END");
@@ -570,13 +580,32 @@ assert.ok(
 );
 
 const heavyTopEnd = buildManaCurveAnalysis(rampPayoffDeck(15), postureCards, { format: "Modern" });
-const heavyTopEndWarning = heavyTopEnd.observations.find((row) => row.code === "HEAVY_TOP_END");
-assert.equal(heavyTopEndWarning?.title, "Top end may be heavy", "above-maximum expensive spells use HEAVY_TOP_END");
+const heavyTopEndWarning = heavyTopEnd.observations.find((row) => row.code === "EXCESS_RAMP_PAYOFFS");
+assert.equal(heavyTopEndWarning?.title, "Top end may be heavy", "ramp decks consolidate heavy top end into excess ramp payoff language");
+assert.ok(!heavyTopEnd.observations.some((row) => row.code === "HEAVY_TOP_END"), "ramp excess payoff decks suppress duplicate generic heavy top-end warning");
 assert.ok(!heavyTopEnd.observations.some((row) => row.code === "LOW_TOP_END"), "heavy top end does not carry LOW_TOP_END");
 assert.ok(
   heavyTopEnd.suggestions.some((row) => /cheaper|Curve compression|role player/i.test(`${row.cardName} ${row.role} ${row.reason}`)),
   "heavy top-end suggestions favor cheaper cards or curve compression"
 );
+
+const lowPayoffWithFiller = buildManaCurveAnalysis(
+  `Deck
+4 Llanowar Elves
+4 Cultivate
+1 Titan of Industry
+1 Generic Trigger
+1 Small Token Maker
+49 Forest`,
+  postureCards,
+  { format: "Modern" }
+);
+const lowPayoffCutNames = lowPayoffWithFiller.suggestions.flatMap((row) => row.possibleCuts.map((cut) => cut.cardName));
+assert.ok(
+  lowPayoffCutNames.includes("Generic Trigger") || lowPayoffCutNames.includes("Small Token Maker"),
+  "low payoff recommendations can review generic filler cards for space"
+);
+assert.ok(!lowPayoffCutNames.includes("Titan of Industry"), "low payoff recommendations protect the actual remaining late-game engine");
 
 const lowFinisherControl = buildManaCurveAnalysis(
   `Deck

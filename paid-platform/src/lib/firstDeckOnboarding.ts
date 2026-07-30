@@ -5,6 +5,7 @@ import type { ManaCurveCardData } from "./manaCurve";
 
 export type OnboardingValidationStatus =
   | "empty"
+  | "unparseable"
   | "checking"
   | "incomplete"
   | "warnings"
@@ -58,26 +59,70 @@ function emptyReview(decklist: string, parsed: ParsedDeck): OnboardingDeckReview
     suggestedName: inferDeckName(decklist),
     mainCount: parsed.mainCount,
     sideboardCount: parsed.sideboardCount,
-    uniqueCount: parsed.cards.length,
+    uniqueCount: uniqueCardCount(parsed),
     status: "empty",
-    messages: ["Import a `.dek` file or paste a decklist to begin."],
+    messages: ["Paste a decklist or import your MTGO .dek to begin."],
     issues: []
   };
 }
 
-function buildDeckFingerprint(decklist: string, format: string, parsed: ParsedDeck) {
-  const normalizedCards = parsed.cards
-    .map((card) => `${card.section}:${card.name.trim().toLowerCase()}:${card.qty}`)
-    .sort()
-    .join("|");
-  return `${format.trim().toLowerCase()}::${normalizedCards || decklist.trim().toLowerCase()}`;
+function unparseableReview(decklist: string, parsed: ParsedDeck): OnboardingDeckReview {
+  return {
+    suggestedName: inferDeckName(decklist),
+    mainCount: parsed.mainCount,
+    sideboardCount: parsed.sideboardCount,
+    uniqueCount: uniqueCardCount(parsed),
+    status: "unparseable",
+    messages: ["No cards could be parsed. Put the quantity before each card name, such as `4 Lightning Bolt`."],
+    issues: []
+  };
 }
 
-export function gateDeckVerification(
-  status: OnboardingValidationStatus,
-  acknowledgedWarnings: boolean,
-  mainCount: number
-): DeckVerificationGate {
+export function normalizeFingerprintName(name: string) {
+  return name
+    .trim()
+    .replace(/[\u2018\u2019`]/g, "'")
+    .replace(/\u00e2\u20ac\u2122/g, "'")
+    .replace(/[’`]/g, "'")
+    .replace(/\s*\/\/\s*/g, " // ")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function uniqueCardCount(parsed: ParsedDeck) {
+  return new Set(parsed.cards.map((card) => `${card.section}:${normalizeFingerprintName(card.name)}`)).size;
+}
+
+function normalizedFormatKey(format: string) {
+  return normalizeFormat(format || "Standard").trim().toLowerCase();
+}
+
+export function buildDeckFingerprint(decklist: string, format: string, parsed: ParsedDeck = parseDecklist(decklist)) {
+  const aggregated = new Map<string, { section: ParsedDeck["cards"][number]["section"]; name: string; qty: number }>();
+  for (const card of parsed.cards) {
+    const key = `${card.section}:${normalizeFingerprintName(card.name)}`;
+    const existing = aggregated.get(key);
+    aggregated.set(key, {
+      section: card.section,
+      name: normalizeFingerprintName(card.name),
+      qty: (existing?.qty ?? 0) + card.qty
+    });
+  }
+  const normalizedCards = Array.from(aggregated.values())
+    .map((card) => `${card.section}:${card.name}:${card.qty}`)
+    .sort()
+    .join("|");
+  return `${normalizedFormatKey(format)}::${normalizedCards}`;
+}
+
+export function gateDeckVerification(input: {
+  status: OnboardingValidationStatus;
+  acknowledgedWarnings: boolean;
+  mainCount: number;
+  verifiedFingerprint?: string;
+  currentFingerprint?: string;
+}): DeckVerificationGate {
+  const { status, acknowledgedWarnings, mainCount, verifiedFingerprint, currentFingerprint } = input;
   const needsAcknowledgment = status === "warnings" || status === "incomplete" || status === "lookup-error";
   if (status === "checking") {
     return {
@@ -86,11 +131,25 @@ export function gateDeckVerification(
       message: "Checking card names, deck construction, and available format legality..."
     };
   }
+  if (status === "unparseable") {
+    return {
+      allowed: false,
+      needsAcknowledgment,
+      message: "No cards could be parsed. Put the quantity before each card name, such as `4 Lightning Bolt`."
+    };
+  }
   if (status === "empty" || mainCount === 0) {
     return {
       allowed: false,
       needsAcknowledgment,
-      message: "Import a `.dek` file or paste a decklist to begin."
+      message: "Paste a decklist or import your MTGO .dek to begin."
+    };
+  }
+  if (verifiedFingerprint !== currentFingerprint) {
+    return {
+      allowed: false,
+      needsAcknowledgment,
+      message: "This deck changed after its last verification. Wait for the updated deck check before continuing."
     };
   }
   if (needsAcknowledgment && !acknowledgedWarnings) {
@@ -110,8 +169,11 @@ export function gateDeckVerification(
 }
 
 export function buildOnboardingReview(decklist: string, format: string, parsed: ParsedDeck = parseDecklist(decklist)): OnboardingDeckReview {
-  if (parsed.mainCount === 0) {
+  if (!decklist.trim()) {
     return emptyReview(decklist, parsed);
+  }
+  if (parsed.mainCount === 0) {
+    return unparseableReview(decklist, parsed);
   }
 
   const normalizedFormat = normalizeFormat(format);
@@ -142,7 +204,7 @@ export function buildOnboardingReview(decklist: string, format: string, parsed: 
     suggestedName: inferDeckName(decklist),
     mainCount: parsed.mainCount,
     sideboardCount: parsed.sideboardCount,
-    uniqueCount: parsed.cards.length,
+    uniqueCount: uniqueCardCount(parsed),
     status: issues.length ? (parsed.mainCount < minimum ? "incomplete" : "warnings") : "checking",
     messages,
     issues
@@ -157,8 +219,11 @@ export async function verifyDeckForSaving(
   options: { retryFailures?: boolean } = {}
 ): Promise<OnboardingDeckReview> {
   const parsed = parseDecklist(decklist);
-  if (parsed.mainCount === 0) {
+  if (!decklist.trim()) {
     return emptyReview(decklist, parsed);
+  }
+  if (parsed.mainCount === 0) {
+    return unparseableReview(decklist, parsed);
   }
 
   const names = parsed.cards.map((card) => card.name);
@@ -204,7 +269,7 @@ export async function verifyDeckForSaving(
       suggestedName: inferDeckName(decklist),
       mainCount: validation.mainCount,
       sideboardCount: validation.sideboardCount,
-      uniqueCount: parsed.cards.length,
+      uniqueCount: uniqueCardCount(parsed),
       status,
       messages:
         status === "verified"
@@ -223,7 +288,7 @@ export async function verifyDeckForSaving(
       suggestedName: inferDeckName(decklist),
       mainCount: parsed.mainCount,
       sideboardCount: parsed.sideboardCount,
-      uniqueCount: parsed.cards.length,
+      uniqueCount: uniqueCardCount(parsed),
       status: "lookup-error",
       messages: ["Opening Edge could not finish checking this deck. You can retry without losing the decklist."],
       issues: [

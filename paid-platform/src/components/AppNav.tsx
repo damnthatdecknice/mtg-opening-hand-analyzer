@@ -22,6 +22,7 @@ export function AppNav() {
   const pathname = usePathname();
   const entitlements = useEntitlements();
   const [isSignedIn, setIsSignedIn] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const visibleItems = navItems.filter(
     (item) =>
       (!item.deckProOnly || entitlements.canUseDeckVault) &&
@@ -46,18 +47,48 @@ export function AppNav() {
     };
   }, []);
 
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return;
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMenuOpen(false);
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isMenuOpen]);
+
   return (
     <nav className="app-nav" aria-label="Primary navigation">
       <Link className="app-nav-brand" href="/">
         <Image src="/opening-edge-logo.png" alt="Opening Edge" width={416} height={145} priority />
       </Link>
-      <div className="app-nav-links">
+      <button
+        aria-controls="primary-nav-links"
+        aria-expanded={isMenuOpen}
+        aria-label={isMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+        className="app-nav-menu-button"
+        onClick={() => setIsMenuOpen((current) => !current)}
+        type="button"
+      >
+        Menu
+      </button>
+      <div className={`app-nav-links${isMenuOpen ? " is-open" : ""}`} id="primary-nav-links">
         {visibleItems.map((item) => (
           <Link
             aria-current={pathname === item.href ? "page" : undefined}
             className="secondary-button app-nav-link"
             href={item.href}
             key={item.href}
+            onClick={() => setIsMenuOpen(false)}
           >
             {item.label}
           </Link>

@@ -8,11 +8,13 @@ import { FirstDeckOnboarding } from "@/components/FirstDeckOnboarding";
 import { fetchCardData } from "@/lib/analyzer";
 import { saveDeckForCurrentUser } from "@/lib/deckStorage";
 import {
+  buildDeckFingerprint,
   gateDeckVerification,
   verifyDeckForSaving,
   type OnboardingDeckReview,
   type OnboardingValidationStatus
 } from "@/lib/firstDeckOnboarding";
+import { ValidationIssueList } from "@/components/ValidationIssueList";
 import {
   clearGuestDeckIntent,
   clearGuestDeckMigrationState,
@@ -158,9 +160,18 @@ export function DashboardContent() {
     if (!guestDeck) {
       return false;
     }
-    const gate = gateDeckVerification(guestVerificationStatus, acknowledgedGuestWarnings, guestDeck.parsedMainCount);
+    const gate = gateDeckVerification({
+      status: guestVerificationStatus,
+      acknowledgedWarnings: acknowledgedGuestWarnings,
+      mainCount: guestDeck.parsedMainCount,
+      verifiedFingerprint: guestVerification?.deckFingerprint,
+      currentFingerprint: buildDeckFingerprint(guestDeck.decklist, guestDeck.format)
+    });
     if (!gate.allowed) {
       setMigrationMessage(gate.message ?? "Review this deck before continuing.");
+      if (gate.message?.startsWith("This deck changed")) {
+        setGuestVerificationStatus("checking");
+      }
     }
     return gate.allowed;
   }
@@ -268,16 +279,7 @@ export function DashboardContent() {
           </div>
           {guestVerification ? (
             <div className={`deck-review-card ${guestVerificationStatus}`} aria-live="polite">
-              <ul className="validation-list">
-                {guestVerification.messages.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-                {guestVerification.issues.slice(0, 8).map((issue) => (
-                  <li key={`${issue.code}-${issue.cardName ?? issue.title}-${issue.detail}`} className={`validation-${issue.severity}`}>
-                    <strong>{issue.title}:</strong> {issue.detail}
-                  </li>
-                ))}
-              </ul>
+              <ValidationIssueList issues={guestVerification.issues} messages={guestVerification.messages} />
               {guestVerificationStatus === "lookup-error" ? (
                 <button className="text-button" onClick={() => setGuestVerificationRetry((value) => value + 1)} type="button">
                   Retry deck check

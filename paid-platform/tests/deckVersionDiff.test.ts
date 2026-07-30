@@ -37,4 +37,14 @@ assert.equal(byKey.get("sideboard:opt")?.newQty, 2, "sideboard duplicate compari
 assert.equal(byKey.get("main:opt")?.oldQty, 2, "moving cards out of main reports the main-deck removal");
 assert.equal(byKey.get("main:opt")?.newQty, 0, "main-deck moved card does not disappear");
 
+const punctuationDiff = diffDecklistsBySection(
+  `Deck
+1 Urza's Saga
+2 Fire//Ice`,
+  `Deck
+1 Urza\u2019s Saga
+2 Fire // Ice`
+);
+assert.equal(punctuationDiff.length, 0, "version diff normalizes apostrophes and split-card slash spacing");
+
 console.log("deckVersionDiff tests passed");

@@ -19,11 +19,11 @@ export function DashboardActions({ recentDeck }: DashboardActionsProps) {
     <div className="action-row">
       {entitlements.canUseDeckVault ? (
         <>
-          <Link className="primary-button" href="/analyzer">
-            Analyze a Hand
+          <Link className="primary-button" href={deckHref}>
+            {recentDeck ? `Analyze ${recentDeck.name}` : "Analyze a Hand"}
           </Link>
-          <Link className="secondary-button" href={deckHref}>
-            {recentDeck ? `Resume ${recentDeck.name}` : "Choose a Deck"}
+          <Link className="secondary-button" href={recentDeck ? "/analyzer" : "/decks"}>
+            {recentDeck ? "Analyze Another Deck" : "Choose a Deck"}
           </Link>
           <Link className="secondary-button" href={deckLabHref}>
             Open Deck Lab

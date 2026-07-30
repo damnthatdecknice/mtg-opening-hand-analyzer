@@ -11,6 +11,7 @@ import {
 import { fetchCardData } from "@/lib/analyzer";
 import { deckFormatOptions } from "@/lib/formats";
 import {
+  buildDeckFingerprint,
   buildOnboardingReview,
   gateDeckVerification,
   onboardingExampleDeck,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/firstDeckOnboarding";
 import { guestDeckFromParsed, saveGuestDeck, saveGuestDeckIntent } from "@/lib/guestDeck";
 import { saveDeckForCurrentUser } from "@/lib/deckStorage";
+import { ValidationIssueList } from "@/components/ValidationIssueList";
 
 type FirstDeckOnboardingProps = {
   mode: "guest" | "account";
@@ -82,9 +84,9 @@ export function FirstDeckOnboarding({
     setAcknowledgedWarnings(false);
     setMessage("");
 
-    if (!decklist.trim() || parsed.mainCount === 0) {
-      setVerification(null);
-      setValidationStatus("empty");
+    if (localReview.status === "empty" || localReview.status === "unparseable") {
+      setVerification(localReview);
+      setValidationStatus(localReview.status);
       return;
     }
 
@@ -237,11 +239,20 @@ export function FirstDeckOnboarding({
   const primaryAction = mode === "account" ? saveAndContinue : analyzeGuestDeck;
 
   function canContinueAfterVerification() {
-    const gate = gateDeckVerification(validationStatus, acknowledgedWarnings, parsed.mainCount);
+    const gate = gateDeckVerification({
+      status: validationStatus,
+      acknowledgedWarnings,
+      mainCount: parsed.mainCount,
+      verifiedFingerprint: verification?.deckFingerprint,
+      currentFingerprint: buildDeckFingerprint(decklist, format, parsed)
+    });
     if (!gate.allowed) {
       setMessage(gate.message ?? "Review this deck before continuing.");
-      if (validationStatus === "empty") {
+      if (validationStatus === "empty" || validationStatus === "unparseable") {
         focusFirstInput();
+      }
+      if (gate.message?.startsWith("This deck changed")) {
+        setValidationStatus("checking");
       }
     }
     return gate.allowed;
@@ -357,21 +368,12 @@ export function FirstDeckOnboarding({
         <div className="mini-metrics">
           <span>{review.mainCount} main</span>
           <span>{review.sideboardCount} sideboard</span>
-          <span>{review.uniqueCount} unique rows</span>
+          <span>{review.uniqueCount} unique cards</span>
           <span>{importMetadata?.source === "mtgo_dek" ? ".dek import" : "decklist"}</span>
           <span>{validationStatus === "checking" ? "checking" : validationStatus.replace("-", " ")}</span>
         </div>
 
-        <ul className="validation-list">
-          {review.messages.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-          {review.issues.slice(0, 8).map((issue) => (
-            <li key={`${issue.code}-${issue.cardName ?? issue.title}-${issue.detail}`} className={`validation-${issue.severity}`}>
-              <strong>{issue.title}:</strong> {issue.detail}
-            </li>
-          ))}
-        </ul>
+        <ValidationIssueList issues={review.issues} messages={review.messages} />
 
         {validationStatus === "lookup-error" ? (
           <button className="text-button" onClick={() => setVerificationRetry((value) => value + 1)} type="button">

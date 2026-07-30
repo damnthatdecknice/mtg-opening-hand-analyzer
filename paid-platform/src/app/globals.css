@@ -612,6 +612,25 @@ a {
   object-fit: contain;
 }
 
+.app-nav-menu-button {
+  display: none;
+  min-height: 44px;
+  border: 1px solid rgba(255, 184, 77, 0.34);
+  background: linear-gradient(135deg, rgba(8, 22, 42, 0.86), rgba(1, 8, 18, 0.78));
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 950;
+  padding: 0 16px;
+  clip-path: var(--clip-sm);
+}
+
+.app-nav-menu-button:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(89, 216, 255, 0.18);
+  outline: none;
+}
+
 .app-nav-links {
   display: flex;
   flex-wrap: wrap;
@@ -3903,12 +3922,27 @@ button.meta-bar-row {
 
 @media (max-width: 900px) {
   .app-nav {
-    align-items: flex-start;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .app-nav-menu-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .app-nav-links {
-    justify-content: flex-start;
+    display: none;
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .app-nav-links.is-open {
+    display: grid;
   }
 
   .app-nav-brand {
@@ -3917,6 +3951,11 @@ button.meta-bar-row {
 
   .app-nav-brand img {
     width: min(220px, 70vw);
+  }
+
+  .app-nav-link {
+    justify-content: center;
+    min-height: 44px;
   }
 
   .hero-grid,
@@ -3977,6 +4016,16 @@ button.meta-bar-row {
   }
 
   .crop-grid {
-    grid-template-columns: repeat(7, minmax(180px, 1fr));
+    grid-template-columns: 1fr;
+    overflow-x: visible;
+  }
+
+  .crop-preview-card {
+    justify-items: stretch;
+    min-width: 0;
+  }
+
+  .crop-preview-card img {
+    max-height: 360px;
   }
 }

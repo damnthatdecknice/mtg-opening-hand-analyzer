@@ -1419,7 +1419,9 @@ function buildObservations(
     });
   }
 
-  if (!observations.length) {
+  const consolidated = consolidateStructuralObservations(observations, posture);
+
+  if (!consolidated.length) {
     observations.push({
       code: "NO_MAJOR_WARNING",
       tone: "good",
@@ -1428,9 +1430,45 @@ function buildObservations(
       confidence: posture.confidence === "low" ? "low" : "medium",
       evidence: posture.evidence.length ? posture.evidence : ["No single structural pressure point exceeded the configured contextual ranges."]
     });
+    return observations;
   }
 
-  return observations;
+  return consolidated;
+}
+
+function shouldKeepExtremeFinisherWarning(observation: ManaCurveObservation) {
+  if (observation.code !== "EXCESS_FINISHERS") {
+    return true;
+  }
+  const measured = observation.measuredValue ?? 0;
+  const max = observation.expectedRange?.max;
+  return max !== undefined && measured >= Math.ceil(max * 1.5);
+}
+
+function consolidateStructuralObservations(
+  observations: ManaCurveObservation[],
+  posture: DeckPostureResult
+): ManaCurveObservation[] {
+  if (posture.posture !== "ramp") {
+    return observations;
+  }
+
+  const activeCodes = new Set(observations.map((observation) => observation.code));
+  const hasExcessRampPayoffs = activeCodes.has("EXCESS_RAMP_PAYOFFS");
+  const hasLowRampPayoffs = activeCodes.has("LOW_RAMP_PAYOFFS");
+
+  return observations.filter((observation) => {
+    if (hasExcessRampPayoffs && observation.code === "HEAVY_TOP_END") {
+      return false;
+    }
+    if (hasExcessRampPayoffs && observation.code === "EXCESS_FINISHERS") {
+      return shouldKeepExtremeFinisherWarning(observation);
+    }
+    if (hasLowRampPayoffs && (observation.code === "LOW_TOP_END" || observation.code === "LOW_FINISHERS")) {
+      return false;
+    }
+    return true;
+  });
 }
 
 function normalizedDeckVector(cards: Array<{ name: string; qty: number }>) {
@@ -1655,16 +1693,26 @@ function isMeaningfulLateGameEngine(card: ManaCurveCardData | undefined) {
     return false;
   }
   const mv = physicalManaValueForCard(card);
+  if (mv < 4) {
+    return false;
+  }
   const roles = detectFunctionalRoles(card);
   const text = cardText(card);
+  const typeLine = card.typeLine ?? "";
+  const repeatableTrigger = /\b(whenever|at the beginning|each upkeep|each end step|at the end step)\b/i.test(text);
+  const realCardAdvantage = /\bdraw (?:two|three|four|five|x|\d+) cards?\b|\bput .* into your hand\b|\byou may cast\b|\byou may play\b/i.test(text);
+  const repeatableTokenEngine = repeatableTrigger && /\bcreate\b.*\btoken\b/i.test(text);
+  const recursionEngine = repeatableTrigger && /\breturn\b.*\b(?:battlefield|hand)\b/i.test(text);
+  const planeswalker = /\bplaneswalker\b/i.test(typeLine);
   return (
-    mv >= 4 &&
-    (roles.includes("finisher") ||
-      roles.includes("combo_payoff") ||
-      roles.includes("card_draw") ||
-      roles.includes("tutor") ||
-      roles.includes("board_wipe") ||
-      /\bwhenever\b|\bat the beginning\b|\bdraw\b|\bcreate\b|\breturn\b|\bplaneswalker\b/i.test(text))
+    roles.includes("finisher") ||
+    roles.includes("combo_payoff") ||
+    roles.includes("tutor") ||
+    roles.includes("board_wipe") ||
+    (roles.includes("card_draw") && (realCardAdvantage || repeatableTrigger)) ||
+    (planeswalker && (roles.includes("card_draw") || roles.includes("removal") || roles.includes("finisher") || /[+-]\d/.test(text))) ||
+    (repeatableTrigger && (realCardAdvantage || repeatableTokenEngine || recursionEngine)) ||
+    /\bwin the game\b|\bcan't lose the game\b/i.test(text)
   );
 }
 
@@ -1735,10 +1783,12 @@ function detectedProblemForCard(card: ManaCurveCardData | undefined, observation
 function protectedFromCuts(row: { entry: ParsedDeckCard; card?: ManaCurveCardData }, problem?: ManaCurveObservationCode) {
   const roles = detectFunctionalRoles(row.card);
   const excessTopEnd = problem ? excessTopEndProblems.has(problem) : false;
+  const shortageTopEnd = problem ? needsTopEndProblems.has(problem) : false;
   return (
     roles.includes("combo_enabler") ||
     roles.includes("combo_payoff") ||
     roles.includes("tutor") ||
+    (shortageTopEnd && isMeaningfulLateGameEngine(row.card)) ||
     (!excessTopEnd && roles.includes("finisher")) ||
     roles.includes("board_wipe") ||
     (roles.some((role) => ["removal", "countermagic", "discard", "protection"].includes(role)) && row.entry.qty <= 2)
@@ -1910,22 +1960,7 @@ function buildSuggestions(
   }
 
   if (!suggestions.length) {
-    if (activeCodes.has("HEAVY_TOP_END")) {
-      suggestions.push({
-        cardName: "Replace a top-end spell with a cheaper role player",
-        suggestedQuantity: 1,
-        role: "Curve compression",
-        slot: "2-3 mana",
-        problemAddressed: "curve compression",
-        reason: "The curve is heavy at five-plus mana; a cheaper card in the same role will make more opening hands function.",
-        supportingDeckCount: 0,
-        similarityConfidence: "low",
-        formatLegality: "unknown",
-        colorCompatibility: "fits",
-        possibleCuts: possibleCutsForProblem(mainCards, cardData, "HEAVY_TOP_END"),
-        source: "structural"
-      });
-    } else if (activeCodes.has("EXCESS_RAMP_PAYOFFS")) {
+    if (activeCodes.has("EXCESS_RAMP_PAYOFFS")) {
       suggestions.push({
         cardName: "Replace a redundant payoff with a cheaper role player",
         suggestedQuantity: 1,
@@ -1938,6 +1973,21 @@ function buildSuggestions(
         formatLegality: "unknown",
         colorCompatibility: "fits",
         possibleCuts: possibleCutsForProblem(mainCards, cardData, "EXCESS_RAMP_PAYOFFS"),
+        source: "structural"
+      });
+    } else if (activeCodes.has("HEAVY_TOP_END")) {
+      suggestions.push({
+        cardName: "Replace a top-end spell with a cheaper role player",
+        suggestedQuantity: 1,
+        role: "Curve compression",
+        slot: "2-3 mana",
+        problemAddressed: "curve compression",
+        reason: "The curve is heavy at five-plus mana; a cheaper card in the same role will make more opening hands function.",
+        supportingDeckCount: 0,
+        similarityConfidence: "low",
+        formatLegality: "unknown",
+        colorCompatibility: "fits",
+        possibleCuts: possibleCutsForProblem(mainCards, cardData, "HEAVY_TOP_END"),
         source: "structural"
       });
     } else if (activeCodes.has("EXCESS_FINISHERS")) {
