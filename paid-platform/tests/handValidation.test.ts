@@ -38,6 +38,12 @@ assert.deepEqual(
   "split-card face names resolve to the parent deck row within copy limits"
 );
 
+assert.deepEqual(
+  validatePastedHandRows(["Roating Furnafcer", "Steaming Sauna", "Opt", "Opt", "Island", "Island", "Mountain"], decklist).hand,
+  ["Roaring Furnace // Steaming Sauna", "Roaring Furnace // Steaming Sauna", "Opt", "Opt", "Island", "Island", "Mountain"],
+  "clear OCR typos in split-card face names resolve to the parent deck row"
+);
+
 assert.match(
   validateOpeningHandAgainstDeck(["Island", "Mountain", "Opt", "Lightning Strike", "Island", "Mountain", ""], decklist).error,
   /Card 7 is blank/,

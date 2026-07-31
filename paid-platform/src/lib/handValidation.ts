@@ -16,7 +16,87 @@ export type OpeningHandValidationResult = {
 };
 
 function normalizeCardInputName(name: string) {
-  return name.trim().toLowerCase().replace(/[’`]/g, "'");
+  return name
+    .trim()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[â€™‘’`]/g, "'")
+    .replace(/[‐‑‒–—]/g, "-")
+    .replace(/\s*\/\/\s*/g, " // ")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function fuzzyKey(name: string) {
+  return normalizeCardInputName(name)
+    .replace(/\/\/.*$/g, "")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function editDistance(a: string, b: string) {
+  if (a === b) {
+    return 0;
+  }
+  if (!a.length) {
+    return b.length;
+  }
+  if (!b.length) {
+    return a.length;
+  }
+
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const current = Array.from({ length: b.length + 1 }, () => 0);
+
+  for (let aIndex = 1; aIndex <= a.length; aIndex += 1) {
+    current[0] = aIndex;
+    for (let bIndex = 1; bIndex <= b.length; bIndex += 1) {
+      const cost = a[aIndex - 1] === b[bIndex - 1] ? 0 : 1;
+      current[bIndex] = Math.min(current[bIndex - 1]! + 1, previous[bIndex]! + 1, previous[bIndex - 1]! + cost);
+    }
+    for (let index = 0; index < previous.length; index += 1) {
+      previous[index] = current[index]!;
+    }
+  }
+
+  return previous[b.length]!;
+}
+
+function resolveFuzzyAlias(rawName: string, aliases: Map<string, string>) {
+  const inputKey = fuzzyKey(rawName);
+  if (inputKey.length < 5) {
+    return "";
+  }
+
+  const rankedByResolved = new Map<string, { resolved: string; distance: number; similarity: number }>();
+  for (const entry of Array.from(aliases.entries())
+    .map(([alias, resolved]) => {
+      const aliasKey = fuzzyKey(alias);
+      if (!aliasKey || Math.abs(aliasKey.length - inputKey.length) > Math.max(3, Math.ceil(inputKey.length * 0.35))) {
+        return null;
+      }
+      const distance = editDistance(inputKey, aliasKey);
+      const similarity = 1 - distance / Math.max(inputKey.length, aliasKey.length);
+      return { resolved, distance, similarity };
+    })
+    .filter((entry): entry is { resolved: string; distance: number; similarity: number } => Boolean(entry))) {
+    const existing = rankedByResolved.get(entry.resolved);
+    if (!existing || entry.similarity > existing.similarity || (entry.similarity === existing.similarity && entry.distance < existing.distance)) {
+      rankedByResolved.set(entry.resolved, entry);
+    }
+  }
+
+  const ranked = Array.from(rankedByResolved.values())
+    .sort((a, b) => b.similarity - a.similarity || a.distance - b.distance);
+
+  const best = ranked[0];
+  const second = ranked[1];
+  if (!best) {
+    return "";
+  }
+
+  const maxDistance = Math.max(2, Math.ceil(inputKey.length * 0.26));
+  const clearBest = !second || best.similarity - second.similarity >= 0.08 || best.distance + 2 <= second.distance;
+  return best.distance <= maxDistance && best.similarity >= 0.72 && clearBest ? best.resolved : "";
 }
 
 export function mainDeckNameAliases(decklist: string) {
@@ -61,7 +141,7 @@ export function validateOpeningHandAgainstDeck(handRows: string[], decklist: str
   const used = new Map<string, number>();
   const hand: string[] = [];
   for (const rawName of rows) {
-    const resolved = aliases.get(normalizeCardInputName(rawName));
+    const resolved = aliases.get(normalizeCardInputName(rawName)) ?? resolveFuzzyAlias(rawName, aliases);
     if (!resolved) {
       const message = `${rawName} is not in the main deck.`;
       return {
