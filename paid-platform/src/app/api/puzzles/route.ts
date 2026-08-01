@@ -10,6 +10,7 @@ import {
   calculateMagicPuzzleStats,
   canUseMagicPuzzleArchive,
   canUseMagicPuzzles,
+  generateMagicPuzzleForDeck,
   generateMagicPuzzleForDate,
   magicPuzzleAttemptFromDatabaseRow,
   magicPuzzleFromDatabaseRow,
@@ -17,8 +18,10 @@ import {
   publicMagicPuzzle,
   type MagicPuzzleAttempt,
   type MagicPuzzleAttemptDatabaseRow,
-  type MagicPuzzleDatabaseRow
+  type MagicPuzzleDatabaseRow,
+  type MagicPuzzleDeckOption
 } from "@/lib/magicPuzzles";
+import { parseDecklist } from "@/lib/deckParser";
 
 function bearerToken(request: NextRequest) {
   const authorization = request.headers.get("authorization") ?? "";
@@ -27,6 +30,31 @@ function bearerToken(request: NextRequest) {
 
 function todayUtc() {
   return new Date().toISOString().slice(0, 10);
+}
+
+type SavedDeckRow = {
+  id: string;
+  name: string;
+  format: string | null;
+  decklist: string;
+  parsed_json?: unknown;
+};
+
+function savedDeckMainCount(deck: SavedDeckRow) {
+  const parsed = deck.parsed_json as { mainCount?: unknown } | null;
+  if (typeof parsed?.mainCount === "number") {
+    return parsed.mainCount;
+  }
+  return parseDecklist(deck.decklist).mainCount;
+}
+
+function savedDeckOption(deck: SavedDeckRow): MagicPuzzleDeckOption {
+  return {
+    id: deck.id,
+    name: deck.name,
+    format: deck.format ?? "Unknown",
+    mainCount: savedDeckMainCount(deck)
+  };
 }
 
 async function loadEntitlementSnapshot(userId: string) {
@@ -73,7 +101,7 @@ async function loadTodayPuzzle(puzzleDate: string) {
   const { data: existing } = await serviceClient
     .from("magic_puzzles")
     .select("*")
-    .eq("puzzle_date", puzzleDate)
+    .eq("id", generated.id)
     .maybeSingle();
 
   if (existing) {
@@ -82,7 +110,7 @@ async function loadTodayPuzzle(puzzleDate: string) {
 
   const { data: inserted } = await serviceClient
     .from("magic_puzzles")
-    .upsert(magicPuzzleToDatabaseRow(generated), { onConflict: "puzzle_date" })
+    .upsert(magicPuzzleToDatabaseRow(generated), { onConflict: "id" })
     .select("*")
     .maybeSingle();
 
@@ -116,7 +144,7 @@ export async function GET(request: NextRequest) {
 
   const { data: userData, error: userError } = await authClient.auth.getUser(token);
   if (userError || !userData.user) {
-    return NextResponse.json({ error: "Sign in to play today's puzzle." }, { status: 401 });
+    return NextResponse.json({ error: "Sign in to use the Keep Trainer." }, { status: 401 });
   }
 
   const entitlements = await loadEntitlementSnapshot(userData.user.id);
@@ -124,14 +152,26 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Magic Puzzles are not enabled for this account." }, { status: 403 });
   }
 
+  const { data: deckData } = await serviceClient
+    .from("decks")
+    .select("id, name, format, decklist, parsed_json")
+    .eq("user_id", userData.user.id)
+    .eq("is_archived", false)
+    .order("updated_at", { ascending: false });
+
+  const decks = ((deckData ?? []) as SavedDeckRow[]).filter((deck) => savedDeckMainCount(deck) >= 7);
+  const deckOptions = decks.map(savedDeckOption);
+  const requestedDeckId = request.nextUrl.searchParams.get("deckId") ?? "";
+  const selectedDeck = decks.find((deck) => deck.id === requestedDeckId) ?? decks[0];
+
   const { data: attemptsData } = await serviceClient
     .from("magic_puzzle_attempts")
     .select("puzzle_date, selected_answer, is_correct, attempted_at")
     .eq("user_id", userData.user.id)
-    .order("puzzle_date", { ascending: true });
+    .order("puzzle_date", { ascending: true })
+    .order("attempted_at", { ascending: true });
 
   const attempts = ((attemptsData ?? []) as MagicPuzzleAttemptDatabaseRow[]).map(magicPuzzleAttemptFromDatabaseRow);
-  const todayAttempt = attempts.find((attempt) => attempt.puzzleDate === puzzle.puzzleDate);
   const archive = canUseMagicPuzzleArchive(entitlements)
     ? attempts.slice(-30).reverse().map((attempt) => ({
         puzzleDate: attempt.puzzleDate,
@@ -140,10 +180,45 @@ export async function GET(request: NextRequest) {
       }))
     : [];
 
+  if (!selectedDeck) {
+    return NextResponse.json({
+      signedIn: true,
+      preview: false,
+      puzzle: null,
+      decks: deckOptions,
+      stats: calculateMagicPuzzleStats(attempts as MagicPuzzleAttempt[]),
+      archive
+    });
+  }
+
+  const trainerPuzzle = generateMagicPuzzleForDeck(
+    {
+      id: selectedDeck.id,
+      name: selectedDeck.name,
+      format: selectedDeck.format,
+      decklist: selectedDeck.decklist
+    },
+    `${userData.user.id}:${selectedDeck.id}:${Date.now()}:${Math.random().toString(36).slice(2)}`
+  );
+
+  const { data: inserted, error: insertError } = await serviceClient
+    .from("magic_puzzles")
+    .upsert(magicPuzzleToDatabaseRow(trainerPuzzle), { onConflict: "id" })
+    .select("*")
+    .maybeSingle();
+
+  if (insertError) {
+    return NextResponse.json({ error: insertError.message }, { status: 400 });
+  }
+
+  const puzzleForResponse = inserted ? magicPuzzleFromDatabaseRow(inserted as MagicPuzzleDatabaseRow) : trainerPuzzle;
+
   return NextResponse.json({
     signedIn: true,
     preview: false,
-    puzzle: publicMagicPuzzle(puzzle, todayAttempt),
+    puzzle: publicMagicPuzzle(puzzleForResponse),
+    decks: deckOptions,
+    selectedDeckId: selectedDeck.id,
     stats: calculateMagicPuzzleStats(attempts as MagicPuzzleAttempt[]),
     archive
   });

@@ -57,6 +57,24 @@
   align-items: center;
 }
 
+.puzzle-deck-picker {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+  margin: 1rem 0;
+}
+
+.puzzle-deck-picker label {
+  grid-column: 1 / -1;
+  color: var(--warning);
+  font-weight: 900;
+}
+
+.puzzle-deck-picker select {
+  min-width: 0;
+}
+
 .puzzle-context-row span {
   border: 1px solid var(--amber-border);
   background: var(--amber-soft);
@@ -139,6 +157,10 @@
 @media (max-width: 900px) {
   .puzzle-card-row {
     grid-template-columns: repeat(7, minmax(160px, 170px));
+  }
+
+  .puzzle-deck-picker {
+    grid-template-columns: 1fr;
   }
 
   .puzzle-explanation-grid {

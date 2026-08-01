@@ -102,7 +102,8 @@ export async function POST(request: NextRequest, context: { params: { puzzleId: 
     .from("magic_puzzle_attempts")
     .select("puzzle_date, selected_answer, is_correct, attempted_at")
     .eq("user_id", userData.user.id)
-    .order("puzzle_date", { ascending: true });
+    .order("puzzle_date", { ascending: true })
+    .order("attempted_at", { ascending: true });
 
   return NextResponse.json({
     reveal: revealMagicPuzzle(puzzle, body.answer),

@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
   const { data: existing } = await serviceClient
     .from("magic_puzzles")
     .select("*")
-    .eq("puzzle_date", puzzleDate)
+    .eq("id", generated.id)
     .maybeSingle();
 
   if (existing && !force) {
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
   const { data: saved, error } = await serviceClient
     .from("magic_puzzles")
-    .upsert(magicPuzzleToDatabaseRow(generated), { onConflict: "puzzle_date" })
+    .upsert(magicPuzzleToDatabaseRow(generated), { onConflict: "id" })
     .select("*")
     .maybeSingle();
 

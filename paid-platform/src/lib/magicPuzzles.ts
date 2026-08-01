@@ -83,7 +83,22 @@ export type MagicPuzzleStats = {
   accuracy: number;
   currentStreak: number;
   longestStreak: number;
+  rating: number;
   recentResults: Array<{ puzzleDate: string; correct: boolean }>;
+};
+
+export type MagicPuzzleDeckOption = {
+  id: string;
+  name: string;
+  format: string;
+  mainCount: number;
+};
+
+export type MagicPuzzleDeckInput = {
+  id: string;
+  name: string;
+  format?: string | null;
+  decklist: string;
 };
 
 export const magicPuzzleGeneratorVersion = "opening-edge-puzzles-v1";
@@ -452,6 +467,65 @@ function buildPuzzle(deck: PuzzleDeck, puzzleDate: string, attempt: number, sour
   };
 }
 
+function buildTrainingPuzzle(deck: MagicPuzzleDeckInput, seed: string): MagicPuzzle | null {
+  const hand = generateSeededOpeningHand(deck.decklist, seed).hand;
+  if (hand.length !== 7) {
+    return null;
+  }
+
+  const playDraw: PlayDraw = deterministicIndex(`${seed}:play-draw`, 2) === 0 ? "play" : "draw";
+  const cardData = buildCuratedCardData(deck.decklist);
+  const analysis = analyzeOpeningHand(deck.decklist, hand, cardData, playDraw, {
+    format: deck.format ?? "Unknown",
+    scoringSettings: puzzleScoringSettings
+  });
+  if (analysis.missingCards.length || analysis.notes.some((note) => /exactly seven|No lands were identified/i.test(note))) {
+    return null;
+  }
+
+  const scoreMargin = marginFromAnalysis(analysis);
+  const answer = answerFromAnalysis(analysis);
+  const puzzleDate = new Date().toISOString().slice(0, 10);
+
+  return {
+    id: `trainer:${deck.id}:${seed.replace(/[^a-zA-Z0-9_-]/g, "-")}`,
+    puzzleDate,
+    type: "opening-hand",
+    seed,
+    deckId: deck.id,
+    deckName: deck.name,
+    format: deck.format ?? "Unknown",
+    archetype: "Saved deck",
+    decklist: deck.decklist,
+    hand,
+    playDraw,
+    difficulty: difficultyFromAnalysis(analysis, scoreMargin),
+    lessonCategory: lessonCategoryFromAnalysis(analysis),
+    correctAnswer: answer,
+    explanation: explanationFromAnalysis(analysis, answer),
+    analysisSummary: {
+      score: analysis.handTextureScore,
+      mulliganAverage: analysis.mulligan?.average,
+      severeFailureProbability: analysis.severeFailureProbability,
+      scoreMargin
+    },
+    qualityScore: scoreMargin + Math.abs(analysis.handTextureScore - 50) / 4,
+    source: "generated",
+    generatorVersion: `${magicPuzzleGeneratorVersion}-trainer`
+  };
+}
+
+export function generateMagicPuzzleForDeck(deck: MagicPuzzleDeckInput, seedInput?: string) {
+  const seed = seedInput ?? `${deck.id}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const puzzle = buildTrainingPuzzle(deck, `${seed}:${attempt}`);
+    if (puzzle) {
+      return puzzle;
+    }
+  }
+  throw new Error("Could not generate a seven-card training hand for this deck.");
+}
+
 export function generateMagicPuzzleForDate(dateInput: Date | string = new Date()) {
   const puzzleDate = typeof dateInput === "string" ? dateInput : puzzleDateString(dateInput);
   const startIndex = deterministicIndex(`${puzzleDate}:deck`, puzzleDecks.length);
@@ -563,7 +637,9 @@ export function revealMagicPuzzle(puzzle: MagicPuzzle, selectedAnswer: MagicPuzz
 }
 
 export function calculateMagicPuzzleStats(attempts: MagicPuzzleAttempt[]): MagicPuzzleStats {
-  const sorted = [...attempts].sort((a, b) => a.puzzleDate.localeCompare(b.puzzleDate));
+  const sorted = [...attempts].sort(
+    (a, b) => a.puzzleDate.localeCompare(b.puzzleDate) || (a.createdAt ?? "").localeCompare(b.createdAt ?? "")
+  );
   let currentStreak = sorted.length ? 1 : 0;
   let longestStreak = 0;
   let running = 0;
@@ -585,11 +661,19 @@ export function calculateMagicPuzzleStats(attempts: MagicPuzzleAttempt[]): Magic
     accuracy: sorted.length ? correct / sorted.length : 0,
     currentStreak,
     longestStreak,
+    rating: calculateMagicPuzzleRating(sorted),
     recentResults: sorted.slice(-7).reverse().map((attempt) => ({
       puzzleDate: attempt.puzzleDate,
       correct: attempt.correct
     }))
   };
+}
+
+export function calculateMagicPuzzleRating(attempts: MagicPuzzleAttempt[]) {
+  return attempts.reduce((rating, attempt) => {
+    const next = rating + (attempt.correct ? 14 : -11);
+    return Math.max(100, Math.min(2500, next));
+  }, 1000);
 }
 
 function daysBetween(previousDate: string, nextDate: string) {

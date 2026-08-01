@@ -5,6 +5,7 @@ import {
   calculateMagicPuzzleStats,
   canUseMagicPuzzleArchive,
   canUseMagicPuzzles,
+  generateMagicPuzzleForDeck,
   generateMagicPuzzleForDate,
   publicMagicPuzzle,
   revealMagicPuzzle,
@@ -35,6 +36,14 @@ assert.equal(generated.hand.length, 7, "daily puzzle contains seven cards");
 assert.ok(generated.analysisSummary.scoreMargin >= 8, "daily puzzle passes ambiguity margin");
 assert.ok(generated.explanation.keyFactors.length > 0, "daily puzzle has explanation factors");
 
+const trainerPuzzle = generateMagicPuzzleForDeck(
+  { id: "mono-red", name: "Mono-Red Trainer", format: "Modern", decklist },
+  "trainer-seed"
+);
+assert.ok(trainerPuzzle.id.startsWith("trainer:mono-red:"), "trainer puzzle id includes the saved deck id");
+assert.equal(trainerPuzzle.deckName, "Mono-Red Trainer", "trainer puzzle uses the selected saved deck");
+assert.equal(trainerPuzzle.hand.length, 7, "trainer puzzle deals a seven-card hand");
+
 const publicPuzzle = publicMagicPuzzle(generated);
 assert.equal("correctAnswer" in publicPuzzle, false, "public puzzle does not expose the correct answer before attempt");
 assert.equal(publicPuzzle.reveal, undefined, "public puzzle does not reveal explanation before attempt");
@@ -63,6 +72,7 @@ assert.equal(stats.correct, 2, "stats count correct answers");
 assert.equal(stats.currentStreak, 3, "daily streak counts completed puzzle days");
 assert.equal(stats.longestStreak, 3, "longest streak counts completed puzzle days");
 assert.equal(Math.round(stats.accuracy * 100), 67, "accuracy is correct-answer percentage");
+assert.equal(stats.rating, 1017, "trainer rating moves with correct and incorrect answers");
 
 assert.equal(canUseMagicPuzzles({ isOpenBeta: true, rank: "basic" }), true, "open beta users can use today's puzzle");
 assert.equal(canUseMagicPuzzles({ rank: "beta_premium" }), true, "beta premium users can use today's puzzle");
