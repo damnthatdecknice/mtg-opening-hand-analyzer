@@ -22,6 +22,7 @@ import type { SavedDeck } from "@/lib/decks";
 import { deckFormatOptions } from "@/lib/formats";
 import { clearGuestDeck, loadGuestDeck, saveGuestDeckIntent } from "@/lib/guestDeck";
 import { validateOpeningHandAgainstDeck, validatePastedHandRows } from "@/lib/handValidation";
+import { detectMtgoHandFromImageData, scaleRects, type Rect } from "@/lib/mtgoHandDetector";
 import { supabase } from "@/lib/supabase";
 import { useEntitlements } from "@/components/useEntitlements";
 
@@ -531,7 +532,7 @@ async function recognizeCropImages(
       const signatures = isArenaCrop && artCardSignatures.length ? artCardSignatures : fullCardSignatures;
       const cropSignature = await imageSignature(crop.matchSrc ?? crop.src, "", isArenaCrop ? 18 : 14, isArenaCrop ? 18 : 20);
       const cropTitleSignature =
-        isArenaCrop && crop.textSrc && titleCardSignatures.length
+        crop.textSrc && titleCardSignatures.length
           ? await imageSignature(crop.textSrc, "", 36, 8).catch(() => null)
           : null;
       const scoredByCard = new Map<string, RecognitionCandidate>();
@@ -583,45 +584,110 @@ async function recognizeCropImages(
 
 async function makeCrops(src: string, source: ScreenshotSource, adjustments: CropAdjustments) {
   const image = await loadImage(src);
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-  if (!context) {
-    throw new Error("This browser could not prepare screenshot crops.");
-  }
 
   if (source === "arena") {
     return makeArenaCrops(image, adjustments);
   }
 
-  const crops: CropPreview[] = [];
-  const cropWidth =
-    image.width * 0.108 * (1 + adjustments.width / 100);
-  const cropHeight =
-    image.height * 0.252 * (1 + adjustments.height / 100);
-  const startX = image.width * 0.087 + image.width * (adjustments.x / 100);
-  const startY = image.height * 0.712 + image.height * (adjustments.y / 100);
-  const step =
-    image.width * 0.1025 * (1 + adjustments.spread / 100);
+  return makeMtgoCrops(image, adjustments);
+}
 
-  canvas.width = Math.round(cropWidth);
-  canvas.height = Math.round(cropHeight);
+function adjustedRect(rect: Rect, image: HTMLImageElement, index: number, adjustments: CropAdjustments) {
+  const width = rect.width * (1 + adjustments.width / 100);
+  const height = rect.height * (1 + adjustments.height / 100);
+  const centerShift = (index - 3) * rect.width * (adjustments.spread / 100) * 0.45;
+  const centerX = rect.x + rect.width / 2 + image.width * (adjustments.x / 100) + centerShift;
+  const centerY = rect.y + rect.height / 2 + image.height * (adjustments.y / 100);
+  return {
+    x: Math.max(0, Math.min(image.width - width, centerX - width / 2)),
+    y: Math.max(0, Math.min(image.height - height, centerY - height / 2)),
+    width,
+    height
+  };
+}
+
+function makeMtgoCrops(image: HTMLImageElement, adjustments: CropAdjustments) {
+  const analysisCanvas = document.createElement("canvas");
+  const analysisContext = analysisCanvas.getContext("2d", { willReadFrequently: true });
+  const cropCanvas = document.createElement("canvas");
+  const cropContext = cropCanvas.getContext("2d");
+  const matchCanvas = document.createElement("canvas");
+  const matchContext = matchCanvas.getContext("2d");
+  const textCanvas = document.createElement("canvas");
+  const textContext = textCanvas.getContext("2d");
+  if (!analysisContext || !cropContext || !matchContext || !textContext) {
+    throw new Error("This browser could not prepare screenshot crops.");
+  }
+
+  const maxAnalysisWidth = 1600;
+  const analysisScale = Math.min(1, maxAnalysisWidth / image.width);
+  analysisCanvas.width = Math.round(image.width * analysisScale);
+  analysisCanvas.height = Math.round(image.height * analysisScale);
+  analysisContext.drawImage(image, 0, 0, analysisCanvas.width, analysisCanvas.height);
+  const imageData = analysisContext.getImageData(0, 0, analysisCanvas.width, analysisCanvas.height);
+  const detection = detectMtgoHandFromImageData(imageData, analysisCanvas.width, analysisCanvas.height);
+  if (!detection.cards.length || detection.matchedSlots < 4) {
+    throw new Error("Could not reliably locate the seven Magic Online hand cards. Try a clearer screenshot or use manual hand entry.");
+  }
+
+  const rects = scaleRects(detection.cards, analysisCanvas.width, analysisCanvas.height, image.width, image.height);
+  const crops: CropPreview[] = [];
+
+  cropCanvas.width = 320;
+  cropCanvas.height = 448;
+  matchCanvas.width = 180;
+  matchCanvas.height = 120;
+  textCanvas.width = 900;
+  textCanvas.height = 120;
 
   for (let index = 0; index < 7; index += 1) {
-    const sourceX = Math.round(startX + step * index);
-    const sourceY = Math.round(startY);
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(
+    const rect = adjustedRect(rects[index], image, index, adjustments);
+    cropContext.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
+    cropContext.drawImage(
       image,
-      sourceX,
-      sourceY,
-      Math.round(cropWidth),
-      Math.round(cropHeight),
+      Math.round(rect.x),
+      Math.round(rect.y),
+      Math.round(rect.width),
+      Math.round(rect.height),
       0,
       0,
-      canvas.width,
-      canvas.height
+      cropCanvas.width,
+      cropCanvas.height
     );
-    crops.push({ index, src: canvas.toDataURL("image/png"), source: "mtgo" });
+
+    matchContext.clearRect(0, 0, matchCanvas.width, matchCanvas.height);
+    matchContext.drawImage(
+      cropCanvas,
+      Math.round(cropCanvas.width * 0.08),
+      Math.round(cropCanvas.height * 0.12),
+      Math.round(cropCanvas.width * 0.84),
+      Math.round(cropCanvas.height * 0.43),
+      0,
+      0,
+      matchCanvas.width,
+      matchCanvas.height
+    );
+
+    textContext.clearRect(0, 0, textCanvas.width, textCanvas.height);
+    textContext.drawImage(
+      cropCanvas,
+      Math.round(cropCanvas.width * 0.04),
+      Math.round(cropCanvas.height * 0.025),
+      Math.round(cropCanvas.width * 0.92),
+      Math.round(cropCanvas.height * 0.11),
+      0,
+      0,
+      textCanvas.width,
+      textCanvas.height
+    );
+
+    crops.push({
+      index,
+      src: cropCanvas.toDataURL("image/png"),
+      matchSrc: matchCanvas.toDataURL("image/png"),
+      textSrc: textCanvas.toDataURL("image/png"),
+      source: "mtgo"
+    });
   }
 
   return crops;

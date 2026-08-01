@@ -18,6 +18,7 @@
     "src/lib/handScoring.ts",
     "src/lib/manaCurve.ts",
     "src/lib/metagame.ts",
+    "src/lib/mtgoHandDetector.ts",
     "tests/**/*.ts"
   ]
 }
