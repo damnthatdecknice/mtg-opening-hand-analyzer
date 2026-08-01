@@ -25,8 +25,8 @@ export function DashboardActions({ recentDeck }: DashboardActionsProps) {
           <Link className="secondary-button" href={deckLabHref}>
             Open Deck Lab
           </Link>
-          <Link className="secondary-button" href="/puzzles">
-            Magic Puzzles
+          <Link className="secondary-button" href="/trainer">
+            Keep Trainer
           </Link>
           <Link className="secondary-button" href="/metagame">
             Metagame Analysis
@@ -37,8 +37,8 @@ export function DashboardActions({ recentDeck }: DashboardActionsProps) {
           <Link className="primary-button" href="/analyzer">
             Analyze a Hand
           </Link>
-          <Link className="secondary-button" href="/puzzles">
-            Magic Puzzles
+          <Link className="secondary-button" href="/trainer">
+            Keep Trainer
           </Link>
           <Link className="secondary-button" href="/pricing">
             View Deck Pro

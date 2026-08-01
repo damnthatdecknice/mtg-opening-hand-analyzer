@@ -1,5 +1,5 @@
-import { MagicPuzzles } from "@/components/MagicPuzzles";
+import { redirect } from "next/navigation";
 
-export default function PuzzlesPage() {
-  return <MagicPuzzles />;
+export default function PuzzlesRedirectPage() {
+  redirect("/trainer");
 }

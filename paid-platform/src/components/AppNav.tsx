@@ -9,7 +9,7 @@ import { supabase } from "@/lib/supabase";
 
 const navItems = [
   { href: "/analyzer", label: "Analyzer" },
-  { href: "/puzzles", label: "Puzzles" },
+  { href: "/trainer", label: "Trainer" },
   { href: "/decks", label: "Save a Deck", deckProOnly: true },
   { href: "/mana-curve", label: "Deck Lab", deckProOnly: true },
   { href: "/metagame", label: "Metagame", deckProOnly: true },
