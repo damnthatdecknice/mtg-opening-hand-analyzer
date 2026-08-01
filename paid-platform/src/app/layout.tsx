@@ -35,6 +35,9 @@ export default function RootLayout({
               .
             </span>
             <span>BTC: bc1qjkcf58y4c80043asa97uxylwn8h8g0mu57khz5</span>
+            <span>
+              <a href="/bug-report">Bug Report</a>
+            </span>
           </footer>
         </main>
       </body>
