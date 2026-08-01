@@ -17,7 +17,8 @@ const mtgoRoot = "https://www.mtgo.com";
 const signatureRuleTable = "metagame_signature_rules";
 const eventNamePattern = /(challenge|showcase|qualifier|championship|premier|preliminary)/i;
 const snapshotRevalidateSeconds = 60 * 60 * 24;
-const cacheMs = 1000 * snapshotRevalidateSeconds;
+const indexRevalidateSeconds = 60 * 15;
+const cacheMs = 1000 * 60 * 30;
 const indexFetchTimeoutMs = 12_000;
 const eventFetchTimeoutMs = 25_000;
 
@@ -343,7 +344,7 @@ async function buildWindowSnapshot(
 }
 
 async function fetchRecentIndexEvents(format: MetagameFormat, windowDays: MetagameWindowDays) {
-  const html = await fetchText(`${mtgoRoot}/decklists`, indexFetchTimeoutMs);
+  const html = await fetchText(`${mtgoRoot}/decklists`, indexFetchTimeoutMs, indexRevalidateSeconds);
   const cutoff = Date.now() - windowDays * 2 * 24 * 60 * 60 * 1000;
   const events: IndexEvent[] = [];
   const eventRegex =
@@ -380,7 +381,7 @@ async function fetchRecentIndexEvents(format: MetagameFormat, windowDays: Metaga
 }
 
 async function fetchEventData(url: string) {
-  const html = await fetchText(url, eventFetchTimeoutMs);
+  const html = await fetchText(url, eventFetchTimeoutMs, snapshotRevalidateSeconds);
   const marker = /window\.MTGO\.decklists\.data\s*=\s*/g;
   const markerMatch = marker.exec(html);
   if (!markerMatch) {
@@ -396,7 +397,7 @@ async function fetchEventData(url: string) {
   return JSON.parse(html.slice(jsonStart, jsonEnd + 1)) as MtgoEventData;
 }
 
-async function fetchText(url: string, timeoutMs: number) {
+async function fetchText(url: string, timeoutMs: number, revalidateSeconds: number) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -407,7 +408,7 @@ async function fetchText(url: string, timeoutMs: number) {
         "user-agent": "Opening Edge metagame preview (+https://mtg-opening-hand-analyzer-hsjg.vercel.app)"
       },
       next: {
-        revalidate: snapshotRevalidateSeconds
+        revalidate: revalidateSeconds
       },
       signal: controller.signal
     });
