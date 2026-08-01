@@ -118,11 +118,10 @@ async function loadTodayPuzzle(puzzleDate: string) {
 }
 
 export async function GET(request: NextRequest) {
-  const puzzleDate = todayUtc();
-  const puzzle = await loadTodayPuzzle(puzzleDate);
   const token = bearerToken(request);
 
   if (!token || !isServerAnonSupabaseConfigured) {
+    const puzzle = await loadTodayPuzzle(todayUtc());
     return NextResponse.json({
       signedIn: false,
       preview: true,
@@ -134,6 +133,7 @@ export async function GET(request: NextRequest) {
   const authClient = createServerAnonSupabaseClient(token);
   const serviceClient = createServerSupabaseClient();
   if (!authClient || !serviceClient) {
+    const puzzle = await loadTodayPuzzle(todayUtc());
     return NextResponse.json({
       signedIn: false,
       preview: true,

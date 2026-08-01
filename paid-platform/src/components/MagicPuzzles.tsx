@@ -39,6 +39,7 @@ export function MagicPuzzles() {
   const [payload, setPayload] = useState<PuzzlePayload | null>(null);
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedDeckId, setSelectedDeckId] = useState("");
 
@@ -56,8 +57,12 @@ export function MagicPuzzles() {
     });
   }, [puzzle?.hand]);
 
-  const loadPuzzle = useCallback(async (deckId = "") => {
-    setIsLoading(true);
+  const loadPuzzle = useCallback(async (deckId = "", options: { preserveCurrent?: boolean } = {}) => {
+    if (options.preserveCurrent) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
     setMessage("");
     const token = supabase ? (await supabase.auth.getSession()).data.session?.access_token : "";
     const params = deckId ? `?deckId=${encodeURIComponent(deckId)}` : "";
@@ -68,13 +73,16 @@ export function MagicPuzzles() {
     const data = (await response.json()) as PuzzlePayload | { error?: string };
     if (!response.ok) {
       setMessage((data as { error?: string }).error ?? "Sign in to use the Keep Trainer.");
-      setPayload(null);
+      if (!options.preserveCurrent) {
+        setPayload(null);
+      }
     } else {
       const nextPayload = data as PuzzlePayload;
       setPayload(nextPayload);
       setSelectedDeckId(nextPayload.selectedDeckId ?? nextPayload.decks?.[0]?.id ?? "");
     }
     setIsLoading(false);
+    setIsRefreshing(false);
   }, []);
 
   async function submitAnswer(answer: MagicPuzzleAnswer) {
@@ -194,12 +202,13 @@ export function MagicPuzzles() {
         </div>
         {payload?.decks?.length ? (
           <div className="puzzle-deck-picker">
-            <label htmlFor="trainer-deck">Practice deck</label>
+            <label htmlFor="trainer-deck">Practice deck - newest deck loads first</label>
             <select
               id="trainer-deck"
+              disabled={isRefreshing || isSubmitting}
               onChange={(event) => {
                 setSelectedDeckId(event.target.value);
-                void loadPuzzle(event.target.value);
+                void loadPuzzle(event.target.value, { preserveCurrent: true });
               }}
               value={selectedDeckId}
             >
@@ -211,14 +220,15 @@ export function MagicPuzzles() {
             </select>
             <button
               className="secondary-button"
-              disabled={isLoading || isSubmitting}
-              onClick={() => loadPuzzle(selectedDeckId)}
+              disabled={isRefreshing || isSubmitting}
+              onClick={() => loadPuzzle(selectedDeckId, { preserveCurrent: true })}
               type="button"
             >
-              Deal another hand
+              {isRefreshing ? "Dealing..." : "Deal another hand"}
             </button>
           </div>
         ) : null}
+        {isRefreshing ? <p className="muted">Loading the next hand from the selected deck...</p> : null}
         <div className="puzzle-context-row">
           <span>{puzzle.playDraw === "play" ? "On the play" : "On the draw"}</span>
           <span>{puzzle.difficulty}</span>
@@ -278,8 +288,13 @@ export function MagicPuzzles() {
                 </ul>
               </div>
             </div>
-            <button className="primary-button" onClick={() => loadPuzzle(selectedDeckId)} type="button">
-              Next hand
+            <button
+              className="primary-button"
+              disabled={isRefreshing}
+              onClick={() => loadPuzzle(selectedDeckId, { preserveCurrent: true })}
+              type="button"
+            >
+              {isRefreshing ? "Loading..." : "Next hand"}
             </button>
           </div>
         ) : null}
