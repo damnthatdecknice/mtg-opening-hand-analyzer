@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import type {
@@ -40,8 +40,12 @@ export function MagicPuzzles() {
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isPrefetching, setIsPrefetching] = useState(false);
+  const [prefetchReadyDeckId, setPrefetchReadyDeckId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedDeckId, setSelectedDeckId] = useState("");
+  const prefetchedPuzzleRef = useRef<{ deckId: string; payload: PuzzlePayload } | null>(null);
+  const prefetchKeyRef = useRef("");
 
   const reveal = payload?.puzzle?.reveal;
   const stats = payload?.stats ?? emptyStats;
@@ -57,13 +61,7 @@ export function MagicPuzzles() {
     });
   }, [puzzle?.hand]);
 
-  const loadPuzzle = useCallback(async (deckId = "", options: { preserveCurrent?: boolean } = {}) => {
-    if (options.preserveCurrent) {
-      setIsRefreshing(true);
-    } else {
-      setIsLoading(true);
-    }
-    setMessage("");
+  const fetchPuzzlePayload = useCallback(async (deckId = "") => {
     const token = supabase ? (await supabase.auth.getSession()).data.session?.access_token : "";
     const params = deckId ? `?deckId=${encodeURIComponent(deckId)}` : "";
     const response = await fetch(`/api/puzzles${params}`, {
@@ -72,18 +70,55 @@ export function MagicPuzzles() {
     });
     const data = (await response.json()) as PuzzlePayload | { error?: string };
     if (!response.ok) {
-      setMessage((data as { error?: string }).error ?? "Sign in to use the Keep Trainer.");
+      throw new Error((data as { error?: string }).error ?? "Sign in to use the Keep Trainer.");
+    }
+    return data as PuzzlePayload;
+  }, []);
+
+  const loadPuzzle = useCallback(async (deckId = "", options: { preserveCurrent?: boolean } = {}) => {
+    if (options.preserveCurrent) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+    setMessage("");
+
+    const prefetched = prefetchedPuzzleRef.current;
+    if (options.preserveCurrent && prefetched && prefetched.deckId === deckId) {
+      const nextPayload = prefetched.payload;
+      prefetchedPuzzleRef.current = null;
+      setPrefetchReadyDeckId("");
+      setPayload((current) =>
+        current
+          ? {
+              ...nextPayload,
+              archive: current.archive ?? nextPayload.archive,
+              stats: current.stats ?? nextPayload.stats
+            }
+          : nextPayload
+      );
+      setSelectedDeckId(nextPayload.selectedDeckId ?? nextPayload.decks?.[0]?.id ?? "");
+      setIsLoading(false);
+      setIsRefreshing(false);
+      return;
+    }
+
+    prefetchedPuzzleRef.current = null;
+    setPrefetchReadyDeckId("");
+
+    try {
+      const nextPayload = await fetchPuzzlePayload(deckId);
+      setPayload(nextPayload);
+      setSelectedDeckId(nextPayload.selectedDeckId ?? nextPayload.decks?.[0]?.id ?? "");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Sign in to use the Keep Trainer.");
       if (!options.preserveCurrent) {
         setPayload(null);
       }
-    } else {
-      const nextPayload = data as PuzzlePayload;
-      setPayload(nextPayload);
-      setSelectedDeckId(nextPayload.selectedDeckId ?? nextPayload.decks?.[0]?.id ?? "");
     }
     setIsLoading(false);
     setIsRefreshing(false);
-  }, []);
+  }, [fetchPuzzlePayload]);
 
   async function submitAnswer(answer: MagicPuzzleAnswer) {
     if (!puzzle || payload?.preview) {
@@ -129,6 +164,45 @@ export function MagicPuzzles() {
   useEffect(() => {
     void loadPuzzle();
   }, [loadPuzzle]);
+
+  useEffect(() => {
+    if (!payload?.signedIn || payload.preview || !payload.puzzle || payload.puzzle.completed || !selectedDeckId) {
+      return;
+    }
+
+    const prefetchKey = `${selectedDeckId}:${payload.puzzle.id}`;
+    if (prefetchKeyRef.current === prefetchKey) {
+      return;
+    }
+
+    let cancelled = false;
+    prefetchKeyRef.current = prefetchKey;
+    setIsPrefetching(true);
+
+    fetchPuzzlePayload(selectedDeckId)
+      .then((nextPayload) => {
+        if (cancelled) {
+          return;
+        }
+        prefetchedPuzzleRef.current = { deckId: selectedDeckId, payload: nextPayload };
+        setPrefetchReadyDeckId(selectedDeckId);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          prefetchedPuzzleRef.current = null;
+          setPrefetchReadyDeckId("");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsPrefetching(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchPuzzlePayload, payload?.preview, payload?.puzzle, payload?.puzzle?.completed, payload?.puzzle?.id, payload?.signedIn, selectedDeckId]);
 
   if (isLoading) {
     return (
@@ -229,6 +303,8 @@ export function MagicPuzzles() {
           </div>
         ) : null}
         {isRefreshing ? <p className="muted">Loading the next hand from the selected deck...</p> : null}
+        {!isRefreshing && isPrefetching ? <p className="muted">Preparing the next hand in the background...</p> : null}
+        {!isRefreshing && prefetchReadyDeckId === selectedDeckId ? <p className="muted">Next hand is ready.</p> : null}
         <div className="puzzle-context-row">
           <span>{puzzle.playDraw === "play" ? "On the play" : "On the draw"}</span>
           <span>{puzzle.difficulty}</span>
