@@ -1,0 +1,58 @@
+[
+  {
+    "id": "standard-izzet-self-bounce",
+    "name": "Izzet Self-Bounce",
+    "format": "Standard",
+    "archetype": "Tempo",
+    "decklist": "Deck\n4 Boomerang Basics\n4 Burst Lightning\n4 Eddymurk Crab\n4 Flow State\n2 Get Out\n1 Into the Flood Maw\n7 Island\n4 Opt\n4 Riverpyre Verge\n2 Roaring Furnace // Steaming Sauna\n2 Secret Identity\n4 Sleight of Hand\n4 Slickshot Show-Off\n4 Spirebluff Canal\n4 Steam Vents\n4 Stormchaser's Talent\n2 Stormcarved Coast"
+  },
+  {
+    "id": "modern-boros-energy",
+    "name": "Boros Energy",
+    "format": "Modern",
+    "archetype": "Aggro",
+    "decklist": "Deck\n4 Ajani, Nacatl Pariah\n4 Amped Raptor\n4 Galvanic Discharge\n4 Guide of Souls\n4 Lightning Bolt\n4 Ocelot Pride\n4 Phlage, Titan of Fire's Fury\n4 Ragavan, Nimble Pilferer\n4 Sacred Foundry\n4 Arid Mesa\n4 Inspiring Vantage\n4 Marsh Flats\n3 Plains\n2 Mountain\n3 Static Prison\n4 Unstable Amulet"
+  },
+  {
+    "id": "pioneer-izzet-phoenix",
+    "name": "Izzet Phoenix",
+    "format": "Pioneer",
+    "archetype": "Spells",
+    "decklist": "Deck\n4 Arclight Phoenix\n4 Consider\n4 Fiery Impulse\n4 Lightning Axe\n4 Opt\n4 Picklock Prankster\n4 Riverglide Pathway\n4 Sleight of Hand\n4 Steam Vents\n4 Spirebluff Canal\n4 Treasure Cruise\n4 Island\n4 Mountain\n4 Ledger Shredder\n4 Pieces of the Puzzle"
+  },
+  {
+    "id": "pioneer-golgari-midrange",
+    "name": "Golgari Midrange",
+    "format": "Pioneer",
+    "archetype": "Midrange",
+    "decklist": "Deck\n4 Blooming Marsh\n4 Fatal Push\n4 Llanowar Wastes\n4 Mosswood Dreadknight\n4 Overgrown Tomb\n4 Thoughtseize\n4 Caustic Bronco\n3 Sheoldred, the Apocalypse\n3 Glissa Sunslayer\n4 Swamp\n4 Forest\n4 Restless Cottage\n4 Go for the Throat\n3 Duress\n3 Archfiend of the Dross"
+  },
+  {
+    "id": "modern-amulet-titan",
+    "name": "Amulet Titan",
+    "format": "Modern",
+    "archetype": "Ramp",
+    "decklist": "Deck\n4 Amulet of Vigor\n4 Arboreal Grazer\n4 Primeval Titan\n4 Summoner's Pact\n4 Urza's Saga\n4 Simic Growth Chamber\n4 Gruul Turf\n4 Selesnya Sanctuary\n4 Forest\n4 The Mycosynth Gardens\n4 Dryad of the Ilysian Grove\n4 Explore\n4 Castle Garenbrig\n4 Boseiju, Who Endures\n4 Cultivator Colossus"
+  },
+  {
+    "id": "legacy-izzet-delver",
+    "name": "Izzet Delver",
+    "format": "Legacy",
+    "archetype": "Tempo",
+    "decklist": "Deck\n4 Brainstorm\n4 Daze\n4 Delver of Secrets\n4 Dragon's Rage Channeler\n4 Force of Will\n4 Lightning Bolt\n4 Murktide Regent\n4 Ponder\n4 Ragavan, Nimble Pilferer\n4 Volcanic Island\n4 Wasteland\n4 Scalding Tarn\n4 Misty Rainforest\n4 Expressive Iteration\n4 Island"
+  },
+  {
+    "id": "standard-mono-red-aggro",
+    "name": "Mono-Red Aggro",
+    "format": "Standard",
+    "archetype": "Aggro",
+    "decklist": "Deck\n4 Burst Lightning\n4 Hired Claw\n4 Monastery Swiftspear\n4 Play with Fire\n4 Slickshot Show-Off\n4 Kumano Faces Kakkazan\n4 Phoenix Chick\n4 Charming Scoundrel\n20 Mountain\n4 Lightning Strike\n4 Wrenn's Resolve"
+  },
+  {
+    "id": "modern-ruby-storm",
+    "name": "Ruby Storm",
+    "format": "Modern",
+    "archetype": "Combo",
+    "decklist": "Deck\n4 Desperate Ritual\n4 Flame of Anor\n4 Glimpse the Impossible\n4 Manamorphose\n4 Mountain\n4 Pyretic Ritual\n4 Reckless Impulse\n4 Ruby Medallion\n4 Scalding Tarn\n4 Steam Vents\n4 Strike It Rich\n4 Wish\n4 Wrenn's Resolve\n4 Ral, Monsoon Mage\n4 Past in Flames"
+  }
+]

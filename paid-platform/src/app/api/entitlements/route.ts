@@ -12,6 +12,8 @@ type ResolvedEntitlements = {
   tierLabel: string;
   canUseDeckVault: boolean;
   canUseUnlimitedAnalyzer: boolean;
+  canUseMagicPuzzles: boolean;
+  canUseMagicPuzzleArchive: boolean;
   isOpenBeta: boolean;
   isPermanent: boolean;
   rank: "basic" | "pro" | "beta_premium";
@@ -38,6 +40,8 @@ function resolved(tierId: SubscriptionTierId, rank: ResolvedEntitlements["rank"]
     tierLabel: tierLabel(tierId, rank),
     canUseDeckVault: openBeta || tierId === "deck_pro" || tierId === "grinder" || tierId === "permanent",
     canUseUnlimitedAnalyzer: openBeta || tierId === "deck_pro" || tierId === "grinder" || tierId === "permanent",
+    canUseMagicPuzzles: openBeta || tierId === "deck_pro" || tierId === "grinder" || tierId === "permanent",
+    canUseMagicPuzzleArchive: tierId === "deck_pro" || tierId === "grinder" || tierId === "permanent",
     isOpenBeta: openBeta,
     isPermanent: tierId === "permanent",
     rank

@@ -6,6 +6,7 @@ import {
   solveManaPayment,
   scoreHandDeckRelative,
   type DeckRelativeScoreResult,
+  type HandScoringSettings,
   type KeepRecommendation,
   type ManaColor,
   type ScoreAdjustment
@@ -1970,7 +1971,7 @@ export function analyzeOpeningHand(
   handNames: string[],
   cardData: Map<string, CardLookup>,
   playDraw: PlayDraw,
-  options: { format?: string } = {}
+  options: { format?: string; scoringSettings?: Partial<HandScoringSettings> } = {}
 ): AnalyzerResult {
   const parsed = parseDecklist(decklist);
   const mainCounts = countsFromCards(parsed.cards);
@@ -2142,7 +2143,8 @@ export function analyzeOpeningHand(
     playDraw,
     format: options.format,
     profileLabel: profile.label,
-    freeMulligan: hasCommanderFreeMulligan
+    freeMulligan: hasCommanderFreeMulligan,
+    settings: options.scoringSettings
   });
   const handTextureScore = deckRelativeScore.score;
   const hasEarlyCastabilityConcern = castability.some((row) => row.manaValue <= 2 && row.turn2 < 0.55);
@@ -2163,7 +2165,8 @@ export function analyzeOpeningHand(
     playDraw: "play",
     format: options.format,
     profileLabel: profile.label,
-    freeMulligan: hasCommanderFreeMulligan
+    freeMulligan: hasCommanderFreeMulligan,
+    settings: options.scoringSettings
   });
   const drawScore = playDraw === "draw" ? deckRelativeScore : scoreHandDeckRelative({
     mainCounts,
@@ -2172,7 +2175,8 @@ export function analyzeOpeningHand(
     playDraw: "draw",
     format: options.format,
     profileLabel: profile.label,
-    freeMulligan: hasCommanderFreeMulligan
+    freeMulligan: hasCommanderFreeMulligan,
+    settings: options.scoringSettings
   });
   const playDrawComparison = buildModelPlayDrawComparison(playScore, drawScore);
   const tags: AnalyzerResult["tags"] = [

@@ -17,8 +17,14 @@
     "src/lib/guestDeck.ts",
     "src/lib/handScoring.ts",
     "src/lib/manaCurve.ts",
+    "src/lib/magicPuzzles.ts",
     "src/lib/metagame.ts",
     "src/lib/mtgoHandDetector.ts",
+    "src/lib/seededHandGenerator.ts",
+    "src/lib/serverSupabase.ts",
+    "src/data/puzzleDecks/**/*.ts",
+    "src/data/puzzleDecks/**/*.json",
+    "scripts/**/*.ts",
     "tests/**/*.ts"
   ]
 }

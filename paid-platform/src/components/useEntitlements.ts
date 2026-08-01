@@ -18,6 +18,8 @@ type EntitlementState = {
   tierLabel: string;
   canUseDeckVault: boolean;
   canUseUnlimitedAnalyzer: boolean;
+  canUseMagicPuzzles: boolean;
+  canUseMagicPuzzleArchive: boolean;
   isOpenBeta: boolean;
   isPermanent: boolean;
 };
@@ -32,6 +34,8 @@ const initialState: EntitlementState = {
   tierLabel: freeTier.label,
   canUseDeckVault: canUseDeckVault("free"),
   canUseUnlimitedAnalyzer: canUseUnlimitedAnalyzer("free"),
+  canUseMagicPuzzles: OPEN_BETA_ACCESS,
+  canUseMagicPuzzleArchive: false,
   isOpenBeta: OPEN_BETA_ACCESS,
   isPermanent: false
 };
@@ -46,6 +50,8 @@ function stateForTier(tierId: SubscriptionTierId, overrides: Partial<Entitlement
     tierLabel: tier.label,
     canUseDeckVault: canUseDeckVault(tierId),
     canUseUnlimitedAnalyzer: canUseUnlimitedAnalyzer(tierId),
+    canUseMagicPuzzles: OPEN_BETA_ACCESS || tierId === "deck_pro" || tierId === "grinder" || tierId === "permanent",
+    canUseMagicPuzzleArchive: tierId === "deck_pro" || tierId === "grinder" || tierId === "permanent",
     isOpenBeta: OPEN_BETA_ACCESS,
     isPermanent: tierId === "permanent",
     ...overrides
@@ -58,6 +64,8 @@ function stateForRank(rank: EntitlementState["rank"]): EntitlementState {
       rank,
       tierLabel: "Beta Tester",
       canUseDeckVault: true,
+      canUseMagicPuzzles: true,
+      canUseMagicPuzzleArchive: true,
       isPermanent: true
     });
   }
@@ -66,7 +74,9 @@ function stateForRank(rank: EntitlementState["rank"]): EntitlementState {
     return stateForTier("deck_pro", {
       rank,
       tierLabel: "Pro",
-      canUseDeckVault: true
+      canUseDeckVault: true,
+      canUseMagicPuzzles: true,
+      canUseMagicPuzzleArchive: true
     });
   }
 

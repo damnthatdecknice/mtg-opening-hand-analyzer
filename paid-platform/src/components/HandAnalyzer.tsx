@@ -135,19 +135,6 @@ function uniqueDeckOptions(decklist: string) {
   ).sort((a, b) => a.localeCompare(b));
 }
 
-function randomSevenFromDeck(decklist: string) {
-  const mainDeck = parseDecklist(decklist).cards
-    .filter((card) => card.section === "main")
-    .flatMap((card) => Array.from({ length: card.qty }, () => card.name));
-
-  for (let index = mainDeck.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [mainDeck[index], mainDeck[swapIndex]] = [mainDeck[swapIndex] ?? "", mainDeck[index] ?? ""];
-  }
-
-  return mainDeck.slice(0, 7);
-}
-
 function mtgoIdsByNameFromMetadata(metadata?: DeckImportMetadata) {
   const idsByName: Record<string, number[]> = {};
   for (const card of metadata?.cards ?? []) {
@@ -852,9 +839,9 @@ export function HandAnalyzer() {
     if (nextStep === "hand") {
       setShouldFocusHandStep(true);
       if (analyzerMode === "guest") {
-        setMessage("Your guest deck is ready. Enter your opening seven or draw a random hand.");
+        setMessage("Your guest deck is ready. Enter your opening seven.");
       } else if (analyzerMode === "sample") {
-        setMessage("Your deck is ready. Enter your opening seven or draw a random hand.");
+        setMessage("Your deck is ready. Enter your opening seven.");
       } else {
         setMessage("Deck saved. Enter your first opening hand.");
       }
@@ -1067,19 +1054,6 @@ export function HandAnalyzer() {
 
   function updateConfirmed(index: number, value: string) {
     setConfirmedHand((current) => current.map((card, cardIndex) => (cardIndex === index ? value : card)));
-  }
-
-  async function useRandomSeven() {
-    const nextHand = randomSevenFromDeck(decklist);
-    if (nextHand.length !== 7) {
-      setMessage("Paste a main deck with at least seven cards before drawing a random hand.");
-      setWorkflowTab("deck");
-      return;
-    }
-
-    setConfirmedHand(nextHand);
-    setHandText(nextHand.join("\n"));
-    await runAnalysis(nextHand);
   }
 
   async function recognizeCrops(nextCrops: CropPreview[], retryFailures = false) {
@@ -1672,9 +1646,6 @@ export function HandAnalyzer() {
           <div className="hand-action-row">
             <button className="primary-button" disabled={isBusy} onClick={() => runAnalysis()} type="button">
               {isBusy ? "Analyzing..." : "Use this hand and analyze"}
-            </button>
-            <button className="secondary-button" disabled={isBusy} onClick={useRandomSeven} type="button">
-              Random 7 and analyze
             </button>
           </div>
         </section>
