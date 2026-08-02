@@ -44,6 +44,57 @@ type SavedDeckIdentityRow = {
   parsed_json?: ParsedDeck | null;
 };
 
+type EphemeralTrainerHandPayload = {
+  v: number;
+  user_id: string;
+  deck_id: string;
+  deck_name: string;
+  format: string;
+  decklist_snapshot: string;
+  hand: string[];
+  play_draw: PlayDraw;
+};
+
+function isMissingTrainerTableError(error: { code?: string; message?: string } | null | undefined) {
+  const message = error?.message ?? "";
+  return error?.code === "PGRST205" || message.includes("schema cache") || message.includes("does not exist");
+}
+
+function decodeEphemeralTrainerHand(handId: string, userId: string): TrainerHandRow | null {
+  if (!handId.startsWith("ephemeral_")) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(handId.slice("ephemeral_".length), "base64url").toString("utf8")) as Partial<EphemeralTrainerHandPayload>;
+    if (
+      payload.v !== 1 ||
+      payload.user_id !== userId ||
+      typeof payload.deck_id !== "string" ||
+      typeof payload.deck_name !== "string" ||
+      typeof payload.format !== "string" ||
+      typeof payload.decklist_snapshot !== "string" ||
+      !Array.isArray(payload.hand) ||
+      (payload.play_draw !== "play" && payload.play_draw !== "draw")
+    ) {
+      return null;
+    }
+
+    return {
+      id: handId,
+      user_id: payload.user_id,
+      deck_id: payload.deck_id,
+      deck_name: payload.deck_name,
+      format: payload.format,
+      decklist_snapshot: payload.decklist_snapshot,
+      hand: payload.hand,
+      play_draw: payload.play_draw
+    };
+  } catch {
+    return null;
+  }
+}
+
 function bearerToken(request: NextRequest) {
   const authorization = request.headers.get("authorization") ?? "";
   return authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
@@ -108,27 +159,35 @@ export async function POST(request: NextRequest, context: { params: { handId: st
   }
 
   const { user, serviceClient } = authContext;
-  const { data: handData, error: handError } = await serviceClient
-    .from("magic_trainer_hands")
-    .select("*")
-    .eq("id", context.params.handId)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const ephemeralHand = decodeEphemeralTrainerHand(context.params.handId, user.id);
+  const handQuery = ephemeralHand
+    ? { data: ephemeralHand, error: null }
+    : await serviceClient
+        .from("magic_trainer_hands")
+        .select("*")
+        .eq("id", context.params.handId)
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-  if (handError) {
-    return NextResponse.json({ error: handError.message }, { status: 400 });
+  if (handQuery.error) {
+    if (isMissingTrainerTableError(handQuery.error)) {
+      return NextResponse.json({ error: "This trainer hand expired. Deal another hand to continue." }, { status: 404 });
+    }
+    return NextResponse.json({ error: handQuery.error.message }, { status: 400 });
   }
-  if (!handData) {
+  if (!handQuery.data) {
     return NextResponse.json({ error: "Could not find that trainer hand." }, { status: 404 });
   }
 
-  const handRow = handData as TrainerHandRow;
-  const existingAttempt = await serviceClient
-    .from("magic_trainer_attempts")
-    .select("selected_answer, is_correct, rating_before, rating_after, attempted_at")
-    .eq("trainer_hand_id", handRow.id)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const handRow = handQuery.data as TrainerHandRow;
+  const existingAttempt = ephemeralHand
+    ? { data: null }
+    : await serviceClient
+        .from("magic_trainer_attempts")
+        .select("selected_answer, is_correct, rating_before, rating_after, attempted_at")
+        .eq("trainer_hand_id", handRow.id)
+        .eq("user_id", user.id)
+        .maybeSingle();
 
   if (handRow.answered_at || existingAttempt.data) {
     const selected = (existingAttempt.data as TrainerAttemptRow | null)?.selected_answer ?? body.answer;
@@ -195,35 +254,37 @@ export async function POST(request: NextRequest, context: { params: { handId: st
   const isCorrect = body.answer === correctAnswer;
   const ratingAfter = Math.max(100, Math.min(2500, ratingBefore + (isCorrect ? 14 : -11)));
 
-  const { error: updateError } = await serviceClient
-    .from("magic_trainer_hands")
-    .update({
-      correct_answer: correctAnswer,
-      analysis_json: analysis,
-      explanation_json: explanation,
-      answered_at: new Date().toISOString(),
-      analyzer_version: analysis.scoringVersion || keepTrainerAnalyzerVersion
-    })
-    .eq("id", handRow.id)
-    .eq("user_id", user.id)
-    .is("answered_at", null);
+  if (!ephemeralHand) {
+    const { error: updateError } = await serviceClient
+      .from("magic_trainer_hands")
+      .update({
+        correct_answer: correctAnswer,
+        analysis_json: analysis,
+        explanation_json: explanation,
+        answered_at: new Date().toISOString(),
+        analyzer_version: analysis.scoringVersion || keepTrainerAnalyzerVersion
+      })
+      .eq("id", handRow.id)
+      .eq("user_id", user.id)
+      .is("answered_at", null);
 
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 400 });
-  }
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 400 });
+    }
 
-  const { error: insertError } = await serviceClient.from("magic_trainer_attempts").insert({
-    trainer_hand_id: handRow.id,
-    user_id: user.id,
-    deck_id: handRow.deck_id,
-    selected_answer: body.answer,
-    is_correct: isCorrect,
-    rating_before: ratingBefore,
-    rating_after: ratingAfter
-  });
+    const { error: insertError } = await serviceClient.from("magic_trainer_attempts").insert({
+      trainer_hand_id: handRow.id,
+      user_id: user.id,
+      deck_id: handRow.deck_id,
+      selected_answer: body.answer,
+      is_correct: isCorrect,
+      rating_before: ratingBefore,
+      rating_after: ratingAfter
+    });
 
-  if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 400 });
+    if (insertError) {
+      return NextResponse.json({ error: insertError.message }, { status: 400 });
+    }
   }
 
   return NextResponse.json({

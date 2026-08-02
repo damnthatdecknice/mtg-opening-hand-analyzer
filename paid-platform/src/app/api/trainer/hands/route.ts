@@ -4,6 +4,7 @@ import {
   isServerAnonSupabaseConfigured
 } from "@/lib/serverSupabase";
 import { parseDecklist, type ParsedDeck } from "@/lib/deckParser";
+import type { PlayDraw } from "@/lib/analyzer";
 import { deterministicIndex, generateSeededOpeningHand } from "@/lib/seededHandGenerator";
 import {
   calculateTrainerStats,
@@ -29,6 +30,23 @@ type TrainerAttemptRow = {
   rating_after?: number | null;
   attempted_at?: string | null;
 };
+
+function isMissingTrainerTableError(error: { code?: string; message?: string } | null | undefined) {
+  const message = error?.message ?? "";
+  return error?.code === "PGRST205" || message.includes("schema cache") || message.includes("does not exist");
+}
+
+function encodeEphemeralTrainerHand(row: {
+  user_id: string;
+  deck_id: string;
+  deck_name: string;
+  format: string;
+  decklist_snapshot: string;
+  hand: string[];
+  play_draw: PlayDraw;
+}) {
+  return `ephemeral_${Buffer.from(JSON.stringify({ v: 1, ...row }), "utf8").toString("base64url")}`;
+}
 
 function bearerToken(request: NextRequest) {
   const authorization = request.headers.get("authorization") ?? "";
@@ -153,7 +171,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Could not deal a complete seven-card hand from this deck." }, { status: 400 });
   }
 
-  const playDraw = deterministicIndex(`${seed}:play-draw`, 2) === 0 ? "play" : "draw";
+  const playDraw: PlayDraw = deterministicIndex(`${seed}:play-draw`, 2) === 0 ? "play" : "draw";
   const { data: inserted, error: insertError } = await serviceClient
     .from("magic_trainer_hands")
     .insert({
@@ -171,6 +189,30 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (insertError) {
+    if (isMissingTrainerTableError(insertError)) {
+      const ephemeralRow = {
+        id: encodeEphemeralTrainerHand({
+          user_id: user.id,
+          deck_id: deck.id,
+          deck_name: deck.name,
+          format: deck.format ?? "Unknown",
+          decklist_snapshot: deck.decklist,
+          hand,
+          play_draw: playDraw
+        }),
+        deck_id: deck.id,
+        deck_name: deck.name,
+        format: deck.format ?? "Unknown",
+        hand,
+        play_draw: playDraw
+      };
+
+      return NextResponse.json({
+        currentHand: publicTrainerHand(ephemeralRow),
+        stats: calculateTrainerStats(await loadTrainerAttempts(serviceClient, user.id)),
+        storageMode: "ephemeral"
+      });
+    }
     return NextResponse.json({ error: insertError.message }, { status: 400 });
   }
   if (!inserted) {
