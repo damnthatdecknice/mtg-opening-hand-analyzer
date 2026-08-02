@@ -234,14 +234,20 @@ export function KeepTrainer() {
   }
 
   if (!decks.length) {
+    const needsSignIn = message.toLowerCase().includes("sign in");
+    const headline = needsSignIn ? "Sign in to train" : "Add your first deck";
+    const helperText = needsSignIn
+      ? "Sign in to practice keep-or-mulligan decisions with your saved decks."
+      : "Import your .dek file to practice hands from the deck you are actually playing.";
+
     return (
-      <section className="panel puzzle-shell">
+      <section className="panel puzzle-shell trainer-start-shell">
         <p className="eyebrow">Keep Trainer</p>
-        <h1>Add your first deck</h1>
-        <p>{message || "Import your .dek file to practice hands from the deck you are actually playing."}</p>
+        <h1>{headline}</h1>
+        <p>{helperText}</p>
         <div className="action-row">
-          <Link className="primary-button" href="/decks">
-            Import your .dek
+          <Link className="primary-button" href={needsSignIn ? "/login" : "/decks"}>
+            {needsSignIn ? "Sign in" : "Import your .dek"}
           </Link>
           <Link className="secondary-button" href="/how-to">
             How To
