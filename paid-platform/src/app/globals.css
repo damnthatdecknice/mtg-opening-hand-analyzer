@@ -132,7 +132,7 @@
 }
 
 .trainer-page .puzzle-card-row {
-  grid-template-columns: repeat(7, minmax(112px, 1fr));
+  grid-template-columns: repeat(7, minmax(138px, 1fr));
   gap: clamp(0.55rem, 1.1vw, 0.85rem);
   overflow-x: auto;
   overflow-y: hidden;
@@ -162,13 +162,17 @@
 .trainer-page .puzzle-card {
   position: relative;
   aspect-ratio: 5 / 7;
-  min-height: 215px;
+  min-height: 250px;
   padding: 0;
   border-color: color-mix(in srgb, var(--border) 72%, var(--amber-border) 28%);
   background:
     linear-gradient(160deg, color-mix(in srgb, var(--panel-strong) 95%, black), color-mix(in srgb, var(--panel) 82%, black)),
     radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--amber) 14%, transparent), transparent 34%);
   cursor: default;
+}
+
+.trainer-page .puzzle-card.is-missing {
+  border-style: dashed;
 }
 
 .trainer-page .puzzle-card img,
@@ -198,6 +202,11 @@
   z-index: 1;
   background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.8) 46%, rgba(0, 0, 0, 0.94));
   pointer-events: none;
+}
+
+.trainer-page .puzzle-card.is-missing::after {
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.9));
 }
 
 .trainer-page .puzzle-card-index,
@@ -258,6 +267,58 @@
   clip-path: var(--clip-md);
   margin-top: 1rem;
   padding: 1rem;
+}
+
+.trainer-image-warning,
+.trainer-retry-row {
+  border: 1px solid var(--amber-border);
+  background: color-mix(in srgb, var(--amber-soft) 58%, transparent);
+  color: var(--warning);
+  clip-path: var(--clip-sm);
+  padding: 0.7rem 0.9rem;
+}
+
+.trainer-image-warning {
+  margin: -0.35rem 0 0.9rem;
+}
+
+.trainer-retry-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.9rem;
+}
+
+.trainer-retry-row p {
+  margin: 0;
+}
+
+.model-badge-row,
+.puzzle-supporting-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.model-badge-row {
+  margin-bottom: 0.8rem;
+}
+
+.puzzle-supporting-points {
+  margin: 0.85rem 0;
+}
+
+.puzzle-supporting-points span {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--data-card) 86%, transparent);
+  color: var(--muted);
+  clip-path: var(--clip-sm);
+  padding: 0.45rem 0.65rem;
+  font-size: 0.86rem;
+  font-weight: 800;
 }
 
 .trainer-empty-state {

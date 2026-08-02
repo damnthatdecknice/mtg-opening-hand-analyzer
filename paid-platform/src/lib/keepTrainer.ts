@@ -15,6 +15,7 @@ export type TrainerExplanation = {
   percentile: number;
   severeFailureProbability: number;
   keepAdvantage?: number;
+  scoringVersion?: string;
 };
 
 export type PublicTrainerHand = {
@@ -25,6 +26,8 @@ export type PublicTrainerHand = {
   hand: string[];
   playDraw: PlayDraw;
   cardImages?: TrainerCardImageMap;
+  cards?: TrainerCardPresentation[];
+  imageWarnings?: string[];
   completed?: boolean;
   selectedAnswer?: TrainerAnswer;
   reveal?: TrainerReveal;
@@ -37,6 +40,17 @@ export type TrainerCardImage = {
 };
 
 export type TrainerCardImageMap = Record<string, TrainerCardImage>;
+
+export type TrainerCardImageStatus = "ready" | "missing";
+
+export type TrainerCardPresentation = {
+  name: string;
+  canonicalName?: string;
+  imageUrl?: string;
+  artCropUrl?: string;
+  imageStatus: TrainerCardImageStatus;
+  warning?: string;
+};
 
 export type TrainerReveal = {
   correct: boolean;
@@ -70,15 +84,6 @@ export type TrainerDeckOption = {
 };
 
 export const keepTrainerAnalyzerVersion = "opening-edge-keep-trainer-v1";
-
-export const keepTrainerScoringSettings = {
-  handSimulations: 14,
-  baselineHands: 56,
-  drawsPerBaselineHand: 8,
-  analysisHorizon: 5,
-  beamWidth: 18,
-  mulliganHands: 20
-};
 
 export function trainerNormalizeCardName(name: string) {
   return name
@@ -165,7 +170,8 @@ export function trainerExplanationFromAnalysis(
     recommendation: analysis.recommendation,
     percentile: analysis.deckRelativePercentile,
     severeFailureProbability: analysis.severeFailureProbability,
-    keepAdvantage: analysis.keepAdvantage
+    keepAdvantage: analysis.keepAdvantage,
+    scoringVersion: analysis.scoringVersion
   };
 }
 
@@ -210,7 +216,11 @@ export function publicTrainerHand(row: {
   answered_at?: string | null;
   correct_answer?: TrainerAnswer | null;
   explanation_json?: TrainerExplanation | null;
-}, selectedAnswer?: TrainerAnswer, cardImages?: TrainerCardImageMap): PublicTrainerHand {
+}, selectedAnswer?: TrainerAnswer, presentation?: {
+  cardImages?: TrainerCardImageMap;
+  cards?: TrainerCardPresentation[];
+  imageWarnings?: string[];
+}): PublicTrainerHand {
   const hand = Array.isArray(row.hand) ? row.hand : JSON.parse(row.hand);
   const completed = Boolean(row.answered_at);
   const reveal =
@@ -228,7 +238,9 @@ export function publicTrainerHand(row: {
     format: row.format,
     hand,
     playDraw: row.play_draw,
-    cardImages: cardImages && Object.keys(cardImages).length ? cardImages : undefined,
+    cardImages: presentation?.cardImages && Object.keys(presentation.cardImages).length ? presentation.cardImages : undefined,
+    cards: presentation?.cards,
+    imageWarnings: presentation?.imageWarnings?.length ? presentation.imageWarnings : undefined,
     completed,
     selectedAnswer,
     reveal

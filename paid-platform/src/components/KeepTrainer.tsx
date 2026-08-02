@@ -4,14 +4,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { saveAuthFallback } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
-import { trainerNormalizeCardName } from "@/lib/keepTrainer";
 import type {
   PublicTrainerHand,
+  TrainerCardPresentation,
   TrainerAnswer,
   TrainerDeckOption,
   TrainerReveal,
   TrainerStats
 } from "@/lib/keepTrainer";
+
+type TrainerApiError = {
+  code?: string;
+  message: string;
+  retryable?: boolean;
+  unresolvedCards?: string[];
+};
 
 type TrainerPayload = {
   signedIn: boolean;
@@ -19,7 +26,7 @@ type TrainerPayload = {
   selectedDeckId?: string;
   stats: TrainerStats;
   currentHand: PublicTrainerHand | null;
-  error?: string;
+  error?: string | TrainerApiError;
 };
 
 const emptyStats: TrainerStats = {
@@ -36,12 +43,33 @@ function answerLabel(answer: TrainerAnswer) {
   return answer === "keep" ? "Keep" : "Mulligan";
 }
 
+function apiErrorMessage(error: string | TrainerApiError | undefined) {
+  if (!error) {
+    return "";
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  const cards = error.unresolvedCards?.length ? ` Missing: ${error.unresolvedCards.join(", ")}.` : "";
+  return `${error.message}${cards}`;
+}
+
+function fallbackCardPresentation(cardName: string): TrainerCardPresentation {
+  return {
+    name: cardName,
+    imageStatus: "missing",
+    warning: `Card image lookup did not resolve ${cardName}.`
+  };
+}
+
 export function KeepTrainer() {
   const [decks, setDecks] = useState<TrainerDeckOption[]>([]);
   const [selectedDeckId, setSelectedDeckId] = useState("");
   const [currentHand, setCurrentHand] = useState<PublicTrainerHand | null>(null);
   const [stats, setStats] = useState<TrainerStats>(emptyStats);
   const [message, setMessage] = useState("");
+  const [pendingAnswer, setPendingAnswer] = useState<TrainerAnswer | null>(null);
+  const [brokenImageIndexes, setBrokenImageIndexes] = useState<Set<number>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [isDealing, setIsDealing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -72,17 +100,22 @@ export function KeepTrainer() {
 
   const handRows = useMemo(() => {
     const counts = new Map<string, number>();
-    return (currentHand?.hand ?? []).map((cardName) => {
-      const next = (counts.get(cardName) ?? 0) + 1;
-      counts.set(cardName, next);
+    const cards = currentHand?.cards?.length
+      ? currentHand.cards
+      : (currentHand?.hand ?? []).map(fallbackCardPresentation);
+    return cards.map((card, index) => {
+      const next = (counts.get(card.name) ?? 0) + 1;
+      counts.set(card.name, next);
+      const imageBroken = brokenImageIndexes.has(index);
       return {
-        cardName,
+        cardName: card.name,
         copyNumber: next,
         duplicate: next > 1,
-        image: currentHand?.cardImages?.[trainerNormalizeCardName(cardName)]
+        imageUrl: card.imageStatus === "ready" && !imageBroken ? card.imageUrl : undefined,
+        imageWarning: card.warning
       };
     });
-  }, [currentHand?.cardImages, currentHand?.hand]);
+  }, [brokenImageIndexes, currentHand?.cards, currentHand?.hand]);
 
   const nextRequest = useCallback(() => {
     abortRef.current?.abort();
@@ -132,7 +165,7 @@ export function KeepTrainer() {
       const response = await authorizedFetch("/api/trainer/hands", { signal: controller.signal });
       const data = (await response.json()) as TrainerPayload | { error?: string };
       if (!response.ok) {
-        throw new Error((data as { error?: string }).error ?? "Could not load Keep Trainer.");
+        throw new Error(apiErrorMessage((data as { error?: string | TrainerApiError }).error) || "Could not load Keep Trainer.");
       }
       if (requestId !== requestIdRef.current) {
         return;
@@ -164,6 +197,8 @@ export function KeepTrainer() {
     setIsDealing(true);
     setMessage("");
     setCurrentHand(null);
+    setPendingAnswer(null);
+    setBrokenImageIndexes(new Set());
 
     try {
       const response = await authorizedFetch("/api/trainer/hands", {
@@ -172,15 +207,17 @@ export function KeepTrainer() {
         body: JSON.stringify({ deckId }),
         signal: controller.signal
       });
-      const data = (await response.json()) as { currentHand?: PublicTrainerHand; stats?: TrainerStats; error?: string };
+      const data = (await response.json()) as { currentHand?: PublicTrainerHand; stats?: TrainerStats; error?: string | TrainerApiError };
       if (!response.ok) {
-        throw new Error(data.error ?? "Could not deal a trainer hand.");
+        throw new Error(apiErrorMessage(data.error) || "Could not deal a trainer hand.");
       }
       if (requestId !== requestIdRef.current) {
         return;
       }
       setCurrentHand(data.currentHand ?? null);
       setStats(data.stats ?? stats);
+      setPendingAnswer(null);
+      setBrokenImageIndexes(new Set());
     } catch (error) {
       if (controller.signal.aborted) {
         return;
@@ -209,10 +246,18 @@ export function KeepTrainer() {
         reveal?: TrainerReveal;
         currentHand?: PublicTrainerHand;
         stats?: TrainerStats;
-        error?: string;
+        error?: string | TrainerApiError;
       };
       if (!response.ok && response.status !== 409) {
-        throw new Error(data.error ?? "Could not score this trainer hand.");
+        if (typeof data.error === "object" && data.error?.retryable) {
+          setPendingAnswer(answer);
+          if (data.currentHand) {
+            setCurrentHand(data.currentHand);
+          }
+          setMessage(apiErrorMessage(data.error));
+          return;
+        }
+        throw new Error(apiErrorMessage(data.error) || "Could not score this trainer hand.");
       }
       if (data.currentHand) {
         setCurrentHand(data.currentHand);
@@ -228,7 +273,9 @@ export function KeepTrainer() {
         setStats(data.stats);
       }
       if (data.error) {
-        setMessage(data.error);
+        setMessage(apiErrorMessage(data.error));
+      } else {
+        setPendingAnswer(null);
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not score this trainer hand.");
@@ -365,14 +412,21 @@ export function KeepTrainer() {
             <div className="puzzle-card-row" aria-label="Trainer opening hand">
               {handRows.map((card, index) => (
                 <button
-                  className={`puzzle-card ${card.image ? "has-image" : ""}`}
+                  className={`puzzle-card ${card.imageUrl ? "has-image" : "is-missing"}`}
                   key={`${card.cardName}-${index}`}
                   title={card.cardName}
                   type="button"
                 >
-                    {card.image ? (
+                    {card.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img alt="" loading="lazy" src={card.image.imageUrl} />
+                      <img
+                        alt=""
+                        loading="lazy"
+                        onError={() => {
+                          setBrokenImageIndexes((previous) => new Set(previous).add(index));
+                        }}
+                        src={card.imageUrl}
+                      />
                     ) : (
                       <span className="trainer-card-placeholder" />
                     )}
@@ -382,6 +436,9 @@ export function KeepTrainer() {
                 </button>
               ))}
             </div>
+            {currentHand.imageWarnings?.length || handRows.some((card) => card.imageWarning) ? (
+              <p className="trainer-image-warning">Some card images could not be loaded. Card names are shown so you can still answer.</p>
+            ) : null}
 
             <div className="puzzle-answer-row">
               <button
@@ -390,7 +447,7 @@ export function KeepTrainer() {
                 onClick={() => void submitAnswer("keep")}
                 type="button"
               >
-                {isSubmitting ? "Scoring..." : "Keep"}
+                {isSubmitting ? "Running full Opening Edge analysis..." : "Keep"}
               </button>
               <button
                 className="secondary-button"
@@ -398,16 +455,38 @@ export function KeepTrainer() {
                 onClick={() => void submitAnswer("mulligan")}
                 type="button"
               >
-                {isSubmitting ? "Scoring..." : "Mulligan"}
+                {isSubmitting ? "Running full Opening Edge analysis..." : "Mulligan"}
               </button>
             </div>
+            {pendingAnswer && !reveal ? (
+              <div className="trainer-retry-row">
+                <p>Full analysis did not finish, but this hand is preserved.</p>
+                <button
+                  className="secondary-button"
+                  disabled={isSubmitting}
+                  onClick={() => void submitAnswer(pendingAnswer)}
+                  type="button"
+                >
+                  Retry full analysis
+                </button>
+              </div>
+            ) : null}
 
             {reveal ? (
               <div className={`puzzle-reveal ${reveal.correct ? "is-correct" : "is-wrong"}`}>
+                <div className="model-badge-row">
+                  <span className="tag tag-good">Full Opening Edge model</span>
+                  {reveal.explanation.scoringVersion ? <span className="tag">Model {reveal.explanation.scoringVersion}</span> : null}
+                </div>
                 <p className="eyebrow">{reveal.correct ? "Correct" : "Not quite"}</p>
                 <h3>{answerLabel(reveal.correctAnswer)}</h3>
                 <p>{reveal.explanation.headline}</p>
                 <p>{reveal.explanation.lesson}</p>
+                <div className="puzzle-supporting-points">
+                  {reveal.explanation.supportingPoints.slice(0, 4).map((point) => (
+                    <span key={point}>{point}</span>
+                  ))}
+                </div>
                 <div className="puzzle-explanation-grid">
                   <div>
                     <h4>Why</h4>

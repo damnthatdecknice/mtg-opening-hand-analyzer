@@ -4,16 +4,16 @@ import {
   isServerAnonSupabaseConfigured
 } from "@/lib/serverSupabase";
 import { parseDecklist, type ParsedDeck } from "@/lib/deckParser";
-import { fetchCardData, type PlayDraw } from "@/lib/analyzer";
+import { type PlayDraw } from "@/lib/analyzer";
 import { deterministicIndex, generateSeededOpeningHand } from "@/lib/seededHandGenerator";
 import {
   calculateTrainerStats,
   keepTrainerAnalyzerVersion,
   publicTrainerHand,
-  trainerImageMapFromLookups,
   trainerAttemptFromRow,
   type TrainerDeckOption
 } from "@/lib/keepTrainer";
+import { loadTrainerCardPresentation } from "@/lib/serverCardPresentation";
 
 type SavedDeckRow = {
   id: string;
@@ -37,18 +37,6 @@ function isMissingTrainerTableError(error: { code?: string; message?: string } |
   return error?.code === "PGRST205" || message.includes("schema cache") || message.includes("does not exist");
 }
 
-function encodeEphemeralTrainerHand(row: {
-  user_id: string;
-  deck_id: string;
-  deck_name: string;
-  format: string;
-  decklist_snapshot: string;
-  hand: string[];
-  play_draw: PlayDraw;
-}) {
-  return `ephemeral_${Buffer.from(JSON.stringify({ v: 1, ...row }), "utf8").toString("base64url")}`;
-}
-
 function bearerToken(request: NextRequest) {
   const authorization = request.headers.get("authorization") ?? "";
   return authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
@@ -68,31 +56,6 @@ function savedDeckOption(deck: SavedDeckRow): TrainerDeckOption {
     format: deck.format ?? "Unknown",
     mainCount: savedDeckMainCount(deck)
   };
-}
-
-function mtgoIdsByName(parsed?: ParsedDeck | null) {
-  const result: Record<string, number[]> = {};
-  for (const identity of parsed?.importMetadata?.cards ?? []) {
-    if (!identity.catId) {
-      continue;
-    }
-    result[identity.name] = Array.from(new Set([...(result[identity.name] ?? []), identity.catId]));
-  }
-  return result;
-}
-
-async function trainerCardImages(hand: string[], parsed?: ParsedDeck | null) {
-  try {
-    const exactIds = mtgoIdsByName(parsed);
-    const lookup = await fetchCardData(Array.from(new Set(hand)), {
-      exactMtgoImagesOnly: Object.keys(exactIds).length > 0,
-      mtgoIdsByName: exactIds,
-      retryFailures: true
-    });
-    return trainerImageMapFromLookups(lookup.lookups, hand);
-  } catch {
-    return {};
-  }
 }
 
 async function requireUser(request: NextRequest) {
@@ -211,7 +174,7 @@ export async function POST(request: NextRequest) {
   }
 
   const playDraw: PlayDraw = deterministicIndex(`${seed}:play-draw`, 2) === 0 ? "play" : "draw";
-  const cardImages = await trainerCardImages(hand, deck.parsed_json);
+  const presentation = await loadTrainerCardPresentation(hand, deck.parsed_json);
   const { data: inserted, error: insertError } = await serviceClient
     .from("magic_trainer_hands")
     .insert({
@@ -230,28 +193,7 @@ export async function POST(request: NextRequest) {
 
   if (insertError) {
     if (isMissingTrainerTableError(insertError)) {
-      const ephemeralRow = {
-        id: encodeEphemeralTrainerHand({
-          user_id: user.id,
-          deck_id: deck.id,
-          deck_name: deck.name,
-          format: deck.format ?? "Unknown",
-          decklist_snapshot: deck.decklist,
-          hand,
-          play_draw: playDraw
-        }),
-        deck_id: deck.id,
-        deck_name: deck.name,
-        format: deck.format ?? "Unknown",
-        hand,
-        play_draw: playDraw
-      };
-
-      return NextResponse.json({
-        currentHand: publicTrainerHand(ephemeralRow, undefined, cardImages),
-        stats: calculateTrainerStats(await loadTrainerAttempts(serviceClient, user.id)),
-        storageMode: "ephemeral"
-      });
+      return NextResponse.json({ error: "Trainer storage is not configured. Apply the Keep Trainer database migration and retry." }, { status: 503 });
     }
     return NextResponse.json({ error: insertError.message }, { status: 400 });
   }
@@ -260,7 +202,7 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({
-    currentHand: publicTrainerHand(inserted as Parameters<typeof publicTrainerHand>[0], undefined, cardImages),
+    currentHand: publicTrainerHand(inserted as Parameters<typeof publicTrainerHand>[0], undefined, presentation),
     stats: calculateTrainerStats(await loadTrainerAttempts(serviceClient, user.id))
   });
 }

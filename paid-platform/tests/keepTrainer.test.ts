@@ -8,6 +8,10 @@ import {
   trainerAttemptFromRow,
   type TrainerAttempt
 } from "../src/lib/keepTrainer";
+import { cardPresentationsFromLookups } from "../src/lib/serverCardPresentation";
+import type { CardLookup } from "../src/lib/analyzer";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const decklist = `Deck
 4 Lightning Bolt
@@ -66,5 +70,68 @@ const publicHand = publicTrainerHand({
 });
 assert.equal(publicHand.hand.length, 7, "public trainer hand parses stored JSON hands");
 assert.equal(publicHand.reveal, undefined, "public trainer hand does not reveal unanswered hands");
+
+function lookup(name: string, imageUrl: string, faces: CardLookup["faces"] = []): CardLookup {
+  return {
+    name,
+    typeLine: "",
+    manaValue: 0,
+    scryfallManaValue: 0,
+    manaValueSource: "test fixture",
+    manaCost: "",
+    oracleText: "",
+    colors: [],
+    producedMana: [],
+    layout: "normal",
+    faces,
+    isLand: false,
+    isMultiface: faces.length > 0,
+    imageUrl,
+    imageUrls: [imageUrl],
+    artCropUrl: "",
+    artCropUrls: [],
+    mtgoIds: [],
+    legalities: {},
+  };
+}
+
+const duplicateImage = "https://cards.example/island.png";
+const duplicatePresentation = cardPresentationsFromLookups(
+  ["Island", "Island", "Lightning Bolt"],
+  new Map([
+    ["Island", lookup("Island", duplicateImage)],
+    ["Lightning Bolt", lookup("Lightning Bolt", "https://cards.example/bolt.png")]
+  ])
+);
+assert.equal(duplicatePresentation.cards.length, 3, "card presentation preserves duplicate cards");
+assert.equal(duplicatePresentation.cards[0].imageUrl, duplicateImage, "first duplicate keeps its image");
+assert.equal(duplicatePresentation.cards[1].imageUrl, duplicateImage, "second duplicate keeps its image");
+assert.equal(duplicatePresentation.imageWarnings.length, 0, "resolved duplicate cards do not warn");
+
+const splitPresentation = cardPresentationsFromLookups(
+  ["Roaring Furnace"],
+  new Map([
+    [
+      "Roaring Furnace // Steaming Sauna",
+      lookup("Roaring Furnace // Steaming Sauna", "https://cards.example/room.png", [
+        { name: "Roaring Furnace", manaCost: "{1}{R}", typeLine: "Enchantment - Room", oracleText: "", manaValue: 2 },
+        { name: "Steaming Sauna", manaCost: "{4}{U}", typeLine: "Enchantment - Room", oracleText: "", manaValue: 5 }
+      ])
+    ]
+  ])
+);
+assert.equal(splitPresentation.cards[0].canonicalName, "Roaring Furnace // Steaming Sauna", "face names map back to their full card lookup");
+assert.equal(splitPresentation.cards[0].imageStatus, "ready", "split/room face names can use the parent card image");
+
+const missingPresentation = cardPresentationsFromLookups(["Unknown Card"], new Map());
+assert.equal(missingPresentation.cards[0].imageStatus, "missing", "missing images are represented per card");
+assert.equal(missingPresentation.imageWarnings.length, 1, "missing images produce explicit warnings");
+
+const answerRouteSource = readFileSync(
+  join(process.cwd(), "src/app/api/trainer/hands/[handId]/answer/route.ts"),
+  "utf8"
+);
+assert.equal(answerRouteSource.includes("keepTrainerScoringSettings"), false, "trainer answers do not use reduced scoring settings");
+assert.equal(answerRouteSource.includes("fallbackTrainerAnswer"), false, "trainer answers do not use heuristic fallback scoring");
 
 console.log("keepTrainer tests passed");
