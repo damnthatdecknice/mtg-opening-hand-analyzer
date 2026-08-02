@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { saveAuthFallback } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
+import { trainerNormalizeCardName } from "@/lib/keepTrainer";
 import type {
   PublicTrainerHand,
   TrainerAnswer,
@@ -74,9 +75,14 @@ export function KeepTrainer() {
     return (currentHand?.hand ?? []).map((cardName) => {
       const next = (counts.get(cardName) ?? 0) + 1;
       counts.set(cardName, next);
-      return { cardName, copyNumber: next, duplicate: next > 1 };
+      return {
+        cardName,
+        copyNumber: next,
+        duplicate: next > 1,
+        image: currentHand?.cardImages?.[trainerNormalizeCardName(cardName)]
+      };
     });
-  }, [currentHand?.hand]);
+  }, [currentHand?.cardImages, currentHand?.hand]);
 
   const nextRequest = useCallback(() => {
     abortRef.current?.abort();
@@ -358,7 +364,18 @@ export function KeepTrainer() {
 
             <div className="puzzle-card-row" aria-label="Trainer opening hand">
               {handRows.map((card, index) => (
-                <button className="puzzle-card" key={`${card.cardName}-${index}`} title={card.cardName} type="button">
+                <button
+                  className={`puzzle-card ${card.image ? "has-image" : ""}`}
+                  key={`${card.cardName}-${index}`}
+                  title={card.cardName}
+                  type="button"
+                >
+                    {card.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img alt="" loading="lazy" src={card.image.imageUrl} />
+                    ) : (
+                      <span className="trainer-card-placeholder" />
+                    )}
                   <span className="puzzle-card-index">Card {index + 1}</span>
                   <strong>{card.cardName}</strong>
                   {card.duplicate ? <em>copy {card.copyNumber}</em> : null}

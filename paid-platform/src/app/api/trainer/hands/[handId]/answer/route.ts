@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { analyzeOpeningHand, fetchCardData, type PlayDraw } from "@/lib/analyzer";
+import { analyzeOpeningHand, fetchCardData, type CardDataLookupResult, type PlayDraw } from "@/lib/analyzer";
 import { parseDecklist, type ParsedDeck } from "@/lib/deckParser";
 import {
   calculateTrainerStats,
@@ -10,7 +10,9 @@ import {
   trainerAnswerFromAnalysis,
   trainerAttemptFromRow,
   trainerExplanationFromAnalysis,
-  type TrainerAnswer
+  trainerImageMapFromLookups,
+  type TrainerAnswer,
+  type TrainerExplanation
 } from "@/lib/keepTrainer";
 import {
   createServerAnonSupabaseClient,
@@ -147,6 +149,72 @@ function mtgoIdsByName(parsed?: ParsedDeck | null) {
   return result;
 }
 
+function likelyLandName(name: string) {
+  const normalized = name.toLowerCase();
+  if (["plains", "island", "swamp", "mountain", "forest", "wastes"].includes(normalized)) {
+    return true;
+  }
+  return /\b(vent|vents|canal|coast|harbor|verge|tomb|pool|passage|triome|sanctum|forge|foundry|crypt|shrine|temple|tower|ruins|cavern|catacomb|falls|summit|marsh|heath|strand|delta|mesa|foothills|mire|rainforest|wilds|garden|grave|courtyard|pathway|channel|fountain|city)\b/i.test(
+    name
+  );
+}
+
+function fallbackTrainerExplanation(
+  hand: string[],
+  parsed: ParsedDeck,
+  playDraw: PlayDraw,
+  correctAnswer: TrainerAnswer,
+  reason: string
+): TrainerExplanation {
+  const lands = hand.filter(likelyLandName).length;
+  const score = lands === 0 ? 12 : lands === 1 ? 28 : lands <= 4 ? 58 : lands === 5 ? 42 : 20;
+  const mulliganText = parsed.mainCount >= 99 ? "free-seven mulligan" : "mulligan baseline";
+  return {
+    verdict: correctAnswer,
+    headline:
+      correctAnswer === "keep"
+        ? "Keep, but this was scored with Opening Edge's conservative fallback."
+        : "Mulligan, based on Opening Edge's conservative fallback.",
+    lesson:
+      "The full trainer model could not finish this card lookup, so this result uses land count, deck size, play/draw, and basic curve safety only. Retry the hand for the full castability and color explanation.",
+    keyFactors: [
+      `${lands} likely land(s) in the opener.`,
+      `${playDraw === "draw" ? "On the draw" : "On the play"} against a ${parsed.mainCount}-card main deck.`,
+      reason
+    ],
+    supportingPoints: [
+      `Fallback Opening Hand Score: ${score}/100.`,
+      `Compared against the ${mulliganText} conservatively, not the full simulator.`,
+      "Card images and exact color checks may be incomplete for this attempt."
+    ],
+    watchFor:
+      lands <= 1
+        ? ["The main risk is missing early mana and failing to deploy spells."]
+        : lands >= 5
+          ? ["The main risk is flooding and not having enough action."]
+          : ["The main risk is hidden color or timing pressure that the fallback cannot verify."],
+    risk:
+      lands <= 1
+        ? "Mana screw risk is high."
+        : lands >= 5
+          ? "Flood risk is high."
+          : "The fallback cannot fully verify colors, ramp, or stranded cards.",
+    score,
+    recommendation: correctAnswer === "keep" ? "Keep" : "Mulligan",
+    percentile: score / 100,
+    severeFailureProbability: lands <= 1 || lands >= 6 ? 0.7 : lands === 5 ? 0.45 : 0.25,
+    keepAdvantage: correctAnswer === "keep" ? 0.01 : -0.04
+  };
+}
+
+function fallbackTrainerAnswer(hand: string[]): TrainerAnswer {
+  const lands = hand.filter(likelyLandName).length;
+  if (lands < 2 || lands > 4) {
+    return "mulligan";
+  }
+  return "keep";
+}
+
 export async function POST(request: NextRequest, context: { params: { handId: string } }) {
   const authContext = await requireUser(request);
   if ("error" in authContext) {
@@ -223,36 +291,56 @@ export async function POST(request: NextRequest, context: { params: { handId: st
   const parsed = parseDecklist(handRow.decklist_snapshot);
   const hand = handArray(handRow.hand);
   const cardNames = Array.from(new Set([...parsed.cards.map((card) => card.name), ...hand]));
-  const lookup = await fetchCardData(cardNames, {
-    exactMtgoImagesOnly: true,
-    mtgoIdsByName: mtgoIdsByName((deckIdentity as SavedDeckIdentityRow | null)?.parsed_json),
-    retryFailures: true
-  });
+  const exactIds = mtgoIdsByName((deckIdentity as SavedDeckIdentityRow | null)?.parsed_json);
+  let lookup: CardDataLookupResult;
+  try {
+    lookup = await fetchCardData(cardNames, {
+      exactMtgoImagesOnly: Object.keys(exactIds).length > 0,
+      mtgoIdsByName: exactIds,
+      retryFailures: true
+    });
+  } catch (error) {
+    lookup = {
+      lookups: new Map(),
+      failures: cardNames,
+      unresolvedCards: cardNames,
+      operationFailure: {
+        kind: "network",
+        message: error instanceof Error ? error.message : "Opening Edge could not finish card lookup. Please retry.",
+        retryable: true
+      }
+    };
+  }
+  const cardImages = trainerImageMapFromLookups(lookup.lookups, hand);
 
   const unresolved = lookup.unresolvedCards?.length ? lookup.unresolvedCards : [];
-  if (lookup.operationFailure || lookup.failures.length || unresolved.length) {
-    return NextResponse.json(
-      {
-        error: lookup.operationFailure?.message ?? `Card data could not be loaded for: ${unresolved.join(", ") || lookup.failures[0]}.`
-      },
-      { status: 502 }
-    );
+  const lookupIssue =
+    lookup.operationFailure?.message ??
+    (lookup.failures.length || unresolved.length
+      ? `Opening Edge could not fully load: ${unresolved.join(", ") || lookup.failures[0]}.`
+      : "");
+  let analysis: ReturnType<typeof analyzeOpeningHand> | null = null;
+  let correctAnswer: TrainerAnswer;
+  let explanation: TrainerExplanation;
+  let analyzerVersion = keepTrainerAnalyzerVersion;
+
+  if (!lookupIssue) {
+    analysis = analyzeOpeningHand(handRow.decklist_snapshot, hand, lookup.lookups, handRow.play_draw, {
+      format: handRow.format,
+      scoringSettings: keepTrainerScoringSettings
+    });
   }
 
-  const analysis = analyzeOpeningHand(handRow.decklist_snapshot, hand, lookup.lookups, handRow.play_draw, {
-    format: handRow.format,
-    scoringSettings: keepTrainerScoringSettings
-  });
-
-  if (analysis.missingCards.length) {
-    return NextResponse.json(
-      { error: `Card data could not be loaded for: ${analysis.missingCards.join(", ")}.` },
-      { status: 422 }
-    );
+  if (analysis && !analysis.missingCards.length) {
+    correctAnswer = trainerAnswerFromAnalysis(analysis);
+    explanation = trainerExplanationFromAnalysis(analysis, correctAnswer);
+    analyzerVersion = analysis.scoringVersion || keepTrainerAnalyzerVersion;
+  } else {
+    const reason = lookupIssue || `Opening Edge could not fully load: ${analysis?.missingCards.join(", ")}.`;
+    correctAnswer = fallbackTrainerAnswer(hand);
+    explanation = fallbackTrainerExplanation(hand, parsed, handRow.play_draw, correctAnswer, reason);
+    analyzerVersion = `${keepTrainerAnalyzerVersion}-fallback`;
   }
-
-  const correctAnswer = trainerAnswerFromAnalysis(analysis);
-  const explanation = trainerExplanationFromAnalysis(analysis, correctAnswer);
   const previousAttempts = await loadAttempts(serviceClient, user.id);
   const ratingBefore = calculateTrainerStats(previousAttempts).rating;
   const isCorrect = body.answer === correctAnswer;
@@ -263,10 +351,10 @@ export async function POST(request: NextRequest, context: { params: { handId: st
       .from("magic_trainer_hands")
       .update({
         correct_answer: correctAnswer,
-        analysis_json: analysis,
+        analysis_json: analysis ?? { fallback: true, reason: explanation.keyFactors[2], hand },
         explanation_json: explanation,
         answered_at: new Date().toISOString(),
-        analyzer_version: analysis.scoringVersion || keepTrainerAnalyzerVersion
+        analyzer_version: analyzerVersion
       })
       .eq("id", handRow.id)
       .eq("user_id", user.id)
@@ -303,7 +391,7 @@ export async function POST(request: NextRequest, context: { params: { handId: st
         correct_answer: correctAnswer,
         explanation_json: explanation,
         answered_at: new Date().toISOString()
-      }, body.answer)
+      }, body.answer, cardImages)
     },
     stats: calculateTrainerStats(await loadAttempts(serviceClient, user.id))
   });

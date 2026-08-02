@@ -4,12 +4,13 @@ import {
   isServerAnonSupabaseConfigured
 } from "@/lib/serverSupabase";
 import { parseDecklist, type ParsedDeck } from "@/lib/deckParser";
-import type { PlayDraw } from "@/lib/analyzer";
+import { fetchCardData, type PlayDraw } from "@/lib/analyzer";
 import { deterministicIndex, generateSeededOpeningHand } from "@/lib/seededHandGenerator";
 import {
   calculateTrainerStats,
   keepTrainerAnalyzerVersion,
   publicTrainerHand,
+  trainerImageMapFromLookups,
   trainerAttemptFromRow,
   type TrainerDeckOption
 } from "@/lib/keepTrainer";
@@ -67,6 +68,31 @@ function savedDeckOption(deck: SavedDeckRow): TrainerDeckOption {
     format: deck.format ?? "Unknown",
     mainCount: savedDeckMainCount(deck)
   };
+}
+
+function mtgoIdsByName(parsed?: ParsedDeck | null) {
+  const result: Record<string, number[]> = {};
+  for (const identity of parsed?.importMetadata?.cards ?? []) {
+    if (!identity.catId) {
+      continue;
+    }
+    result[identity.name] = Array.from(new Set([...(result[identity.name] ?? []), identity.catId]));
+  }
+  return result;
+}
+
+async function trainerCardImages(hand: string[], parsed?: ParsedDeck | null) {
+  try {
+    const exactIds = mtgoIdsByName(parsed);
+    const lookup = await fetchCardData(Array.from(new Set(hand)), {
+      exactMtgoImagesOnly: Object.keys(exactIds).length > 0,
+      mtgoIdsByName: exactIds,
+      retryFailures: true
+    });
+    return trainerImageMapFromLookups(lookup.lookups, hand);
+  } catch {
+    return {};
+  }
 }
 
 async function requireUser(request: NextRequest) {
@@ -185,6 +211,7 @@ export async function POST(request: NextRequest) {
   }
 
   const playDraw: PlayDraw = deterministicIndex(`${seed}:play-draw`, 2) === 0 ? "play" : "draw";
+  const cardImages = await trainerCardImages(hand, deck.parsed_json);
   const { data: inserted, error: insertError } = await serviceClient
     .from("magic_trainer_hands")
     .insert({
@@ -221,7 +248,7 @@ export async function POST(request: NextRequest) {
       };
 
       return NextResponse.json({
-        currentHand: publicTrainerHand(ephemeralRow),
+        currentHand: publicTrainerHand(ephemeralRow, undefined, cardImages),
         stats: calculateTrainerStats(await loadTrainerAttempts(serviceClient, user.id)),
         storageMode: "ephemeral"
       });
@@ -233,7 +260,7 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({
-    currentHand: publicTrainerHand(inserted as Parameters<typeof publicTrainerHand>[0]),
+    currentHand: publicTrainerHand(inserted as Parameters<typeof publicTrainerHand>[0], undefined, cardImages),
     stats: calculateTrainerStats(await loadTrainerAttempts(serviceClient, user.id))
   });
 }

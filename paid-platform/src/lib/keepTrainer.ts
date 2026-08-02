@@ -1,4 +1,4 @@
-import type { AnalyzerResult, PlayDraw } from "./analyzer";
+import type { AnalyzerResult, CardLookup, PlayDraw } from "./analyzer";
 
 export type TrainerAnswer = "keep" | "mulligan";
 
@@ -24,10 +24,19 @@ export type PublicTrainerHand = {
   format: string;
   hand: string[];
   playDraw: PlayDraw;
+  cardImages?: TrainerCardImageMap;
   completed?: boolean;
   selectedAnswer?: TrainerAnswer;
   reveal?: TrainerReveal;
 };
+
+export type TrainerCardImage = {
+  name: string;
+  imageUrl: string;
+  artCropUrl?: string;
+};
+
+export type TrainerCardImageMap = Record<string, TrainerCardImage>;
 
 export type TrainerReveal = {
   correct: boolean;
@@ -70,6 +79,39 @@ export const keepTrainerScoringSettings = {
   beamWidth: 18,
   mulliganHands: 20
 };
+
+export function trainerNormalizeCardName(name: string) {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[’]/g, "'")
+    .replace(/\s*\/\/\s*/g, " // ")
+    .replace(/\s+/g, " ");
+}
+
+export function trainerImageMapFromLookups(lookups: Map<string, CardLookup>, names: string[]) {
+  const byName = new Map<string, CardLookup>();
+  for (const lookup of Array.from(lookups.values())) {
+    byName.set(trainerNormalizeCardName(lookup.name), lookup);
+    for (const face of lookup.faces) {
+      byName.set(trainerNormalizeCardName(face.name), lookup);
+    }
+  }
+
+  const images: TrainerCardImageMap = {};
+  for (const name of names) {
+    const lookup = byName.get(trainerNormalizeCardName(name));
+    const imageUrl = lookup?.imageUrl || lookup?.imageUrls?.[0] || lookup?.artCropUrl || lookup?.artCropUrls?.[0] || "";
+    if (lookup && imageUrl) {
+      images[trainerNormalizeCardName(name)] = {
+        name: lookup.name,
+        imageUrl,
+        artCropUrl: lookup.artCropUrl || lookup.artCropUrls?.[0]
+      };
+    }
+  }
+  return images;
+}
 
 export function isTrainerAnswer(value: unknown): value is TrainerAnswer {
   return value === "keep" || value === "mulligan";
@@ -168,7 +210,7 @@ export function publicTrainerHand(row: {
   answered_at?: string | null;
   correct_answer?: TrainerAnswer | null;
   explanation_json?: TrainerExplanation | null;
-}, selectedAnswer?: TrainerAnswer): PublicTrainerHand {
+}, selectedAnswer?: TrainerAnswer, cardImages?: TrainerCardImageMap): PublicTrainerHand {
   const hand = Array.isArray(row.hand) ? row.hand : JSON.parse(row.hand);
   const completed = Boolean(row.answered_at);
   const reveal =
@@ -186,6 +228,7 @@ export function publicTrainerHand(row: {
     format: row.format,
     hand,
     playDraw: row.play_draw,
+    cardImages: cardImages && Object.keys(cardImages).length ? cardImages : undefined,
     completed,
     selectedAnswer,
     reveal
