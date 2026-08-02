@@ -47,6 +47,20 @@ export function MagicPuzzles() {
   const prefetchedPuzzleRef = useRef<{ deckId: string; payload: PuzzlePayload } | null>(null);
   const prefetchKeyRef = useRef("");
 
+  const getAccessToken = useCallback(async () => {
+    if (!supabase) {
+      return "";
+    }
+
+    const sessionResponse = await supabase.auth.getSession();
+    if (sessionResponse.data.session?.access_token) {
+      return sessionResponse.data.session.access_token;
+    }
+
+    const refreshResponse = await supabase.auth.refreshSession();
+    return refreshResponse.data.session?.access_token ?? "";
+  }, []);
+
   const reveal = payload?.puzzle?.reveal;
   const stats = payload?.stats ?? emptyStats;
   const puzzle = payload?.puzzle;
@@ -62,7 +76,7 @@ export function MagicPuzzles() {
   }, [puzzle?.hand]);
 
   const fetchPuzzlePayload = useCallback(async (deckId = "") => {
-    const token = supabase ? (await supabase.auth.getSession()).data.session?.access_token : "";
+    const token = await getAccessToken();
     const params = deckId ? `?deckId=${encodeURIComponent(deckId)}` : "";
     const response = await fetch(`/api/puzzles${params}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -73,7 +87,7 @@ export function MagicPuzzles() {
       throw new Error((data as { error?: string }).error ?? "Sign in to use the Keep Trainer.");
     }
     return data as PuzzlePayload;
-  }, []);
+  }, [getAccessToken]);
 
   const loadPuzzle = useCallback(async (deckId = "", options: { preserveCurrent?: boolean } = {}) => {
     if (options.preserveCurrent) {
@@ -127,7 +141,12 @@ export function MagicPuzzles() {
     }
     setIsSubmitting(true);
     setMessage("");
-    const token = supabase ? (await supabase.auth.getSession()).data.session?.access_token : "";
+    const token = await getAccessToken();
+    if (!token) {
+      setMessage("Sign in to lock an answer and track your trainer rating.");
+      setIsSubmitting(false);
+      return;
+    }
     const response = await fetch(`/api/puzzles/${encodeURIComponent(puzzle.id)}/answer`, {
       method: "POST",
       headers: {
@@ -162,8 +181,32 @@ export function MagicPuzzles() {
   }
 
   useEffect(() => {
-    void loadPuzzle();
-  }, [loadPuzzle]);
+    if (!supabase) {
+      void loadPuzzle();
+      return;
+    }
+
+    let cancelled = false;
+
+    getAccessToken()
+      .catch(() => "")
+      .finally(() => {
+        if (!cancelled) {
+          void loadPuzzle();
+        }
+      });
+
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && !cancelled) {
+        void loadPuzzle();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      data.subscription.unsubscribe();
+    };
+  }, [getAccessToken, loadPuzzle]);
 
   useEffect(() => {
     if (!payload?.signedIn || payload.preview || !payload.puzzle || payload.puzzle.completed || !selectedDeckId) {
