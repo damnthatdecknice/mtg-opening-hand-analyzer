@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { saveAuthFallback } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
 import type {
   PublicTrainerHand,
@@ -46,17 +47,21 @@ export function KeepTrainer() {
   const requestIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
-  const getAccessToken = useCallback(async () => {
+  const getAccessToken = useCallback(async (forceRefresh = false) => {
     if (!supabase) {
       return "";
     }
 
-    const sessionResponse = await supabase.auth.getSession();
-    if (sessionResponse.data.session?.access_token) {
-      return sessionResponse.data.session.access_token;
+    if (!forceRefresh) {
+      const sessionResponse = await supabase.auth.getSession();
+      if (sessionResponse.data.session?.access_token) {
+        saveAuthFallback(sessionResponse.data.session);
+        return sessionResponse.data.session.access_token;
+      }
     }
 
     const refreshResponse = await supabase.auth.refreshSession();
+    saveAuthFallback(refreshResponse.data.session);
     return refreshResponse.data.session?.access_token ?? "";
   }, []);
 
@@ -89,6 +94,22 @@ export function KeepTrainer() {
     const headers = new Headers(init.headers);
     headers.set("Authorization", `Bearer ${token}`);
 
+    const response = await fetch(path, {
+      ...init,
+      headers,
+      cache: "no-store"
+    });
+
+    if (response.status !== 401) {
+      return response;
+    }
+
+    const refreshedToken = await getAccessToken(true);
+    if (!refreshedToken || refreshedToken === token) {
+      return response;
+    }
+
+    headers.set("Authorization", `Bearer ${refreshedToken}`);
     return fetch(path, {
       ...init,
       headers,
@@ -235,6 +256,7 @@ export function KeepTrainer() {
 
   if (!decks.length) {
     const needsSignIn = message.toLowerCase().includes("sign in");
+    const blockingError = message && !needsSignIn && !message.toLowerCase().includes("save a deck");
     const headline = needsSignIn ? "Sign in to train" : "Add your first deck";
     const helperText = needsSignIn
       ? "Sign in to practice keep-or-mulligan decisions with your saved decks."
@@ -244,7 +266,7 @@ export function KeepTrainer() {
       <section className="panel puzzle-shell trainer-start-shell">
         <p className="eyebrow">Keep Trainer</p>
         <h1>{headline}</h1>
-        <p>{helperText}</p>
+        <p>{blockingError ? message : helperText}</p>
         <div className="action-row">
           <Link className="primary-button" href={needsSignIn ? "/login" : "/decks"}>
             {needsSignIn ? "Sign in" : "Import your .dek"}

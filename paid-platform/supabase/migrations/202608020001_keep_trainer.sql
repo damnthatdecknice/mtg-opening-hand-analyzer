@@ -3,7 +3,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.magic_trainer_hands (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  deck_id uuid not null references public.saved_decks(id) on delete cascade,
+  deck_id uuid not null references public.decks(id) on delete cascade,
   deck_name text not null,
   format text not null default 'Unknown',
   decklist_snapshot text not null,
@@ -22,7 +22,7 @@ create table if not exists public.magic_trainer_attempts (
   id uuid primary key default gen_random_uuid(),
   trainer_hand_id uuid not null references public.magic_trainer_hands(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
-  deck_id uuid not null references public.saved_decks(id) on delete cascade,
+  deck_id uuid not null references public.decks(id) on delete cascade,
   selected_answer text not null check (selected_answer in ('keep', 'mulligan')),
   is_correct boolean not null,
   rating_before integer not null default 1000,

@@ -53,8 +53,11 @@ function bearerToken(request: NextRequest) {
 
 async function requireUser(request: NextRequest) {
   const token = bearerToken(request);
-  if (!token || !isServerAnonSupabaseConfigured || !isServerSupabaseConfigured) {
+  if (!token) {
     return { error: NextResponse.json({ error: "Sign in to use the Keep Trainer." }, { status: 401 }) };
+  }
+  if (!isServerAnonSupabaseConfigured || !isServerSupabaseConfigured) {
+    return { error: NextResponse.json({ error: "Trainer storage is not configured." }, { status: 503 }) };
   }
 
   const authClient = createServerAnonSupabaseClient(token);
@@ -151,7 +154,7 @@ export async function POST(request: NextRequest, context: { params: { handId: st
   }
 
   const { data: deckIdentity } = await serviceClient
-    .from("saved_decks")
+    .from("decks")
     .select("parsed_json")
     .eq("id", handRow.deck_id)
     .eq("user_id", user.id)
