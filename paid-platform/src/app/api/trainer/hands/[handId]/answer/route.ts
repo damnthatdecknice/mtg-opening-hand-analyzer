@@ -189,6 +189,10 @@ export async function POST(request: NextRequest, context: { params: { handId: st
         .eq("user_id", user.id)
         .maybeSingle();
 
+  if ("error" in existingAttempt && existingAttempt.error && !isMissingTrainerTableError(existingAttempt.error)) {
+    return NextResponse.json({ error: existingAttempt.error.message }, { status: 400 });
+  }
+
   if (handRow.answered_at || existingAttempt.data) {
     const selected = (existingAttempt.data as TrainerAttemptRow | null)?.selected_answer ?? body.answer;
     return NextResponse.json(
@@ -282,7 +286,7 @@ export async function POST(request: NextRequest, context: { params: { handId: st
       rating_after: ratingAfter
     });
 
-    if (insertError) {
+    if (insertError && !isMissingTrainerTableError(insertError)) {
       return NextResponse.json({ error: insertError.message }, { status: 400 });
     }
   }

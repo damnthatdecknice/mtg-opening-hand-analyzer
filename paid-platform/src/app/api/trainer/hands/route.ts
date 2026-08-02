@@ -92,11 +92,18 @@ async function requireUser(request: NextRequest) {
 }
 
 async function loadTrainerAttempts(serviceClient: NonNullable<ReturnType<typeof createServerAnonSupabaseClient>>, userId: string) {
-  const { data } = await serviceClient
+  const { data, error } = await serviceClient
     .from("magic_trainer_attempts")
     .select("selected_answer, is_correct, rating_before, rating_after, attempted_at")
     .eq("user_id", userId)
     .order("attempted_at", { ascending: true });
+
+  if (error) {
+    if (isMissingTrainerTableError(error)) {
+      return [];
+    }
+    throw error;
+  }
 
   return ((data ?? []) as TrainerAttemptRow[]).map(trainerAttemptFromRow);
 }
@@ -120,7 +127,13 @@ export async function GET(request: NextRequest) {
   }
 
   const decks = ((deckData ?? []) as SavedDeckRow[]).filter((deck) => savedDeckMainCount(deck) >= 7);
-  const stats = calculateTrainerStats(await loadTrainerAttempts(serviceClient, user.id));
+  let trainerAttempts: ReturnType<typeof trainerAttemptFromRow>[] = [];
+  try {
+    trainerAttempts = await loadTrainerAttempts(serviceClient, user.id);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load Trainer stats." }, { status: 400 });
+  }
+  const stats = calculateTrainerStats(trainerAttempts);
 
   return NextResponse.json({
     signedIn: true,
