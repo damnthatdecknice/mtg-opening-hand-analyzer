@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   createServerAnonSupabaseClient,
-  createServerSupabaseClient,
-  isServerAnonSupabaseConfigured,
-  isServerSupabaseConfigured
+  isServerAnonSupabaseConfigured
 } from "@/lib/serverSupabase";
 import { parseDecklist, type ParsedDeck } from "@/lib/deckParser";
 import { deterministicIndex, generateSeededOpeningHand } from "@/lib/seededHandGenerator";
@@ -58,17 +56,16 @@ async function requireUser(request: NextRequest) {
   if (!token) {
     return { error: NextResponse.json({ error: "Sign in to use the Keep Trainer." }, { status: 401 }) };
   }
-  if (!isServerAnonSupabaseConfigured || !isServerSupabaseConfigured) {
+  if (!isServerAnonSupabaseConfigured) {
     return { error: NextResponse.json({ error: "Trainer storage is not configured." }, { status: 503 }) };
   }
 
-  const authClient = createServerAnonSupabaseClient(token);
-  const serviceClient = createServerSupabaseClient();
-  if (!authClient || !serviceClient) {
+  const serviceClient = createServerAnonSupabaseClient(token);
+  if (!serviceClient) {
     return { error: NextResponse.json({ error: "Trainer storage is not configured." }, { status: 503 }) };
   }
 
-  const { data: userData, error: userError } = await authClient.auth.getUser(token);
+  const { data: userData, error: userError } = await serviceClient.auth.getUser(token);
   if (userError || !userData.user) {
     return { error: NextResponse.json({ error: "Sign in to use the Keep Trainer." }, { status: 401 }) };
   }
@@ -76,7 +73,7 @@ async function requireUser(request: NextRequest) {
   return { user: userData.user, serviceClient };
 }
 
-async function loadTrainerAttempts(serviceClient: NonNullable<ReturnType<typeof createServerSupabaseClient>>, userId: string) {
+async function loadTrainerAttempts(serviceClient: NonNullable<ReturnType<typeof createServerAnonSupabaseClient>>, userId: string) {
   const { data } = await serviceClient
     .from("magic_trainer_attempts")
     .select("selected_answer, is_correct, rating_before, rating_after, attempted_at")
