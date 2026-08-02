@@ -37,15 +37,24 @@
 .puzzle-page {
   display: grid;
   gap: 1.4rem;
+  inline-size: min(100%, 1120px);
+  max-inline-size: calc(100vw - clamp(1.25rem, 5vw, 4rem));
+  margin-inline: auto;
+  overflow-x: clip;
 }
 
 .puzzle-hero,
 .puzzle-metrics {
-  max-width: 920px;
+  inline-size: 100%;
+  max-inline-size: 920px;
+  min-inline-size: 0;
 }
 
 .puzzle-shell {
-  max-width: 1120px;
+  inline-size: 100%;
+  max-inline-size: 1120px;
+  min-inline-size: 0;
+  box-sizing: border-box;
 }
 
 .puzzle-context-row,
@@ -59,10 +68,12 @@
 
 .puzzle-deck-picker {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) max-content;
   gap: 0.75rem;
   align-items: end;
   margin: 1rem 0;
+  max-inline-size: 100%;
+  min-inline-size: 0;
 }
 
 .puzzle-deck-picker label {
@@ -73,6 +84,7 @@
 
 .puzzle-deck-picker select {
   min-width: 0;
+  width: 100%;
 }
 
 .puzzle-context-row span {
@@ -87,14 +99,16 @@
 
 .puzzle-card-row {
   display: grid;
-  grid-template-columns: repeat(7, minmax(128px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
   gap: 0.85rem;
   margin: 1.2rem 0;
-  overflow-x: auto;
   padding-bottom: 0.4rem;
+  max-inline-size: 100%;
+  min-inline-size: 0;
 }
 
 .puzzle-card {
+  min-inline-size: 0;
   min-height: 190px;
   border: 1px solid var(--border);
   background:
@@ -109,11 +123,13 @@
   flex-direction: column;
   justify-content: space-between;
   cursor: zoom-in;
+  overflow: hidden;
 }
 
 .puzzle-card strong {
   font-size: 1.05rem;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .puzzle-card em,
@@ -156,7 +172,7 @@
 
 @media (max-width: 900px) {
   .puzzle-card-row {
-    grid-template-columns: repeat(7, minmax(160px, 170px));
+    grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
   }
 
   .puzzle-deck-picker {
@@ -164,6 +180,16 @@
   }
 
   .puzzle-explanation-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .puzzle-page {
+    max-inline-size: calc(100vw - 1rem);
+  }
+
+  .puzzle-card-row {
     grid-template-columns: 1fr;
   }
 }
