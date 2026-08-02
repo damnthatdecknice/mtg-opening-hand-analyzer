@@ -89,6 +89,18 @@ export function MagicPuzzles() {
     return data as PuzzlePayload;
   }, [getAccessToken]);
 
+  const preparePuzzleAnalysis = useCallback(async (puzzleId: string) => {
+    const token = await getAccessToken();
+    if (!token) {
+      return;
+    }
+    await fetch(`/api/puzzles/${encodeURIComponent(puzzleId)}/prepare`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store"
+    }).catch(() => undefined);
+  }, [getAccessToken]);
+
   const loadPuzzle = useCallback(async (deckId = "", options: { preserveCurrent?: boolean } = {}) => {
     if (options.preserveCurrent) {
       setIsRefreshing(true);
@@ -112,6 +124,9 @@ export function MagicPuzzles() {
           : nextPayload
       );
       setSelectedDeckId(nextPayload.selectedDeckId ?? nextPayload.decks?.[0]?.id ?? "");
+      if (nextPayload.signedIn && !nextPayload.preview && nextPayload.puzzle && !nextPayload.puzzle.completed) {
+        void preparePuzzleAnalysis(nextPayload.puzzle.id);
+      }
       setIsLoading(false);
       setIsRefreshing(false);
       return;
@@ -124,6 +139,9 @@ export function MagicPuzzles() {
       const nextPayload = await fetchPuzzlePayload(deckId);
       setPayload(nextPayload);
       setSelectedDeckId(nextPayload.selectedDeckId ?? nextPayload.decks?.[0]?.id ?? "");
+      if (nextPayload.signedIn && !nextPayload.preview && nextPayload.puzzle && !nextPayload.puzzle.completed) {
+        void preparePuzzleAnalysis(nextPayload.puzzle.id);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign in to use the Keep Trainer.");
       if (!options.preserveCurrent) {
@@ -132,7 +150,7 @@ export function MagicPuzzles() {
     }
     setIsLoading(false);
     setIsRefreshing(false);
-  }, [fetchPuzzlePayload]);
+  }, [fetchPuzzlePayload, preparePuzzleAnalysis]);
 
   async function submitAnswer(answer: MagicPuzzleAnswer) {
     if (!puzzle || payload?.preview) {
@@ -250,7 +268,7 @@ export function MagicPuzzles() {
   if (isLoading) {
     return (
       <section className="panel puzzle-shell">
-        <p className="muted">Loading your next trainer hand...</p>
+        <p className="muted">Dealing your next trainer hand...</p>
       </section>
     );
   }
@@ -345,7 +363,7 @@ export function MagicPuzzles() {
             </button>
           </div>
         ) : null}
-        {isRefreshing ? <p className="muted">Loading the next hand from the selected deck...</p> : null}
+        {isRefreshing ? <p className="muted">Dealing the next hand from the selected deck...</p> : null}
         {!isRefreshing && isPrefetching ? <p className="muted">Preparing the next hand in the background...</p> : null}
         {!isRefreshing && prefetchReadyDeckId === selectedDeckId ? <p className="muted">Next hand is ready.</p> : null}
         <div className="puzzle-context-row">
@@ -371,7 +389,7 @@ export function MagicPuzzles() {
             onClick={() => submitAnswer("keep")}
             type="button"
           >
-            Keep
+            {isSubmitting ? "Checking..." : "Keep"}
           </button>
           <button
             className="secondary-button"
@@ -379,7 +397,7 @@ export function MagicPuzzles() {
             onClick={() => submitAnswer("mulligan")}
             type="button"
           >
-            Mulligan
+            {isSubmitting ? "Checking..." : "Mulligan"}
           </button>
         </div>
 

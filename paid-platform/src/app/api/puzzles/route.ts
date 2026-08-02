@@ -10,7 +10,7 @@ import {
   calculateMagicPuzzleStats,
   canUseMagicPuzzleArchive,
   canUseMagicPuzzles,
-  generateMagicPuzzleForDeck,
+  generateFastMagicPuzzleForDeck,
   generateMagicPuzzleForDate,
   magicPuzzleAttemptFromDatabaseRow,
   magicPuzzleFromDatabaseRow,
@@ -191,7 +191,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const trainerPuzzle = generateMagicPuzzleForDeck(
+  const trainerPuzzle = generateFastMagicPuzzleForDeck(
     {
       id: selectedDeck.id,
       name: selectedDeck.name,

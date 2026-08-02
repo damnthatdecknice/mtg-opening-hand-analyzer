@@ -102,6 +102,8 @@ export type MagicPuzzleDeckInput = {
 };
 
 export const magicPuzzleGeneratorVersion = "opening-edge-puzzles-v1";
+const lightweightTrainerGeneratorVersion = `${magicPuzzleGeneratorVersion}-trainer-lightweight`;
+const completedTrainerGeneratorVersion = `${magicPuzzleGeneratorVersion}-trainer`;
 
 const puzzleScoringSettings = {
   handSimulations: 12,
@@ -413,6 +415,24 @@ function explanationFromAnalysis(analysis: AnalyzerResult, answer: MagicPuzzleAn
   };
 }
 
+function pendingTrainerExplanation(hand: string[], playDraw: PlayDraw): MagicPuzzleExplanation {
+  return {
+    verdict: "keep",
+    headline: "Make your keep or mulligan call first. Opening Edge is preparing the scored reveal.",
+    lesson: "The trainer deals the hand immediately, then runs the slower scoring model in the background.",
+    keyFactors: [
+      `${hand.length} cards dealt ${playDraw === "play" ? "on the play" : "on the draw"}.`
+    ],
+    supportingPoints: ["Analysis is still preparing."],
+    watchFor: [],
+    risk: "The trainer has not revealed the scored risk profile yet.",
+    score: 0,
+    recommendation: "Analysis pending",
+    percentile: 0,
+    severeFailureProbability: 0
+  };
+}
+
 function buildPuzzle(deck: PuzzleDeck, puzzleDate: string, attempt: number, source: MagicPuzzle["source"]): MagicPuzzle | null {
   const seed = `${puzzleDate}:${deck.id}:${attempt}`;
   const hand = generateSeededOpeningHand(deck.decklist, seed).hand;
@@ -511,7 +531,43 @@ function buildTrainingPuzzle(deck: MagicPuzzleDeckInput, seed: string): MagicPuz
     },
     qualityScore: scoreMargin + Math.abs(analysis.handTextureScore - 50) / 4,
     source: "generated",
-    generatorVersion: `${magicPuzzleGeneratorVersion}-trainer`
+    generatorVersion: completedTrainerGeneratorVersion
+  };
+}
+
+function buildFastTrainingPuzzle(deck: MagicPuzzleDeckInput, seed: string): MagicPuzzle | null {
+  const hand = generateSeededOpeningHand(deck.decklist, seed).hand;
+  if (hand.length !== 7) {
+    return null;
+  }
+
+  const playDraw: PlayDraw = deterministicIndex(`${seed}:play-draw`, 2) === 0 ? "play" : "draw";
+  const puzzleDate = new Date().toISOString().slice(0, 10);
+
+  return {
+    id: `trainer:${deck.id}:${seed.replace(/[^a-zA-Z0-9_-]/g, "-")}`,
+    puzzleDate,
+    type: "opening-hand",
+    seed,
+    deckId: deck.id,
+    deckName: deck.name,
+    format: deck.format ?? "Unknown",
+    archetype: "Saved deck",
+    decklist: deck.decklist,
+    hand,
+    playDraw,
+    difficulty: "intermediate",
+    lessonCategory: "opening-hand texture",
+    correctAnswer: "keep",
+    explanation: pendingTrainerExplanation(hand, playDraw),
+    analysisSummary: {
+      score: 0,
+      severeFailureProbability: 0,
+      scoreMargin: 0
+    },
+    qualityScore: 0,
+    source: "generated",
+    generatorVersion: lightweightTrainerGeneratorVersion
   };
 }
 
@@ -524,6 +580,56 @@ export function generateMagicPuzzleForDeck(deck: MagicPuzzleDeckInput, seedInput
     }
   }
   throw new Error("Could not generate a seven-card training hand for this deck.");
+}
+
+export function generateFastMagicPuzzleForDeck(deck: MagicPuzzleDeckInput, seedInput?: string) {
+  const seed = seedInput ?? `${deck.id}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const puzzle = buildFastTrainingPuzzle(deck, `${seed}:${attempt}`);
+    if (puzzle) {
+      return puzzle;
+    }
+  }
+  throw new Error("Could not deal a seven-card training hand for this deck.");
+}
+
+export function isLightweightTrainerPuzzle(puzzle: MagicPuzzle) {
+  return puzzle.generatorVersion === lightweightTrainerGeneratorVersion;
+}
+
+export function completeMagicPuzzleAnalysis(puzzle: MagicPuzzle): MagicPuzzle {
+  if (!isLightweightTrainerPuzzle(puzzle)) {
+    return puzzle;
+  }
+
+  const cardData = buildCuratedCardData(puzzle.decklist);
+  const analysis = analyzeOpeningHand(puzzle.decklist, puzzle.hand, cardData, puzzle.playDraw, {
+    format: puzzle.format,
+    scoringSettings: puzzleScoringSettings
+  });
+
+  if (analysis.missingCards.length || analysis.notes.some((note) => /exactly seven|No lands were identified/i.test(note))) {
+    throw new Error("Opening Edge could not finish scoring this trainer hand.");
+  }
+
+  const scoreMargin = marginFromAnalysis(analysis);
+  const answer = answerFromAnalysis(analysis);
+
+  return {
+    ...puzzle,
+    difficulty: difficultyFromAnalysis(analysis, scoreMargin),
+    lessonCategory: lessonCategoryFromAnalysis(analysis),
+    correctAnswer: answer,
+    explanation: explanationFromAnalysis(analysis, answer),
+    analysisSummary: {
+      score: analysis.handTextureScore,
+      mulliganAverage: analysis.mulligan?.average,
+      severeFailureProbability: analysis.severeFailureProbability,
+      scoreMargin
+    },
+    qualityScore: scoreMargin + Math.abs(analysis.handTextureScore - 50) / 4,
+    generatorVersion: completedTrainerGeneratorVersion
+  };
 }
 
 export function generateMagicPuzzleForDate(dateInput: Date | string = new Date()) {

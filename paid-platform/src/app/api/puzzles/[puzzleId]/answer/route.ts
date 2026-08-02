@@ -7,9 +7,12 @@ import {
 } from "@/lib/serverSupabase";
 import {
   calculateMagicPuzzleStats,
+  completeMagicPuzzleAnalysis,
   generateMagicPuzzleForDate,
+  isLightweightTrainerPuzzle,
   magicPuzzleAttemptFromDatabaseRow,
   magicPuzzleFromDatabaseRow,
+  magicPuzzleToDatabaseRow,
   revealMagicPuzzle,
   type MagicPuzzleAnswer,
   type MagicPuzzleAttemptDatabaseRow,
@@ -66,7 +69,19 @@ export async function POST(request: NextRequest, context: { params: { puzzleId: 
     return NextResponse.json({ error: "Sign in to answer Magic Puzzles." }, { status: 401 });
   }
 
-  const puzzle = await loadPuzzle(context.params.puzzleId);
+  const loadedPuzzle = await loadPuzzle(context.params.puzzleId);
+  let puzzle = loadedPuzzle;
+  if (isLightweightTrainerPuzzle(loadedPuzzle)) {
+    puzzle = completeMagicPuzzleAnalysis(loadedPuzzle);
+    const { error: puzzleUpdateError } = await serviceClient
+      .from("magic_puzzles")
+      .upsert(magicPuzzleToDatabaseRow(puzzle), { onConflict: "id" });
+
+    if (puzzleUpdateError) {
+      return NextResponse.json({ error: puzzleUpdateError.message }, { status: 400 });
+    }
+  }
+
   const existingResponse = await serviceClient
     .from("magic_puzzle_attempts")
     .select("puzzle_date, selected_answer, is_correct, attempted_at")
