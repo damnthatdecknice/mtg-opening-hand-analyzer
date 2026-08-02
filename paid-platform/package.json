@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "tsc -p tsconfig.test.json && node .test-dist/tests/analyzerRouting.test.js && node .test-dist/tests/manaCurve.test.js && node .test-dist/tests/handScoring.test.js && node .test-dist/tests/handValidation.test.js && node .test-dist/tests/deckValidation.test.js && node .test-dist/tests/deckLibraryOnboarding.test.js && node .test-dist/tests/deckVersionDiff.test.js && node .test-dist/tests/dashboard.test.js && node .test-dist/tests/cardDataCache.test.js && node .test-dist/tests/guestDeck.test.js && node .test-dist/tests/metagame.test.js && node .test-dist/tests/mtgoHandDetector.test.js && node .test-dist/tests/magicPuzzles.test.js",
+    "test": "tsc -p tsconfig.test.json && node .test-dist/tests/analyzerRouting.test.js && node .test-dist/tests/manaCurve.test.js && node .test-dist/tests/handScoring.test.js && node .test-dist/tests/handValidation.test.js && node .test-dist/tests/deckValidation.test.js && node .test-dist/tests/deckLibraryOnboarding.test.js && node .test-dist/tests/deckVersionDiff.test.js && node .test-dist/tests/dashboard.test.js && node .test-dist/tests/cardDataCache.test.js && node .test-dist/tests/guestDeck.test.js && node .test-dist/tests/metagame.test.js && node .test-dist/tests/mtgoHandDetector.test.js && node .test-dist/tests/magicPuzzles.test.js && node .test-dist/tests/keepTrainer.test.js",
     "generate:puzzle": "tsc -p tsconfig.test.json && node .test-dist/scripts/generateMagicPuzzle.js"
   },
   "dependencies": {

@@ -150,6 +150,27 @@
   padding: 1rem;
 }
 
+.trainer-empty-state {
+  border: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  clip-path: var(--clip-md);
+  margin-top: 1rem;
+  padding: 1.1rem;
+}
+
+.trainer-empty-state h3 {
+  margin: 0 0 0.35rem;
+}
+
+.trainer-empty-state p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.trainer-results-shell {
+  max-inline-size: 760px;
+}
+
 .puzzle-reveal.is-correct {
   border-color: color-mix(in srgb, var(--good) 60%, var(--border));
 }

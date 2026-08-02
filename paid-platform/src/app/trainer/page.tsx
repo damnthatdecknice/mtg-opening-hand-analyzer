@@ -1,5 +1,5 @@
-import { MagicPuzzles } from "@/components/MagicPuzzles";
+import { KeepTrainer } from "@/components/KeepTrainer";
 
 export default function TrainerPage() {
-  return <MagicPuzzles />;
+  return <KeepTrainer />;
 }

@@ -16,6 +16,7 @@
     "src/lib/firstDeckOnboarding.ts",
     "src/lib/guestDeck.ts",
     "src/lib/handScoring.ts",
+    "src/lib/keepTrainer.ts",
     "src/lib/manaCurve.ts",
     "src/lib/magicPuzzles.ts",
     "src/lib/metagame.ts",
