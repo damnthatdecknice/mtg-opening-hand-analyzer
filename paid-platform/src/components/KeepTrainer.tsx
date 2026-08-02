@@ -4,13 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { saveAuthFallback } from "@/lib/authFallback";
 import { supabase } from "@/lib/supabase";
-import type {
-  PublicTrainerHand,
-  TrainerCardPresentation,
-  TrainerAnswer,
-  TrainerDeckOption,
-  TrainerReveal,
-  TrainerStats
+import {
+  trainerNormalizeCardName,
+  type PublicTrainerHand,
+  type TrainerCardPresentation,
+  type TrainerAnswer,
+  type TrainerDeckOption,
+  type TrainerReveal,
+  type TrainerStats
 } from "@/lib/keepTrainer";
 
 type TrainerApiError = {
@@ -107,15 +108,20 @@ export function KeepTrainer() {
       const next = (counts.get(card.name) ?? 0) + 1;
       counts.set(card.name, next);
       const imageBroken = brokenImageIndexes.has(index);
+      const imageFromMap = currentHand?.cardImages?.[trainerNormalizeCardName(card.name)];
+      const imageUrl =
+        card.imageStatus === "ready"
+          ? card.imageUrl || imageFromMap?.imageUrl
+          : imageFromMap?.imageUrl;
       return {
         cardName: card.name,
         copyNumber: next,
         duplicate: next > 1,
-        imageUrl: card.imageStatus === "ready" && !imageBroken ? card.imageUrl : undefined,
-        imageWarning: card.warning
+        imageUrl: imageUrl && !imageBroken ? imageUrl : undefined,
+        imageWarning: imageUrl ? undefined : card.warning
       };
     });
-  }, [brokenImageIndexes, currentHand?.cards, currentHand?.hand]);
+  }, [brokenImageIndexes, currentHand?.cardImages, currentHand?.cards, currentHand?.hand]);
 
   const nextRequest = useCallback(() => {
     abortRef.current?.abort();

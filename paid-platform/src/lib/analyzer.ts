@@ -525,6 +525,7 @@ const CARD_DATA_BATCH_SIZE = 75;
 const MAX_BATCH_ATTEMPTS = 3;
 const MAX_OPERATION_MS = 12_000;
 const MAX_ANOMALOUS_FALLBACKS = 5;
+const MAX_SINGLE_CARD_BATCH_FALLBACKS = 12;
 
 const successfulCardLookupCache = new Map<string, CachedCardLookup>();
 const failedCardLookupCache = new Map<string, CachedLookupFailure>();
@@ -626,7 +627,9 @@ function createCardDataBudget(cardCount: number, maxRequests?: number): CardData
     startedAt: Date.now(),
     deadlineAt: Date.now() + MAX_OPERATION_MS,
     requestCount: 0,
-    maxRequests: maxRequests ?? batchCount * MAX_BATCH_ATTEMPTS + MAX_ANOMALOUS_FALLBACKS
+    maxRequests:
+      maxRequests ??
+      batchCount * MAX_BATCH_ATTEMPTS + Math.min(Math.max(0, cardCount), MAX_SINGLE_CARD_BATCH_FALLBACKS) + MAX_ANOMALOUS_FALLBACKS
   };
 }
 
@@ -767,6 +770,54 @@ async function fetchSingleCard(name: string, signal?: AbortSignal, budget?: Card
   return { card: (await response.json()) as ScryfallCard, failure: "", status: response.status };
 }
 
+async function fetchSingleCardFallbacks(
+  names: string[],
+  lookups: Map<string, CardLookup>,
+  failures: string[],
+  unresolvedCards: string[],
+  signal?: AbortSignal,
+  budget?: CardDataRequestBudget
+) {
+  let resolvedCount = 0;
+  for (const name of names.slice(0, MAX_SINGLE_CARD_BATCH_FALLBACKS)) {
+    try {
+      const fallback = await fetchSingleCard(name, signal, budget);
+      if (fallback.card) {
+        const mapped = mapScryfallCard(fallback.card);
+        addLookupAliases(lookups, mapped, name);
+        cacheLookupSuccess(mapped, [name]);
+        resolvedCount += 1;
+        continue;
+      }
+
+      const failure = fallback.failure || `${name}: Card lookup did not return a card`;
+      failures.push(failure);
+      cacheLookupFailure(name, failure, fallback.status);
+      if (fallback.status !== 404) {
+        unresolvedCards.push(name);
+      }
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+      const failure = error instanceof CardDataOperationError ? error.failure.message : "Card lookup failed";
+      const message = `${name}: ${failure}`;
+      failures.push(message);
+      unresolvedCards.push(name);
+      cacheLookupFailure(name, message);
+    }
+  }
+
+  for (const name of names.slice(MAX_SINGLE_CARD_BATCH_FALLBACKS)) {
+    const failure = `${name}: Card lookup skipped after batch fallback limit`;
+    failures.push(failure);
+    unresolvedCards.push(name);
+    cacheLookupFailure(name, failure);
+  }
+
+  return resolvedCount;
+}
+
 async function fetchMtgoCard(mtgoId: number, signal?: AbortSignal) {
   const response = await fetchWithRetries(`https://api.scryfall.com/cards/mtgo/${mtgoId}`, { signal }, { signal }).catch((error) => {
     if (isAbortError(error)) {
@@ -870,6 +921,14 @@ async function fetchUncachedBaseCardData(
       const failure = response
         ? operationFailureFromStatus(response.status)
         : operationFailure("network", "Opening Edge could not reach the card database. Check your connection and retry.");
+      if (response && !isRetryableCardDataStatus(response.status)) {
+        const resolvedByFallback = await fetchSingleCardFallbacks(batch, lookups, failures, unresolvedCards, options.signal, budget);
+        completed += batch.length;
+        reportCardDataProgress(options, completed, uniqueNames.length);
+        if (resolvedByFallback > 0) {
+          continue;
+        }
+      }
       return { lookups, failures, unresolvedCards: uniqueNames.slice(completed), operationFailure: failure };
     }
 
