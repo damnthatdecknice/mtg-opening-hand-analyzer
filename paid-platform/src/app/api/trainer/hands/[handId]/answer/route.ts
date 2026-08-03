@@ -16,6 +16,8 @@ import {
 } from "@/lib/serverSupabase";
 import { loadTrainerCardPresentation } from "@/lib/serverCardPresentation";
 
+export const runtime = "nodejs";
+
 type TrainerHandRow = {
   id: string;
   user_id: string;
@@ -110,9 +112,10 @@ function incompleteCardDataResponse(
     {
       error: {
         code: "CARD_DATA_INCOMPLETE",
-        message: "Opening Edge could not load the full model for this hand.",
+        message: "Opening Edge could not reach the card database. Your hand and answer were preserved.",
         retryable: true,
-        unresolvedCards: uniqueCardNames(unresolvedCards)
+        unresolvedCards: uniqueCardNames(unresolvedCards).slice(0, 5),
+        unresolvedCount: uniqueCardNames(unresolvedCards).length
       },
       currentHand: publicTrainerHand(handRow, selectedAnswer, presentation)
     },
@@ -206,8 +209,7 @@ export async function POST(request: NextRequest, context: { params: { handId: st
 
   const unresolvedCards = uniqueCardNames([
     ...(lookup.unresolvedCards ?? []),
-    ...lookup.failures,
-    ...(lookup.operationFailure ? cardNames.filter((name) => !lookup.lookups.has(name)) : [])
+    ...cardNames.filter((name) => !lookup.lookups.has(name.toLocaleLowerCase()))
   ]);
   if (lookup.operationFailure || unresolvedCards.length) {
     return incompleteCardDataResponse(handRow, body.answer, unresolvedCards, presentation);

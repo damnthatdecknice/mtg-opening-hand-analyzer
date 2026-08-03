@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { clearCardDataCacheForTests, fetchCardData } from "../src/lib/analyzer";
+import {
+  cardDataCacheStatsForTests,
+  clearCardDataCacheForTests,
+  fetchCardData
+} from "../src/lib/analyzer";
 
 type FetchCall = {
   url: string;
@@ -161,6 +165,23 @@ async function main() {
       const result = await fetchCardData(["Opt", "Consider"], { retryFailures: true });
       assert.equal(result.operationFailure?.kind, "server", "503 is surfaced as a server operation failure");
       assert.equal(calls.length, 3, "503 performs bounded collection retries only");
+    }
+  );
+
+  await withMockedFetch(
+    async () => jsonResponse({ object: "error", details: "request rejected" }, 400),
+    async (calls) => {
+      const names = ["Island", "Mountain", "Opt", "Consider"];
+      const result = await fetchCardData(names, { retryFailures: true });
+      assert.equal(result.operationFailure?.kind, "network", "a rejected collection request is one operation failure");
+      assert.deepEqual(result.unresolvedCards, names, "all requested cards remain available for a clean retry");
+      assert.equal(result.failures.length, 0, "transport failures are not repeated once per card");
+      assert.equal(calls.length, 1, "HTTP 400 does not fan out into individual card requests");
+      assert.equal(calls.some((call) => call.url.includes("/cards/named")), false, "no exact-name fallback runs after batch rejection");
+      assert.equal(cardDataCacheStatsForTests().failures, 0, "HTTP 400 transport failures never enter the per-card negative cache");
+      const headers = new Headers(calls[0].init?.headers);
+      assert.match(headers.get("accept") ?? "", /application\/json/, "collection requests use the shared Accept header");
+      assert.match(headers.get("user-agent") ?? "", /OpeningEdge/i, "collection requests use the shared server User-Agent");
     }
   );
 

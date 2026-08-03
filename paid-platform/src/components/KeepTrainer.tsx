@@ -19,6 +19,7 @@ type TrainerApiError = {
   message: string;
   retryable?: boolean;
   unresolvedCards?: string[];
+  unresolvedCount?: number;
 };
 
 type TrainerPayload = {
@@ -51,8 +52,7 @@ function apiErrorMessage(error: string | TrainerApiError | undefined) {
   if (typeof error === "string") {
     return error;
   }
-  const cards = error.unresolvedCards?.length ? ` Missing: ${error.unresolvedCards.join(", ")}.` : "";
-  return `${error.message}${cards}`;
+  return error.message;
 }
 
 function fallbackCardPresentation(cardName: string): TrainerCardPresentation {

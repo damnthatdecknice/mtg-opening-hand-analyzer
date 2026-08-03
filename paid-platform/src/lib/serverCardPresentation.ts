@@ -96,11 +96,6 @@ export async function loadTrainerCardPresentation(
     if (lookup.operationFailure?.message) {
       imageWarnings.push("Some card images could not be loaded. Names are still shown.");
     }
-    const unresolvedImageNames =
-      lookup.unresolvedCards && lookup.unresolvedCards.length > 0 ? lookup.unresolvedCards : lookup.failures ?? [];
-    for (const unresolved of unresolvedImageNames) {
-      imageWarnings.push(`Card image lookup did not resolve ${unresolved}.`);
-    }
     return {
       ...presentation,
       imageWarnings: Array.from(new Set(imageWarnings))

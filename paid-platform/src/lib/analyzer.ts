@@ -1,6 +1,12 @@
 import { parseDecklist, type ParsedDeckCard } from "./deckParser";
 import { buildManaCurveAnalysis } from "./manaCurve";
 import {
+  buildScryfallCollectionRequest,
+  scryfallExactNamePath,
+  scryfallFetch,
+  type ScryfallRequestOptions
+} from "./scryfallClient";
+import {
   castabilityScoreAdjustment,
   manaSufficiencyAdjustment,
   solveManaPayment,
@@ -519,13 +525,11 @@ type CachedLookupFailure = {
 
 const SUCCESS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const NOT_FOUND_CACHE_TTL_MS = 10 * 60 * 1000;
-const TRANSIENT_FAILURE_CACHE_TTL_MS = 15 * 1000;
 const MAX_CARD_DATA_CACHE_ENTRIES = 1500;
 const CARD_DATA_BATCH_SIZE = 75;
 const MAX_BATCH_ATTEMPTS = 3;
 const MAX_OPERATION_MS = 12_000;
 const MAX_ANOMALOUS_FALLBACKS = 5;
-const MAX_SINGLE_CARD_BATCH_FALLBACKS = 12;
 
 const successfulCardLookupCache = new Map<string, CachedCardLookup>();
 const failedCardLookupCache = new Map<string, CachedLookupFailure>();
@@ -566,15 +570,11 @@ function getCachedLookup(name: string) {
   return cached.lookup;
 }
 
-function failureTtl(status?: number) {
-  return status === 404 ? NOT_FOUND_CACHE_TTL_MS : TRANSIENT_FAILURE_CACHE_TTL_MS;
-}
-
 function cacheLookupFailure(name: string, failure: string, status?: number) {
-  if (!failure) {
+  if (!failure || status !== 404) {
     return;
   }
-  failedCardLookupCache.set(normalizeName(name), { failure, expiresAt: Date.now() + failureTtl(status) });
+  failedCardLookupCache.set(normalizeName(name), { failure, expiresAt: Date.now() + NOT_FOUND_CACHE_TTL_MS });
   pruneCache(failedCardLookupCache);
 }
 
@@ -629,7 +629,7 @@ function createCardDataBudget(cardCount: number, maxRequests?: number): CardData
     requestCount: 0,
     maxRequests:
       maxRequests ??
-      batchCount * MAX_BATCH_ATTEMPTS + Math.min(Math.max(0, cardCount), MAX_SINGLE_CARD_BATCH_FALLBACKS) + MAX_ANOMALOUS_FALLBACKS
+      batchCount * MAX_BATCH_ATTEMPTS + MAX_ANOMALOUS_FALLBACKS
   };
 }
 
@@ -701,8 +701,8 @@ async function abortableSleep(ms: number, signal?: AbortSignal, budget?: CardDat
 }
 
 async function fetchWithRetries(
-  url: string,
-  init?: RequestInit,
+  path: string,
+  init?: ScryfallRequestOptions,
   options: {
     attempts?: number;
     budget?: CardDataRequestBudget;
@@ -720,7 +720,7 @@ async function fetchWithRetries(
       if (options.budget) {
         options.budget.requestCount += 1;
       }
-      response = await fetch(url, init);
+      response = await scryfallFetch(path, init);
     } catch (error) {
       if (isAbortError(error) || error instanceof CardDataOperationError) {
         throw error;
@@ -750,7 +750,7 @@ async function fetchSingleCard(name: string, signal?: AbortSignal, budget?: Card
   let response: Response | null = null;
   try {
     response = await fetchWithRetries(
-      `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`,
+      scryfallExactNamePath(name),
       { signal },
       { attempts: MAX_BATCH_ATTEMPTS, budget, signal }
     );
@@ -770,56 +770,8 @@ async function fetchSingleCard(name: string, signal?: AbortSignal, budget?: Card
   return { card: (await response.json()) as ScryfallCard, failure: "", status: response.status };
 }
 
-async function fetchSingleCardFallbacks(
-  names: string[],
-  lookups: Map<string, CardLookup>,
-  failures: string[],
-  unresolvedCards: string[],
-  signal?: AbortSignal,
-  budget?: CardDataRequestBudget
-) {
-  let resolvedCount = 0;
-  for (const name of names.slice(0, MAX_SINGLE_CARD_BATCH_FALLBACKS)) {
-    try {
-      const fallback = await fetchSingleCard(name, signal, budget);
-      if (fallback.card) {
-        const mapped = mapScryfallCard(fallback.card);
-        addLookupAliases(lookups, mapped, name);
-        cacheLookupSuccess(mapped, [name]);
-        resolvedCount += 1;
-        continue;
-      }
-
-      const failure = fallback.failure || `${name}: Card lookup did not return a card`;
-      failures.push(failure);
-      cacheLookupFailure(name, failure, fallback.status);
-      if (fallback.status !== 404) {
-        unresolvedCards.push(name);
-      }
-    } catch (error) {
-      if (isAbortError(error)) {
-        throw error;
-      }
-      const failure = error instanceof CardDataOperationError ? error.failure.message : "Card lookup failed";
-      const message = `${name}: ${failure}`;
-      failures.push(message);
-      unresolvedCards.push(name);
-      cacheLookupFailure(name, message);
-    }
-  }
-
-  for (const name of names.slice(MAX_SINGLE_CARD_BATCH_FALLBACKS)) {
-    const failure = `${name}: Card lookup skipped after batch fallback limit`;
-    failures.push(failure);
-    unresolvedCards.push(name);
-    cacheLookupFailure(name, failure);
-  }
-
-  return resolvedCount;
-}
-
 async function fetchMtgoCard(mtgoId: number, signal?: AbortSignal) {
-  const response = await fetchWithRetries(`https://api.scryfall.com/cards/mtgo/${mtgoId}`, { signal }, { signal }).catch((error) => {
+  const response = await fetchWithRetries(`/cards/mtgo/${mtgoId}`, { signal }, { signal }).catch((error) => {
     if (isAbortError(error)) {
       throw error;
     }
@@ -833,7 +785,7 @@ async function fetchMtgoCard(mtgoId: number, signal?: AbortSignal) {
 
 async function fetchPrintImages(name: string, signal?: AbortSignal) {
   const response = await fetchWithRetries(
-    `https://api.scryfall.com/cards/search?unique=prints&order=released&q=${encodeURIComponent(`!"${name}"`)}`,
+    `/cards/search?unique=prints&order=released&q=${encodeURIComponent(`!"${name}"`)}`,
     { signal },
     { signal }
   ).catch((error) => {
@@ -892,13 +844,13 @@ async function fetchUncachedBaseCardData(
 
   for (let index = 0; index < uniqueNames.length; index += CARD_DATA_BATCH_SIZE) {
     const batch = uniqueNames.slice(index, index + CARD_DATA_BATCH_SIZE);
+    const collectionRequest = buildScryfallCollectionRequest(batch);
     let response: Response | null = null;
 
     try {
-      response = await fetchWithRetries("https://api.scryfall.com/cards/collection", {
+      response = await fetchWithRetries(collectionRequest.path, {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ identifiers: batch.map((name) => ({ name })) }),
+        body: collectionRequest.body,
         signal: options.signal
       }, {
         attempts: MAX_BATCH_ATTEMPTS,
@@ -921,15 +873,12 @@ async function fetchUncachedBaseCardData(
       const failure = response
         ? operationFailureFromStatus(response.status)
         : operationFailure("network", "Opening Edge could not reach the card database. Check your connection and retry.");
-      if (response && !isRetryableCardDataStatus(response.status)) {
-        const resolvedByFallback = await fetchSingleCardFallbacks(batch, lookups, failures, unresolvedCards, options.signal, budget);
-        completed += batch.length;
-        reportCardDataProgress(options, completed, uniqueNames.length);
-        if (resolvedByFallback > 0) {
-          continue;
-        }
-      }
-      return { lookups, failures, unresolvedCards: uniqueNames.slice(completed), operationFailure: failure };
+      return {
+        lookups,
+        failures,
+        unresolvedCards: uniqueNames.slice(completed),
+        operationFailure: failure
+      };
     }
 
     const payload = (await response.json()) as {
@@ -978,14 +927,12 @@ async function fetchUncachedBaseCardData(
         }
         const failure = error instanceof CardDataOperationError ? error.failure.message : `${name}: Card lookup failed`;
         failures.push(`${name}: ${failure}`);
-        cacheLookupFailure(name, `${name}: ${failure}`);
       }
     }
     for (const name of anomalousMissing.slice(MAX_ANOMALOUS_FALLBACKS)) {
       const failure = `${name}: Card lookup did not return a result`;
       failures.push(failure);
       unresolvedCards.push(name);
-      cacheLookupFailure(name, failure);
     }
 
     completed += batch.length;

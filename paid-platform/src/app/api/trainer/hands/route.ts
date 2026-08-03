@@ -15,6 +15,8 @@ import {
 } from "@/lib/keepTrainer";
 import { loadTrainerCardPresentation } from "@/lib/serverCardPresentation";
 
+export const runtime = "nodejs";
+
 type SavedDeckRow = {
   id: string;
   name: string;
