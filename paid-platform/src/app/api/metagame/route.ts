@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerAnonSupabaseClient, isServerAnonSupabaseConfigured } from "@/lib/serverSupabase";
 import {
+  buildMetagameArchivePaths,
   isMatchingMetagameEventName,
   isMetagameFormat,
   isMetagameWindowDays,
@@ -181,8 +182,8 @@ function metagameJson(data: MetagameResponse) {
 async function buildMetagame(format: MetagameFormat, windowDays: MetagameWindowDays): Promise<MetagameResponse> {
   const warnings: string[] = [];
   const signatureRules = await fetchSignatureRules(format);
-  const indexEvents = await fetchRecentIndexEvents(format, windowDays);
   const now = Date.now();
+  const indexEvents = await fetchRecentIndexEvents(format, windowDays, now);
   const currentCutoff = now - windowDays * 24 * 60 * 60 * 1000;
   const previousCutoff = now - windowDays * 2 * 24 * 60 * 60 * 1000;
   const currentEvents = indexEvents.filter((event) => Date.parse(event.date) >= currentCutoff);
@@ -343,9 +344,32 @@ async function buildWindowSnapshot(
   return { decks, events };
 }
 
-async function fetchRecentIndexEvents(format: MetagameFormat, windowDays: MetagameWindowDays) {
-  const html = await fetchText(`${mtgoRoot}/decklists`, indexFetchTimeoutMs, indexRevalidateSeconds);
-  const cutoff = Date.now() - windowDays * 2 * 24 * 60 * 60 * 1000;
+async function fetchRecentIndexEvents(
+  format: MetagameFormat,
+  windowDays: MetagameWindowDays,
+  now: number
+) {
+  const archivePaths = buildMetagameArchivePaths(now, windowDays);
+  const archivePages = await Promise.all(
+    archivePaths.map(async (path) => ({
+      path,
+      html: await fetchText(`${mtgoRoot}${path}`, indexFetchTimeoutMs, indexRevalidateSeconds)
+    }))
+  );
+  const cutoff = now - windowDays * 2 * 24 * 60 * 60 * 1000;
+  const eventsByUrl = new Map<string, IndexEvent>();
+
+  for (const archivePage of archivePages) {
+    const events = parseIndexEvents(archivePage.html, format, cutoff);
+    for (const event of events) {
+      eventsByUrl.set(event.url, event);
+    }
+  }
+
+  return Array.from(eventsByUrl.values()).sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+}
+
+function parseIndexEvents(html: string, format: MetagameFormat, cutoff: number) {
   const events: IndexEvent[] = [];
   const eventRegex =
     /<a\b(?=[^>]*\bclass="[^"]*\bdecklists-link\b[^"]*")(?=[^>]*\bhref="(\/decklist\/[^"]+)")[^>]*>[\s\S]*?<h3>([^<]+)<\/h3>[\s\S]*?<time\b[^>]*\bdatetime="([^"]+)"/gi;
@@ -377,7 +401,7 @@ async function fetchRecentIndexEvents(format: MetagameFormat, windowDays: Metaga
     match = eventRegex.exec(html);
   }
 
-  return events.sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+  return events;
 }
 
 async function fetchEventData(url: string) {

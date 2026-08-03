@@ -55,6 +55,29 @@ export type MetagameResponse = {
 export const metagameFormats: MetagameFormat[] = ["Standard", "Pioneer", "Modern", "Legacy"];
 export const metagameWindowOptions: MetagameWindowDays[] = [7, 14, 30];
 
+const dayMs = 24 * 60 * 60 * 1000;
+
+/**
+ * MTGO's main decklists page only contains the current calendar month. Return
+ * every archive page needed for the selected window and its equally sized
+ * comparison window, newest first.
+ */
+export function buildMetagameArchivePaths(nowMs: number, windowDays: MetagameWindowDays) {
+  const current = new Date(nowMs);
+  const earliest = new Date(nowMs - windowDays * 2 * dayMs);
+  const currentMonthIndex = current.getUTCFullYear() * 12 + current.getUTCMonth();
+  const earliestMonthIndex = earliest.getUTCFullYear() * 12 + earliest.getUTCMonth();
+  const paths: string[] = [];
+
+  for (let monthIndex = currentMonthIndex; monthIndex >= earliestMonthIndex; monthIndex -= 1) {
+    const year = Math.floor(monthIndex / 12);
+    const month = (monthIndex % 12) + 1;
+    paths.push(`/decklists/${year}/${String(month).padStart(2, "0")}`);
+  }
+
+  return paths;
+}
+
 export function isMetagameFormat(value: string | null): value is MetagameFormat {
   return metagameFormats.includes(value as MetagameFormat);
 }
