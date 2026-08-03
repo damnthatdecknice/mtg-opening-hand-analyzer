@@ -31,6 +31,8 @@ type TrainerPayload = {
   error?: string | TrainerApiError;
 };
 
+type PreparationStatus = "idle" | "running" | "ready" | "failed";
+
 const emptyStats: TrainerStats = {
   attempts: 0,
   correct: 0,
@@ -63,6 +65,22 @@ function fallbackCardPresentation(cardName: string): TrainerCardPresentation {
   };
 }
 
+function mergeTrainerHand(
+  previous: PublicTrainerHand | null,
+  incoming: PublicTrainerHand
+): PublicTrainerHand {
+  if (!previous || previous.id !== incoming.id) {
+    return incoming;
+  }
+  return {
+    ...previous,
+    ...incoming,
+    cards: incoming.cards ?? previous.cards,
+    cardImages: incoming.cardImages ?? previous.cardImages,
+    imageWarnings: incoming.imageWarnings ?? previous.imageWarnings
+  };
+}
+
 export function KeepTrainer() {
   const [decks, setDecks] = useState<TrainerDeckOption[]>([]);
   const [selectedDeckId, setSelectedDeckId] = useState("");
@@ -74,8 +92,12 @@ export function KeepTrainer() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDealing, setIsDealing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [preparationStatus, setPreparationStatus] = useState<PreparationStatus>("idle");
   const requestIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const preparationAbortRef = useRef<AbortController | null>(null);
+  const preparationHandIdRef = useRef("");
+  const preparationPromiseRef = useRef<Promise<boolean> | null>(null);
 
   const getAccessToken = useCallback(async (forceRefresh = false) => {
     if (!supabase) {
@@ -162,6 +184,46 @@ export function KeepTrainer() {
     });
   }, [getAccessToken]);
 
+  const cancelPreparation = useCallback(() => {
+    preparationAbortRef.current?.abort();
+    preparationAbortRef.current = null;
+    preparationHandIdRef.current = "";
+    preparationPromiseRef.current = null;
+    setPreparationStatus("idle");
+  }, []);
+
+  const prepareHand = useCallback((handId: string) => {
+    preparationAbortRef.current?.abort();
+    const controller = new AbortController();
+    preparationAbortRef.current = controller;
+    preparationHandIdRef.current = handId;
+    setPreparationStatus("running");
+
+    const preparation = (async () => {
+      try {
+        const response = await authorizedFetch(
+          `/api/trainer/hands/${encodeURIComponent(handId)}/prepare`,
+          { method: "POST", signal: controller.signal }
+        );
+        if (!response.ok) {
+          throw new Error("Trainer analysis preparation did not finish.");
+        }
+        if (preparationAbortRef.current === controller) {
+          setPreparationStatus("ready");
+        }
+        return true;
+      } catch {
+        if (!controller.signal.aborted && preparationAbortRef.current === controller) {
+          setPreparationStatus("failed");
+        }
+        return false;
+      }
+    })();
+
+    preparationPromiseRef.current = preparation;
+    return preparation;
+  }, [authorizedFetch]);
+
   const loadTrainer = useCallback(async () => {
     const { controller, requestId } = nextRequest();
     setIsLoading(true);
@@ -181,6 +243,7 @@ export function KeepTrainer() {
       setSelectedDeckId(payload.selectedDeckId ?? payload.decks?.[0]?.id ?? "");
       setStats(payload.stats ?? emptyStats);
       setCurrentHand(null);
+      cancelPreparation();
     } catch (error) {
       if (controller.signal.aborted) {
         return;
@@ -192,7 +255,7 @@ export function KeepTrainer() {
         setIsLoading(false);
       }
     }
-  }, [authorizedFetch, nextRequest]);
+  }, [authorizedFetch, cancelPreparation, nextRequest]);
 
   const dealHand = useCallback(async (deckId = selectedDeckId) => {
     if (!deckId) {
@@ -200,6 +263,7 @@ export function KeepTrainer() {
       return;
     }
     const { controller, requestId } = nextRequest();
+    cancelPreparation();
     setIsDealing(true);
     setMessage("");
     setCurrentHand(null);
@@ -220,10 +284,14 @@ export function KeepTrainer() {
       if (requestId !== requestIdRef.current) {
         return;
       }
-      setCurrentHand(data.currentHand ?? null);
+      const dealtHand = data.currentHand ?? null;
+      setCurrentHand(dealtHand);
       setStats(data.stats ?? stats);
       setPendingAnswer(null);
       setBrokenImageIndexes(new Set());
+      if (dealtHand) {
+        void prepareHand(dealtHand.id);
+      }
     } catch (error) {
       if (controller.signal.aborted) {
         return;
@@ -234,7 +302,7 @@ export function KeepTrainer() {
         setIsDealing(false);
       }
     }
-  }, [authorizedFetch, nextRequest, selectedDeckId, stats]);
+  }, [authorizedFetch, cancelPreparation, nextRequest, prepareHand, selectedDeckId, stats]);
 
   async function submitAnswer(answer: TrainerAnswer) {
     if (!currentHand) {
@@ -243,6 +311,12 @@ export function KeepTrainer() {
     setIsSubmitting(true);
     setMessage("");
     try {
+      if (
+        preparationHandIdRef.current === currentHand.id &&
+        preparationPromiseRef.current
+      ) {
+        await preparationPromiseRef.current;
+      }
       const response = await authorizedFetch(`/api/trainer/hands/${encodeURIComponent(currentHand.id)}/answer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -258,7 +332,7 @@ export function KeepTrainer() {
         if (typeof data.error === "object" && data.error?.retryable) {
           setPendingAnswer(answer);
           if (data.currentHand) {
-            setCurrentHand(data.currentHand);
+            setCurrentHand((previous) => mergeTrainerHand(previous, data.currentHand!));
           }
           setMessage(apiErrorMessage(data.error));
           return;
@@ -266,7 +340,7 @@ export function KeepTrainer() {
         throw new Error(apiErrorMessage(data.error) || "Could not score this trainer hand.");
       }
       if (data.currentHand) {
-        setCurrentHand(data.currentHand);
+        setCurrentHand((previous) => mergeTrainerHand(previous, data.currentHand!));
       } else if (data.reveal) {
         setCurrentHand({
           ...currentHand,
@@ -301,6 +375,7 @@ export function KeepTrainer() {
 
     return () => {
       abortRef.current?.abort();
+      preparationAbortRef.current?.abort();
       data?.subscription.unsubscribe();
     };
   }, [loadTrainer]);
@@ -380,6 +455,7 @@ export function KeepTrainer() {
             id="trainer-deck"
             disabled={isDealing || isSubmitting}
             onChange={(event) => {
+              cancelPreparation();
               setSelectedDeckId(event.target.value);
               setCurrentHand(null);
               setMessage("");
@@ -405,7 +481,7 @@ export function KeepTrainer() {
         {!currentHand ? (
           <div className="trainer-empty-state">
             <h3>Ready when you are.</h3>
-            <p>Deal a hand to practice the keep decision. Analysis runs after your answer so the hand appears fast.</p>
+            <p>Deal a hand to practice the keep decision. Opening Edge prepares the verdict while you decide.</p>
           </div>
         ) : (
           <>
@@ -446,6 +522,16 @@ export function KeepTrainer() {
               <p className="trainer-image-warning">Some card images could not be loaded. Card names are shown so you can still answer.</p>
             ) : null}
 
+            {!reveal ? (
+              <p className="trainer-analysis-status" aria-live="polite">
+                {preparationStatus === "ready"
+                  ? "Opening Edge verdict ready."
+                  : preparationStatus === "failed"
+                    ? "Analysis will finish after your choice."
+                    : "Preparing the Opening Edge verdict while you decide..."}
+              </p>
+            ) : null}
+
             <div className="puzzle-answer-row">
               <button
                 className="primary-button"
@@ -453,7 +539,7 @@ export function KeepTrainer() {
                 onClick={() => void submitAnswer("keep")}
                 type="button"
               >
-                {isSubmitting ? "Running full Opening Edge analysis..." : "Keep"}
+                {isSubmitting ? "Revealing..." : "Keep"}
               </button>
               <button
                 className="secondary-button"
@@ -461,7 +547,7 @@ export function KeepTrainer() {
                 onClick={() => void submitAnswer("mulligan")}
                 type="button"
               >
-                {isSubmitting ? "Running full Opening Edge analysis..." : "Mulligan"}
+                {isSubmitting ? "Revealing..." : "Mulligan"}
               </button>
             </div>
             {pendingAnswer && !reveal ? (

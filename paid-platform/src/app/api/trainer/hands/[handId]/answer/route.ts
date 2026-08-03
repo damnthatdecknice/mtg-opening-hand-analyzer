@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { analyzeOpeningHand, fetchCardData, type PlayDraw } from "@/lib/analyzer";
-import { parseDecklist, type ParsedDeck } from "@/lib/deckParser";
+import { type AnalyzerResult, type PlayDraw } from "@/lib/analyzer";
 import {
   calculateTrainerStats,
   isTrainerAnswer,
   publicTrainerHand,
-  trainerAnswerFromAnalysis,
   trainerAttemptFromRow,
-  trainerExplanationFromAnalysis,
-  type TrainerAnswer
+  type TrainerAnswer,
+  type TrainerExplanation
 } from "@/lib/keepTrainer";
 import {
   createServerAnonSupabaseClient,
   isServerAnonSupabaseConfigured
 } from "@/lib/serverSupabase";
-import { loadTrainerCardPresentation } from "@/lib/serverCardPresentation";
+import {
+  prepareTrainerAnalysis,
+  uniqueTrainerCardNames,
+  type PreparedTrainerAnalysis
+} from "@/lib/serverTrainerAnalysis";
 
 export const runtime = "nodejs";
 
@@ -29,7 +31,8 @@ type TrainerHandRow = {
   play_draw: PlayDraw;
   correct_answer?: TrainerAnswer | null;
   analysis_json?: unknown;
-  explanation_json?: ReturnType<typeof trainerExplanationFromAnalysis> | null;
+  explanation_json?: TrainerExplanation | null;
+  analyzer_version?: string | null;
   answered_at?: string | null;
 };
 
@@ -39,10 +42,6 @@ type TrainerAttemptRow = {
   rating_before?: number | null;
   rating_after?: number | null;
   attempted_at?: string | null;
-};
-
-type SavedDeckIdentityRow = {
-  parsed_json?: ParsedDeck | null;
 };
 
 function isMissingTrainerTableError(error: { code?: string; message?: string } | null | undefined) {
@@ -98,15 +97,10 @@ function handArray(hand: TrainerHandRow["hand"]) {
   return Array.isArray(hand) ? hand : JSON.parse(hand);
 }
 
-function uniqueCardNames(names: string[]) {
-  return Array.from(new Set(names.map((name) => name.trim()).filter(Boolean)));
-}
-
 function incompleteCardDataResponse(
   handRow: TrainerHandRow,
   selectedAnswer: TrainerAnswer,
-  unresolvedCards: string[],
-  presentation: Awaited<ReturnType<typeof loadTrainerCardPresentation>>
+  unresolvedCards: string[]
 ) {
   return NextResponse.json(
     {
@@ -114,13 +108,30 @@ function incompleteCardDataResponse(
         code: "CARD_DATA_INCOMPLETE",
         message: "Opening Edge could not reach the card database. Your hand and answer were preserved.",
         retryable: true,
-        unresolvedCards: uniqueCardNames(unresolvedCards).slice(0, 5),
-        unresolvedCount: uniqueCardNames(unresolvedCards).length
+        unresolvedCards: uniqueTrainerCardNames(unresolvedCards).slice(0, 5),
+        unresolvedCount: uniqueTrainerCardNames(unresolvedCards).length
       },
-      currentHand: publicTrainerHand(handRow, selectedAnswer, presentation)
+      currentHand: publicTrainerHand(handRow, selectedAnswer)
     },
     { status: 503 }
   );
+}
+
+function preparedAnalysisFromRow(row: TrainerHandRow): PreparedTrainerAnalysis | null {
+  const analysis = row.analysis_json as Partial<AnalyzerResult> | null | undefined;
+  if (
+    !row.correct_answer ||
+    !row.explanation_json ||
+    !analysis ||
+    typeof analysis.scoringVersion !== "string"
+  ) {
+    return null;
+  }
+  return {
+    analysis: analysis as AnalyzerResult,
+    correctAnswer: row.correct_answer,
+    explanation: row.explanation_json
+  };
 }
 
 export async function POST(request: NextRequest, context: { params: { handId: string } }) {
@@ -153,15 +164,7 @@ export async function POST(request: NextRequest, context: { params: { handId: st
   }
 
   const handRow = handData as TrainerHandRow;
-  const { data: deckIdentity } = await serviceClient
-    .from("decks")
-    .select("parsed_json")
-    .eq("id", handRow.deck_id)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
   const hand = handArray(handRow.hand);
-  const presentation = await loadTrainerCardPresentation(hand, (deckIdentity as SavedDeckIdentityRow | null)?.parsed_json);
 
   const { data: existingAttempt, error: existingAttemptError } = await serviceClient
     .from("magic_trainer_attempts")
@@ -179,7 +182,7 @@ export async function POST(request: NextRequest, context: { params: { handId: st
     return NextResponse.json(
       {
         error: "You already answered this trainer hand.",
-        currentHand: publicTrainerHand(handRow, selected, presentation),
+        currentHand: publicTrainerHand(handRow, selected),
         reveal:
           handRow.correct_answer && handRow.explanation_json
             ? {
@@ -194,36 +197,21 @@ export async function POST(request: NextRequest, context: { params: { handId: st
     );
   }
 
-  const parsed = parseDecklist(handRow.decklist_snapshot);
-  const cardNames = uniqueCardNames([...parsed.cards.map((card) => card.name), ...hand]);
-  const lookup = await fetchCardData(cardNames, { retryFailures: true }).catch((error) => ({
-    lookups: new Map(),
-    failures: cardNames,
-    unresolvedCards: cardNames,
-    operationFailure: {
-      kind: "network" as const,
-      message: error instanceof Error ? error.message : "Opening Edge could not load card data.",
-      retryable: true
+  let prepared = preparedAnalysisFromRow(handRow);
+  if (!prepared) {
+    const result = await prepareTrainerAnalysis({
+      decklistSnapshot: handRow.decklist_snapshot,
+      format: handRow.format,
+      hand,
+      playDraw: handRow.play_draw
+    });
+    if (!result.ok) {
+      return incompleteCardDataResponse(handRow, body.answer, result.unresolvedCards);
     }
-  }));
-
-  const unresolvedCards = uniqueCardNames([
-    ...(lookup.unresolvedCards ?? []),
-    ...cardNames.filter((name) => !lookup.lookups.has(name.toLocaleLowerCase()))
-  ]);
-  if (lookup.operationFailure || unresolvedCards.length) {
-    return incompleteCardDataResponse(handRow, body.answer, unresolvedCards, presentation);
+    prepared = result;
   }
 
-  const analysis = analyzeOpeningHand(handRow.decklist_snapshot, hand, lookup.lookups, handRow.play_draw, {
-    format: handRow.format
-  });
-  if (analysis.missingCards.length) {
-    return incompleteCardDataResponse(handRow, body.answer, analysis.missingCards, presentation);
-  }
-
-  const correctAnswer = trainerAnswerFromAnalysis(analysis);
-  const explanation = trainerExplanationFromAnalysis(analysis, correctAnswer);
+  const { analysis, correctAnswer, explanation } = prepared;
   const previousAttempts = await loadAttempts(serviceClient, user.id);
   const ratingBefore = calculateTrainerStats(previousAttempts).rating;
   const isCorrect = body.answer === correctAnswer;
@@ -251,7 +239,7 @@ export async function POST(request: NextRequest, context: { params: { handId: st
     return NextResponse.json(
       {
         error: "You already answered this trainer hand.",
-        currentHand: publicTrainerHand(handRow, body.answer, presentation),
+        currentHand: publicTrainerHand(handRow, body.answer),
         stats: calculateTrainerStats(await loadAttempts(serviceClient, user.id))
       },
       { status: 409 }
@@ -281,7 +269,7 @@ export async function POST(request: NextRequest, context: { params: { handId: st
       correctAnswer,
       explanation
     },
-    currentHand: publicTrainerHand(updatedHand as Parameters<typeof publicTrainerHand>[0], body.answer, presentation),
+    currentHand: publicTrainerHand(updatedHand as Parameters<typeof publicTrainerHand>[0], body.answer),
     stats: calculateTrainerStats(await loadAttempts(serviceClient, user.id))
   });
 }

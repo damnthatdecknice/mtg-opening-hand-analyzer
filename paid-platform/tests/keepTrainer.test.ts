@@ -133,5 +133,21 @@ const answerRouteSource = readFileSync(
 );
 assert.equal(answerRouteSource.includes("keepTrainerScoringSettings"), false, "trainer answers do not use reduced scoring settings");
 assert.equal(answerRouteSource.includes("fallbackTrainerAnswer"), false, "trainer answers do not use heuristic fallback scoring");
+assert.equal(answerRouteSource.includes("preparedAnalysisFromRow"), true, "trainer answers reuse prepared full-model analysis");
+assert.equal(answerRouteSource.includes("prepareTrainerAnalysis"), true, "trainer answers retain a full-model fallback");
+
+const prepareRouteSource = readFileSync(
+  join(process.cwd(), "src/app/api/trainer/hands/[handId]/prepare/route.ts"),
+  "utf8"
+);
+assert.equal(prepareRouteSource.includes("prepareTrainerAnalysis"), true, "trainer preparation uses the shared full model");
+assert.equal(/answered_at\s*:/.test(prepareRouteSource), false, "background preparation does not answer the hand");
+
+const trainerComponentSource = readFileSync(
+  join(process.cwd(), "src/components/KeepTrainer.tsx"),
+  "utf8"
+);
+assert.equal(trainerComponentSource.includes("/prepare`"), true, "dealt trainer hands start background preparation");
+assert.equal(trainerComponentSource.includes("preparationPromiseRef.current"), true, "answer submission waits only for unfinished preparation");
 
 console.log("keepTrainer tests passed");
