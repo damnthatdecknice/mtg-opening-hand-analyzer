@@ -6,6 +6,7 @@ import {
   isTrainerAnswer,
   publicTrainerHand,
   trainerAttemptFromRow,
+  trainerRatingDeltaFromAnalysis,
   type TrainerAttempt
 } from "../src/lib/keepTrainer";
 import { cardPresentationsFromLookups } from "../src/lib/serverCardPresentation";
@@ -49,6 +50,10 @@ assert.equal(Math.round(stats.accuracy * 100), 67, "accuracy is correct-answer p
 assert.deepEqual(stats.recentResults.map((result) => result.correct), [true, false, true], "recent results are newest first");
 
 assert.equal(calculateTrainerRating([{ selectedAnswer: "keep", correct: true }, { selectedAnswer: "keep", correct: false }]), 1003, "fallback rating uses trainer K values");
+assert.equal(trainerRatingDeltaFromAnalysis({ keepAdvantage: 0.001 }, false), -3, "close trainer decisions only lose a small rating amount");
+assert.equal(trainerRatingDeltaFromAnalysis({ keepAdvantage: -0.001 }, true), 6, "close trainer decisions only gain a small rating amount");
+assert.equal(trainerRatingDeltaFromAnalysis({ keepAdvantage: 0.12 }, false), -14, "clear trainer misses lose the full rating amount");
+assert.equal(trainerRatingDeltaFromAnalysis({ keepAdvantage: -0.12 }, true), 16, "clear trainer hits gain the full rating amount");
 
 const rowAttempt = trainerAttemptFromRow({
   selected_answer: "mulligan",

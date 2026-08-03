@@ -182,6 +182,19 @@ export function calculateTrainerRating(attempts: TrainerAttempt[]) {
   }, 1000);
 }
 
+export function trainerRatingDeltaFromAnalysis(analysis: Pick<AnalyzerResult, "keepAdvantage">, correct: boolean) {
+  const margin = Math.abs(analysis.keepAdvantage ?? 0);
+  const minMeaningfulMargin = 0.012;
+  const decisiveMargin = 0.09;
+  const confidenceScale = Math.max(
+    0,
+    Math.min(1, (margin - minMeaningfulMargin) / (decisiveMargin - minMeaningfulMargin))
+  );
+  const correctDelta = Math.round(6 + confidenceScale * 10);
+  const incorrectDelta = -Math.round(3 + confidenceScale * 11);
+  return correct ? correctDelta : incorrectDelta;
+}
+
 export function calculateTrainerStats(attempts: TrainerAttempt[]): TrainerStats {
   const sorted = [...attempts].sort((a, b) => (a.attemptedAt ?? "").localeCompare(b.attemptedAt ?? ""));
   const correct = sorted.filter((attempt) => attempt.correct).length;

@@ -5,6 +5,7 @@ import {
   isTrainerAnswer,
   publicTrainerHand,
   trainerAttemptFromRow,
+  trainerRatingDeltaFromAnalysis,
   type TrainerAnswer,
   type TrainerExplanation
 } from "@/lib/keepTrainer";
@@ -215,7 +216,7 @@ export async function POST(request: NextRequest, context: { params: { handId: st
   const previousAttempts = await loadAttempts(serviceClient, user.id);
   const ratingBefore = calculateTrainerStats(previousAttempts).rating;
   const isCorrect = body.answer === correctAnswer;
-  const ratingAfter = Math.max(100, Math.min(2500, ratingBefore + (isCorrect ? 14 : -11)));
+  const ratingAfter = Math.max(100, Math.min(2500, ratingBefore + trainerRatingDeltaFromAnalysis(analysis, isCorrect)));
 
   const { data: updatedHand, error: updateError } = await serviceClient
     .from("magic_trainer_hands")
