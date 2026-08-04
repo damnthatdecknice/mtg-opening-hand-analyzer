@@ -31,6 +31,8 @@ type TrainerAttemptRow = {
   rating_before?: number | null;
   rating_after?: number | null;
   attempted_at?: string | null;
+  rated?: boolean | null;
+  rating_delta?: number | null;
 };
 
 function isMissingTrainerTableError(error: { code?: string; message?: string } | null | undefined) {
@@ -125,12 +127,25 @@ export async function GET(request: NextRequest) {
   }
   const stats = calculateTrainerStats(trainerAttempts);
 
+  const { data: currentHandData, error: currentHandError } = await serviceClient
+    .from("magic_trainer_hands")
+    .select("*")
+    .eq("user_id", user.id)
+    .is("answered_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (currentHandError && !isMissingTrainerTableError(currentHandError)) {
+    return NextResponse.json({ error: currentHandError.message }, { status: 400 });
+  }
+
   return NextResponse.json({
     signedIn: true,
     decks: decks.map(savedDeckOption),
     selectedDeckId: decks[0]?.id ?? "",
     stats,
-    currentHand: null
+    currentHand: currentHandData ? publicTrainerHand(currentHandData) : null
   });
 }
 
@@ -183,12 +198,16 @@ export async function POST(request: NextRequest) {
       deck_name: deck.name,
       format: deck.format ?? "Unknown",
       decklist_snapshot: deck.decklist,
+      deck_metadata_snapshot: deck.parsed_json ?? parsed,
       seed,
       hand,
       play_draw: playDraw,
-      analyzer_version: keepTrainerAnalyzerVersion
+      analyzer_version: keepTrainerAnalyzerVersion,
+      analysis_status: "pending",
+      pending_answer: null,
+      analysis_error: null
     })
-    .select("id, deck_id, deck_name, format, hand, play_draw, answered_at, correct_answer, explanation_json")
+    .select("*")
     .maybeSingle();
 
   if (insertError) {

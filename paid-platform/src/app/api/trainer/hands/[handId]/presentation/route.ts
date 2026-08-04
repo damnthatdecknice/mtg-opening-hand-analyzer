@@ -15,9 +15,18 @@ type TrainerHandRow = {
   hand: unknown;
   play_draw: "play" | "draw";
   answered_at: string | null;
+  pending_answer: TrainerAnswer | null;
+  analysis_status: "pending" | "running" | "ready" | "failed" | null;
+  analysis_error: string | null;
+  deck_metadata_snapshot: ParsedDeck | null;
   correct_answer: TrainerAnswer | null;
   explanation_json: TrainerExplanation | null;
 };
+
+function isAbortError(error: unknown) {
+  return (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError");
+}
 
 export async function GET(
   request: Request,
@@ -46,7 +55,7 @@ export async function GET(
   const serviceClient = userClient;
   const { data: handRow, error: handError } = await serviceClient
     .from("magic_trainer_hands")
-    .select("id,user_id,deck_id,deck_name,format,hand,play_draw,answered_at,correct_answer,explanation_json")
+    .select("id,user_id,deck_id,deck_name,format,hand,play_draw,answered_at,pending_answer,analysis_status,analysis_error,deck_metadata_snapshot,correct_answer,explanation_json")
     .eq("id", handId)
     .eq("user_id", userData.user.id)
     .maybeSingle();
@@ -58,22 +67,29 @@ export async function GET(
     return NextResponse.json({ error: "Trainer hand not found." }, { status: 404 });
   }
 
-  const { data: deckRow, error: deckError } = await serviceClient
-    .from("decks")
-    .select("parsed_json")
-    .eq("id", handRow.deck_id)
-    .eq("user_id", userData.user.id)
-    .maybeSingle();
-
-  if (deckError) {
-    return NextResponse.json({ error: deckError.message }, { status: 500 });
-  }
-
   try {
-    const hand = Array.isArray(handRow.hand) ? handRow.hand.map(String) : [];
+    const hand = Array.isArray(handRow.hand)
+      ? handRow.hand.map(String)
+      : typeof handRow.hand === "string"
+        ? JSON.parse(handRow.hand).map(String)
+        : [];
+    let parsedDeck = handRow.deck_metadata_snapshot ?? null;
+    if (!parsedDeck) {
+      const { data: deckRow, error: deckError } = await serviceClient
+        .from("decks")
+        .select("parsed_json")
+        .eq("id", handRow.deck_id)
+        .eq("user_id", userData.user.id)
+        .maybeSingle();
+      if (deckError) {
+        return NextResponse.json({ error: deckError.message }, { status: 500 });
+      }
+      parsedDeck = (deckRow?.parsed_json as ParsedDeck | null | undefined) ?? null;
+    }
     const presentation = await loadTrainerCardPresentation(
       hand,
-      (deckRow?.parsed_json as ParsedDeck | null | undefined) ?? null
+      parsedDeck,
+      { signal: request.signal }
     );
 
     return NextResponse.json({
@@ -84,6 +100,9 @@ export async function GET(
       )
     });
   } catch (error) {
+    if (request.signal.aborted || isAbortError(error)) {
+      return new NextResponse(null, { status: 499 });
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unable to load card images." },
       { status: 502 }

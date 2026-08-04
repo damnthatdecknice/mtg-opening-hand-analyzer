@@ -19,6 +19,8 @@ type TrainerHandRow = {
   correct_answer?: TrainerAnswer | null;
   analysis_json?: unknown;
   explanation_json?: TrainerExplanation | null;
+  analysis_status?: "pending" | "running" | "ready" | "failed" | null;
+  analysis_error?: string | null;
 };
 
 function bearerToken(request: NextRequest) {
@@ -34,6 +36,11 @@ function handArray(hand: TrainerHandRow["hand"]) {
 
 function isPrepared(row: TrainerHandRow) {
   return Boolean(row.correct_answer && row.analysis_json && row.explanation_json);
+}
+
+function isAbortError(error: unknown) {
+  return (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError");
 }
 
 export async function POST(
@@ -59,7 +66,7 @@ export async function POST(
 
   const { data, error } = await serviceClient
     .from("magic_trainer_hands")
-    .select("id, user_id, decklist_snapshot, hand, format, play_draw, correct_answer, analysis_json, explanation_json")
+    .select("id, user_id, decklist_snapshot, hand, format, play_draw, correct_answer, analysis_json, explanation_json, analysis_status, analysis_error")
     .eq("id", context.params.handId)
     .eq("user_id", userData.user.id)
     .maybeSingle();
@@ -73,16 +80,54 @@ export async function POST(
 
   const handRow = data as TrainerHandRow;
   if (isPrepared(handRow)) {
+    await serviceClient
+      .from("magic_trainer_hands")
+      .update({ analysis_status: "ready", analysis_error: null })
+      .eq("id", handRow.id)
+      .eq("user_id", userData.user.id)
+      .is("answered_at", null);
     return NextResponse.json({ status: "ready" });
   }
 
-  const prepared = await prepareTrainerAnalysis({
-    decklistSnapshot: handRow.decklist_snapshot,
-    format: handRow.format,
-    hand: handArray(handRow.hand),
-    playDraw: handRow.play_draw
-  });
+  const { error: runningError } = await serviceClient
+    .from("magic_trainer_hands")
+    .update({ analysis_status: "running", analysis_error: null })
+    .eq("id", handRow.id)
+    .eq("user_id", userData.user.id)
+    .is("answered_at", null);
+  if (runningError) {
+    return NextResponse.json({ error: runningError.message }, { status: 400 });
+  }
+
+  let prepared;
+  try {
+    prepared = await prepareTrainerAnalysis({
+      decklistSnapshot: handRow.decklist_snapshot,
+      format: handRow.format,
+      hand: handArray(handRow.hand),
+      playDraw: handRow.play_draw,
+      signal: request.signal
+    });
+  } catch (error) {
+    if (request.signal.aborted || isAbortError(error)) {
+      return new NextResponse(null, { status: 499 });
+    }
+    const message = error instanceof Error ? error.message : "Opening Edge could not finish card lookup.";
+    await serviceClient
+      .from("magic_trainer_hands")
+      .update({ analysis_status: "failed", analysis_error: message })
+      .eq("id", handRow.id)
+      .eq("user_id", userData.user.id)
+      .is("answered_at", null);
+    return NextResponse.json({ error: { code: "TRAINER_ANALYSIS_FAILED", message, retryable: true } }, { status: 503 });
+  }
   if (!prepared.ok) {
+    await serviceClient
+      .from("magic_trainer_hands")
+      .update({ analysis_status: "failed", analysis_error: prepared.message })
+      .eq("id", handRow.id)
+      .eq("user_id", userData.user.id)
+      .is("answered_at", null);
     return NextResponse.json(
       {
         error: {
@@ -103,7 +148,9 @@ export async function POST(
       correct_answer: prepared.correctAnswer,
       analysis_json: prepared.analysis,
       explanation_json: prepared.explanation,
-      analyzer_version: prepared.analysis.scoringVersion
+      analyzer_version: prepared.analysis.scoringVersion,
+      analysis_status: "ready",
+      analysis_error: null
     })
     .eq("id", handRow.id)
     .eq("user_id", userData.user.id)

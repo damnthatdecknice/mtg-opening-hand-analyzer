@@ -52,8 +52,8 @@ assert.equal(Math.round(stats.accuracy * 100), 67, "accuracy is correct-answer p
 assert.deepEqual(stats.recentResults.map((result) => result.correct), [true, false, true], "recent results are newest first");
 
 assert.equal(calculateTrainerRating([{ selectedAnswer: "keep", correct: true }, { selectedAnswer: "keep", correct: false }]), 1003, "fallback rating uses trainer K values");
-assert.equal(trainerRatingDeltaFromAnalysis({ keepAdvantage: 0.001 }, false), -3, "close trainer decisions only lose a small rating amount");
-assert.equal(trainerRatingDeltaFromAnalysis({ keepAdvantage: -0.001 }, true), 6, "close trainer decisions only gain a small rating amount");
+assert.equal(trainerRatingDeltaFromAnalysis({ keepAdvantage: 0.001 }, false), 0, "close trainer decisions are unrated");
+assert.equal(trainerRatingDeltaFromAnalysis({ keepAdvantage: -0.001 }, true), 0, "close trainer decisions do not gain rating");
 assert.equal(trainerRatingDeltaFromAnalysis({ keepAdvantage: 0.12 }, false), -14, "clear trainer misses lose the full rating amount");
 assert.equal(trainerRatingDeltaFromAnalysis({ keepAdvantage: -0.12 }, true), 16, "clear trainer hits gain the full rating amount");
 
@@ -111,6 +111,20 @@ const publicHand = publicTrainerHand({
 });
 assert.equal(publicHand.hand.length, 7, "public trainer hand parses stored JSON hands");
 assert.equal(publicHand.reveal, undefined, "public trainer hand does not reveal unanswered hands");
+
+const pendingPublicHand = publicTrainerHand({
+  id: "hand-pending",
+  deck_id: "deck-1",
+  deck_name: "Mono-Red",
+  format: "Modern",
+  hand: JSON.stringify(firstDeal),
+  play_draw: "play",
+  pending_answer: "keep",
+  analysis_status: "running",
+  analysis_error: null
+});
+assert.equal(pendingPublicHand.pendingAnswer, "keep", "public trainer hand exposes the persisted answer");
+assert.equal(pendingPublicHand.analysisStatus, "running", "public trainer hand exposes analysis status");
 
 function lookup(name: string, imageUrl: string, faces: CardLookup["faces"] = []): CardLookup {
   return {
@@ -175,8 +189,9 @@ const answerRouteSource = readFileSync(
 assert.equal(answerRouteSource.includes("keepTrainerScoringSettings"), false, "trainer answers do not use reduced scoring settings");
 assert.equal(answerRouteSource.includes("fallbackTrainerAnswer"), false, "trainer answers do not use heuristic fallback scoring");
 assert.equal(answerRouteSource.includes("preparedAnalysisFromRow"), true, "trainer answers reuse prepared full-model analysis");
-assert.equal(answerRouteSource.includes("prepareTrainerAnalysis"), false, "trainer answers do not run full-model scoring synchronously");
-assert.equal(answerRouteSource.includes("TRAINER_ANALYSIS_PENDING"), true, "trainer answers return a pending response while scoring finishes");
+assert.equal(answerRouteSource.includes("prepareTrainerAnalysis"), true, "trainer answers can finish missing full-model preparation");
+assert.equal(answerRouteSource.includes("finalize_magic_trainer_attempt"), true, "trainer answers use atomic finalization");
+assert.equal(answerRouteSource.includes("pending_answer"), true, "trainer answers persist the choice before analysis completes");
 
 const prepareRouteSource = readFileSync(
   join(process.cwd(), "src/app/api/trainer/hands/[handId]/prepare/route.ts"),
@@ -191,6 +206,7 @@ const trainerComponentSource = readFileSync(
 );
 assert.equal(trainerComponentSource.includes("/prepare`"), true, "dealt trainer hands start background preparation");
 assert.equal(trainerComponentSource.includes("await preparationPromiseRef.current"), false, "answer submission does not wait for unfinished preparation");
-assert.equal(trainerComponentSource.includes("Retry reveal now"), true, "trainer can retry reveal after a pending answer");
+assert.equal(trainerComponentSource.includes("Retry Full Analysis"), true, "trainer can retry full analysis after a pending answer");
+assert.equal(trainerComponentSource.includes("TOKEN_REFRESHED"), false, "token refresh does not reset the trainer state");
 
 console.log("keepTrainer tests passed");

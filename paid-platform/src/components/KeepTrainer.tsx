@@ -32,6 +32,7 @@ type TrainerPayload = {
 };
 
 type PreparationStatus = "idle" | "running" | "ready" | "failed";
+type ImageHydrationStatus = "idle" | "loading" | "ready" | "partial" | "failed";
 
 const emptyStats: TrainerStats = {
   attempts: 0,
@@ -89,6 +90,8 @@ export function KeepTrainer() {
   const [message, setMessage] = useState("");
   const [pendingAnswer, setPendingAnswer] = useState<TrainerAnswer | null>(null);
   const [brokenImageIndexes, setBrokenImageIndexes] = useState<Set<number>>(new Set());
+  const [imageHydrationStatus, setImageHydrationStatus] = useState<ImageHydrationStatus>("idle");
+  const [imageFailureCount, setImageFailureCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isDealing, setIsDealing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,6 +102,10 @@ export function KeepTrainer() {
   const presentationAbortRef = useRef<AbortController | null>(null);
   const preparationHandIdRef = useRef("");
   const preparationPromiseRef = useRef<Promise<boolean> | null>(null);
+  const handGenerationRef = useRef(0);
+  const currentHandIdRef = useRef("");
+  const answerAbortRef = useRef<AbortController | null>(null);
+  const initialLoadRef = useRef(false);
 
   const getAccessToken = useCallback(async (forceRefresh = false) => {
     if (!supabase) {
@@ -121,6 +128,7 @@ export function KeepTrainer() {
   const reveal = currentHand?.reveal;
   const accuracy = stats.attempts ? Math.round(stats.accuracy * 100) : 0;
   const selectedDeck = decks.find((deck) => deck.id === selectedDeckId) ?? decks[0];
+  const effectivePendingAnswer = pendingAnswer ?? currentHand?.pendingAnswer ?? null;
 
   const handRows = useMemo(() => {
     const counts = new Map<string, number>();
@@ -198,10 +206,20 @@ export function KeepTrainer() {
     presentationAbortRef.current = null;
   }, []);
 
+  useEffect(() => {
+    currentHandIdRef.current = currentHand?.id ?? "";
+  }, [currentHand?.id]);
+
+  const currentHandIs = useCallback((handId: string, generation: number) => {
+    return currentHandIdRef.current === handId && generation === handGenerationRef.current;
+  }, []);
+
   const hydratePresentation = useCallback(async (handId: string) => {
     presentationAbortRef.current?.abort();
     const controller = new AbortController();
     presentationAbortRef.current = controller;
+    const generation = handGenerationRef.current;
+    setImageHydrationStatus("loading");
 
     try {
       const response = await authorizedFetch(
@@ -209,26 +227,36 @@ export function KeepTrainer() {
         { signal: controller.signal }
       );
       if (!response.ok) {
+        if (currentHandIs(handId, generation)) setImageHydrationStatus("failed");
         return;
       }
       const data = (await response.json()) as { currentHand?: PublicTrainerHand };
-      if (data.currentHand && presentationAbortRef.current === controller) {
+      if (data.currentHand && presentationAbortRef.current === controller && currentHandIs(handId, generation)) {
         setCurrentHand((previous) => mergeTrainerHand(previous, data.currentHand!));
+        const missing = data.currentHand.imageWarnings?.length ?? data.currentHand.cards?.filter((card) => card.imageStatus !== "ready").length ?? 0;
+        setImageFailureCount(missing);
+        setImageHydrationStatus(missing === 0 ? "ready" : missing >= data.currentHand.hand.length ? "failed" : "partial");
       }
     } catch {
+      if (controller.signal.aborted) return;
+      if (currentHandIs(handId, generation)) setImageHydrationStatus("failed");
       // Card names remain visible if image enrichment is unavailable.
     } finally {
       if (presentationAbortRef.current === controller) {
         presentationAbortRef.current = null;
       }
     }
-  }, [authorizedFetch]);
+  }, [authorizedFetch, currentHandIs]);
 
   const prepareHand = useCallback((handId: string) => {
+    if (preparationHandIdRef.current === handId && preparationPromiseRef.current) {
+      return preparationPromiseRef.current;
+    }
     preparationAbortRef.current?.abort();
     const controller = new AbortController();
     preparationAbortRef.current = controller;
     preparationHandIdRef.current = handId;
+    const generation = handGenerationRef.current;
     setPreparationStatus("running");
 
     const preparation = (async () => {
@@ -240,21 +268,25 @@ export function KeepTrainer() {
         if (!response.ok) {
           throw new Error("Trainer analysis preparation did not finish.");
         }
-        if (preparationAbortRef.current === controller) {
+        if (preparationAbortRef.current === controller && currentHandIs(handId, generation)) {
           setPreparationStatus("ready");
         }
         return true;
       } catch {
-        if (!controller.signal.aborted && preparationAbortRef.current === controller) {
+        if (!controller.signal.aborted && preparationAbortRef.current === controller && currentHandIs(handId, generation)) {
           setPreparationStatus("failed");
         }
         return false;
+      } finally {
+        if (preparationAbortRef.current === controller) {
+          preparationPromiseRef.current = null;
+        }
       }
     })();
 
     preparationPromiseRef.current = preparation;
     return preparation;
-  }, [authorizedFetch]);
+  }, [authorizedFetch, currentHandIs]);
 
   const loadTrainer = useCallback(async () => {
     const { controller, requestId } = nextRequest();
@@ -274,9 +306,23 @@ export function KeepTrainer() {
       setDecks(payload.decks ?? []);
       setSelectedDeckId(payload.selectedDeckId ?? payload.decks?.[0]?.id ?? "");
       setStats(payload.stats ?? emptyStats);
-      setCurrentHand(null);
       cancelPreparation();
       cancelPresentation();
+      handGenerationRef.current += 1;
+      const restoredHand = payload.currentHand ?? null;
+      setCurrentHand(restoredHand);
+      setPendingAnswer(restoredHand?.pendingAnswer ?? null);
+      setBrokenImageIndexes(new Set());
+      setImageFailureCount(0);
+      setImageHydrationStatus(restoredHand ? "idle" : "idle");
+      if (restoredHand) {
+        void hydratePresentation(restoredHand.id);
+        if (!restoredHand.completed && restoredHand.analysisStatus !== "ready") {
+          void prepareHand(restoredHand.id);
+        } else if (restoredHand.analysisStatus === "ready") {
+          setPreparationStatus("ready");
+        }
+      }
     } catch (error) {
       if (controller.signal.aborted) {
         return;
@@ -288,7 +334,7 @@ export function KeepTrainer() {
         setIsLoading(false);
       }
     }
-  }, [authorizedFetch, cancelPreparation, cancelPresentation, nextRequest]);
+  }, [authorizedFetch, cancelPreparation, cancelPresentation, hydratePresentation, nextRequest, prepareHand]);
 
   const dealHand = useCallback(async (deckId = selectedDeckId) => {
     if (!deckId) {
@@ -296,13 +342,17 @@ export function KeepTrainer() {
       return;
     }
     const { controller, requestId } = nextRequest();
+    handGenerationRef.current += 1;
     cancelPreparation();
     cancelPresentation();
+    answerAbortRef.current?.abort();
     setIsDealing(true);
     setMessage("");
     setCurrentHand(null);
     setPendingAnswer(null);
     setBrokenImageIndexes(new Set());
+    setImageFailureCount(0);
+    setImageHydrationStatus("idle");
 
     try {
       const response = await authorizedFetch("/api/trainer/hands", {
@@ -343,13 +393,19 @@ export function KeepTrainer() {
     if (!currentHand) {
       return;
     }
+    const handId = currentHand.id;
+    const generation = handGenerationRef.current;
+    answerAbortRef.current?.abort();
+    const controller = new AbortController();
+    answerAbortRef.current = controller;
     setIsSubmitting(true);
     setMessage("");
     try {
-      const response = await authorizedFetch(`/api/trainer/hands/${encodeURIComponent(currentHand.id)}/answer`, {
+      const response = await authorizedFetch(`/api/trainer/hands/${encodeURIComponent(handId)}/answer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ answer })
+        body: JSON.stringify({ answer }),
+        signal: controller.signal
       });
       const data = (await response.json()) as {
         reveal?: TrainerReveal;
@@ -361,6 +417,7 @@ export function KeepTrainer() {
         (response.status === 202 || (typeof data.error === "object" && data.error?.retryable)) &&
         !data.reveal
       ) {
+        if (!currentHandIs(handId, generation)) return;
         setPendingAnswer(answer);
         if (data.currentHand) {
           setCurrentHand((previous) => mergeTrainerHand(previous, data.currentHand!));
@@ -371,6 +428,7 @@ export function KeepTrainer() {
       if (!response.ok && response.status !== 409) {
         throw new Error(apiErrorMessage(data.error) || "Could not score this trainer hand.");
       }
+      if (!currentHandIs(handId, generation)) return;
       if (data.currentHand) {
         setCurrentHand((previous) => mergeTrainerHand(previous, data.currentHand!));
       } else if (data.reveal) {
@@ -390,30 +448,38 @@ export function KeepTrainer() {
         setPendingAnswer(null);
       }
     } catch (error) {
+      if (controller.signal.aborted) return;
+      if (!currentHandIs(handId, generation)) return;
       setMessage(error instanceof Error ? error.message : "Could not score this trainer hand.");
     } finally {
-      setIsSubmitting(false);
+      if (answerAbortRef.current === controller) {
+        answerAbortRef.current = null;
+        setIsSubmitting(false);
+      }
     }
-  }, [authorizedFetch, currentHand]);
+  }, [authorizedFetch, currentHand, currentHandIs]);
 
   useEffect(() => {
-    if (!currentHand || currentHand.reveal || !pendingAnswer || preparationStatus !== "ready" || isSubmitting) {
-      return;
+    if (!initialLoadRef.current) {
+      initialLoadRef.current = true;
+      void loadTrainer();
     }
 
-    const retryTimer = window.setTimeout(() => {
-      void submitAnswer(pendingAnswer);
-    }, 150);
-
-    return () => window.clearTimeout(retryTimer);
-  }, [currentHand, isSubmitting, pendingAnswer, preparationStatus, submitAnswer]);
-
-  useEffect(() => {
-    void loadTrainer();
-
-    const { data } = supabase?.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+    const { data } = supabase?.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session) {
         void loadTrainer();
+      }
+      if (event === "SIGNED_OUT") {
+        handGenerationRef.current += 1;
+        abortRef.current?.abort();
+        preparationAbortRef.current?.abort();
+        presentationAbortRef.current?.abort();
+        answerAbortRef.current?.abort();
+        setDecks([]);
+        setSelectedDeckId("");
+        setCurrentHand(null);
+        setPendingAnswer(null);
+        setMessage("Sign in to use the Keep Trainer.");
       }
     }) ?? { data: null };
 
@@ -421,6 +487,7 @@ export function KeepTrainer() {
       abortRef.current?.abort();
       preparationAbortRef.current?.abort();
       presentationAbortRef.current?.abort();
+      answerAbortRef.current?.abort();
       data?.subscription.unsubscribe();
     };
   }, [loadTrainer]);
@@ -564,16 +631,23 @@ export function KeepTrainer() {
                 </button>
               ))}
             </div>
-            {currentHand.imageWarnings?.length || handRows.some((card) => card.imageWarning) ? (
-              <p className="trainer-image-warning">Some card images could not be loaded. Card names are shown so you can still answer.</p>
-            ) : null}
+            {imageHydrationStatus === "loading" ? (
+              <p className="trainer-image-warning" aria-live="polite">Loading card images...</p>
+            ) : imageHydrationStatus === "partial" || imageHydrationStatus === "failed" || currentHand.imageWarnings?.length || handRows.some((card) => card.imageWarning) ? (
+              <div className="trainer-image-warning" aria-live="polite">
+                <p>{imageFailureCount} card image{imageFailureCount === 1 ? "" : "s"} could not be loaded. Card names are still available.</p>
+                <button className="secondary-button" type="button" onClick={() => void hydratePresentation(currentHand.id)}>
+                  Retry images
+                </button>
+              </div>
+              ) : null}
 
             {!reveal ? (
               <p className="trainer-analysis-status" aria-live="polite">
                 {preparationStatus === "ready"
                   ? "Opening Edge verdict ready."
                   : preparationStatus === "failed"
-                    ? "Analysis will finish after your choice."
+                    ? "Analysis needs another try before the result can be revealed."
                     : "Preparing the Opening Edge verdict while you decide..."}
               </p>
             ) : null}
@@ -581,7 +655,7 @@ export function KeepTrainer() {
             <div className="puzzle-answer-row">
               <button
                 className="primary-button"
-                disabled={isSubmitting || Boolean(reveal) || Boolean(pendingAnswer)}
+                disabled={isSubmitting || Boolean(reveal) || Boolean(effectivePendingAnswer)}
                 onClick={() => void submitAnswer("keep")}
                 type="button"
               >
@@ -589,23 +663,26 @@ export function KeepTrainer() {
               </button>
               <button
                 className="secondary-button"
-                disabled={isSubmitting || Boolean(reveal) || Boolean(pendingAnswer)}
+                disabled={isSubmitting || Boolean(reveal) || Boolean(effectivePendingAnswer)}
                 onClick={() => void submitAnswer("mulligan")}
                 type="button"
               >
                 {isSubmitting ? "Revealing..." : "Mulligan"}
               </button>
             </div>
-            {pendingAnswer && !reveal ? (
+            {effectivePendingAnswer && !reveal ? (
               <div className="trainer-retry-row">
-                <p>Your {answerLabel(pendingAnswer).toLowerCase()} is in. The reveal will appear automatically when scoring finishes.</p>
+                <p>Your {answerLabel(effectivePendingAnswer).toLowerCase()} is saved. Finish the analysis to reveal the result.</p>
                 <button
                   className="secondary-button"
                   disabled={isSubmitting}
-                  onClick={() => void submitAnswer(pendingAnswer)}
+                  onClick={async () => {
+                    const ready = await prepareHand(currentHand.id);
+                    if (ready) void submitAnswer(effectivePendingAnswer);
+                  }}
                   type="button"
                 >
-                  Retry reveal now
+                  Retry Full Analysis
                 </button>
               </div>
             ) : null}

@@ -1,4 +1,9 @@
 import type { AnalyzerResult, CardLookup, PlayDraw } from "./analyzer";
+import {
+  trainerAnswerFromPolicy,
+  trainerDecisionConfidence,
+  trainerRatingDelta
+} from "./trainerDecisionPolicy";
 
 export type TrainerAnswer = "keep" | "mulligan";
 
@@ -60,6 +65,9 @@ export type PublicTrainerHand = {
   imageWarnings?: string[];
   completed?: boolean;
   selectedAnswer?: TrainerAnswer;
+  pendingAnswer?: TrainerAnswer;
+  analysisStatus?: "pending" | "running" | "ready" | "failed";
+  analysisError?: string;
   reveal?: TrainerReveal;
 };
 
@@ -86,6 +94,8 @@ export type TrainerReveal = {
   correct: boolean;
   correctAnswer: TrainerAnswer;
   explanation: TrainerExplanation;
+  rated?: boolean;
+  ratingDelta?: number;
 };
 
 export type TrainerAttempt = {
@@ -93,6 +103,8 @@ export type TrainerAttempt = {
   correct: boolean;
   ratingBefore?: number;
   ratingAfter?: number;
+  rated?: boolean;
+  ratingDelta?: number;
   attemptedAt?: string;
 };
 
@@ -153,13 +165,7 @@ export function isTrainerAnswer(value: unknown): value is TrainerAnswer {
 }
 
 export function trainerAnswerFromAnalysis(analysis: AnalyzerResult): TrainerAnswer {
-  if (analysis.recommendationTone === "bad") {
-    return "mulligan";
-  }
-  if (analysis.keepAdvantage !== undefined && analysis.keepAdvantage < -0.035) {
-    return "mulligan";
-  }
-  return "keep";
+  return trainerAnswerFromPolicy(analysis);
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -211,20 +217,19 @@ function decisionMargin(analysis: AnalyzerResult, answer: TrainerAnswer) {
   }
 
   const abs = Math.abs(advantage);
-  const modelAnswer: TrainerAnswer = advantage < 0 ? "mulligan" : "keep";
-  const confidence: TrainerDecisionConfidence = abs < 0.03 ? "close" : abs <= 0.08 ? "moderate" : "strong";
+  const confidence: TrainerDecisionConfidence = trainerDecisionConfidence(abs);
   if (abs < 0.03) {
     return {
       confidence,
       label: "Too close to call",
-      sentence: `${modelAnswer === "keep" ? "Keep" : "Mulligan"} by a close margin.`
+      sentence: `Close decision: ${answer === "keep" ? "Keep" : "Mulligan"} by a narrow margin.`
     };
   }
 
   return {
     confidence,
-    label: `${modelAnswer === "keep" ? "Keep" : "Mulligan"} edge: ${formatSignedRatioPercent(modelAnswer === "keep" ? abs : -abs)}`,
-    sentence: `${modelAnswer === "keep" ? "Keep" : "Mulligan"} by a ${confidence} margin.`
+    label: `${answer === "keep" ? "Keep" : "Mulligan"} edge: ${formatSignedRatioPercent(answer === "keep" ? abs : -abs)}`,
+    sentence: `${answer === "keep" ? "Keep" : "Mulligan"} by a ${confidence} margin.`
   };
 }
 
@@ -341,7 +346,10 @@ function risksFromAnalysis(analysis: AnalyzerResult) {
 function bestDrawsFromAnalysis(analysis: AnalyzerResult, risks: string[]) {
   const sourceText = `${risks.join(" ")} ${analysis.watchouts.join(" ")}`.toLowerCase();
   const draws: string[] = [];
-  if (/third land|land drop|land count|one-land|1 land|flood|screw|mana/.test(sourceText)) draws.push("Any untapped land");
+  const floodRisk = /flood|too many lands|land-heavy|land heavy|five-land|four-land|4 land|5 land/.test(sourceText) || analysis.landsInHand >= 4;
+  const screwRisk = /third land|land drop|land count|one-land|1 land|screw|miss(?:ed|ing)? (?:the )?(?:second|third) land|mana/.test(sourceText);
+  if (screwRisk && !floodRisk) draws.push("Any untapped land");
+  if (floodRisk) draws.push("A cheap spell or card-selection effect");
   if (/color|source|red|blue|black|white|green/.test(sourceText)) draws.push("A source of the missing color");
   if (/interact|removal|answer|fast/.test(sourceText)) draws.push("One- or two-mana interaction");
   if (/threat|pressure|clock/.test(sourceText)) draws.push("A cheap threat");
@@ -432,16 +440,7 @@ export function calculateTrainerRating(attempts: TrainerAttempt[]) {
 }
 
 export function trainerRatingDeltaFromAnalysis(analysis: Pick<AnalyzerResult, "keepAdvantage">, correct: boolean) {
-  const margin = Math.abs(analysis.keepAdvantage ?? 0);
-  const minMeaningfulMargin = 0.012;
-  const decisiveMargin = 0.09;
-  const confidenceScale = Math.max(
-    0,
-    Math.min(1, (margin - minMeaningfulMargin) / (decisiveMargin - minMeaningfulMargin))
-  );
-  const correctDelta = Math.round(6 + confidenceScale * 10);
-  const incorrectDelta = -Math.round(3 + confidenceScale * 11);
-  return correct ? correctDelta : incorrectDelta;
+  return trainerRatingDelta(analysis, correct);
 }
 
 export function calculateTrainerStats(attempts: TrainerAttempt[]): TrainerStats {
@@ -476,6 +475,9 @@ export function publicTrainerHand(row: {
   hand: string[] | string;
   play_draw: PlayDraw;
   answered_at?: string | null;
+  pending_answer?: TrainerAnswer | null;
+  analysis_status?: "pending" | "running" | "ready" | "failed" | null;
+  analysis_error?: string | null;
   correct_answer?: TrainerAnswer | null;
   explanation_json?: TrainerExplanation | null;
 }, selectedAnswer?: TrainerAnswer, presentation?: {
@@ -505,6 +507,9 @@ export function publicTrainerHand(row: {
     imageWarnings: presentation?.imageWarnings?.length ? presentation.imageWarnings : undefined,
     completed,
     selectedAnswer,
+    pendingAnswer: row.pending_answer ?? undefined,
+    analysisStatus: row.analysis_status ?? (completed ? "ready" : "pending"),
+    analysisError: row.analysis_error ?? undefined,
     reveal
   };
 }
@@ -514,6 +519,8 @@ export function trainerAttemptFromRow(row: {
   is_correct: boolean;
   rating_before?: number | null;
   rating_after?: number | null;
+  rated?: boolean | null;
+  rating_delta?: number | null;
   attempted_at?: string | null;
 }): TrainerAttempt {
   return {
@@ -521,6 +528,8 @@ export function trainerAttemptFromRow(row: {
     correct: row.is_correct,
     ratingBefore: row.rating_before ?? undefined,
     ratingAfter: row.rating_after ?? undefined,
+    rated: row.rated ?? (row.rating_delta ?? 0) !== 0,
+    ratingDelta: row.rating_delta ?? undefined,
     attemptedAt: row.attempted_at ?? undefined
   };
 }

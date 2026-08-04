@@ -82,14 +82,16 @@ export function cardPresentationsFromLookups(hand: string[], lookups: Map<string
 
 export async function loadTrainerCardPresentation(
   hand: string[],
-  parsed?: ParsedDeck | null
+  parsed?: ParsedDeck | null,
+  options: { signal?: AbortSignal } = {}
 ): Promise<TrainerCardPresentationResult> {
   const uniqueHandNames = Array.from(new Set(hand.map((name) => name.trim()).filter(Boolean)));
   try {
     const lookup = await fetchCardData(uniqueHandNames, {
       exactMtgoImagesOnly: false,
       mtgoIdsByName: mtgoIdsByName(parsed, uniqueHandNames),
-      retryFailures: true
+      retryFailures: true,
+      signal: options.signal
     });
     const presentation = cardPresentationsFromLookups(hand, lookup.lookups);
     const imageWarnings = [...presentation.imageWarnings];
@@ -100,7 +102,10 @@ export async function loadTrainerCardPresentation(
       ...presentation,
       imageWarnings: Array.from(new Set(imageWarnings))
     };
-  } catch {
+  } catch (error) {
+    if (options.signal?.aborted || (error instanceof Error && error.name === "AbortError")) {
+      throw error;
+    }
     return {
       cards: hand.map((name) => ({
         name,
