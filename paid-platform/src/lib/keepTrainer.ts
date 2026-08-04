@@ -2,6 +2,28 @@ import type { AnalyzerResult, CardLookup, PlayDraw } from "./analyzer";
 
 export type TrainerAnswer = "keep" | "mulligan";
 
+export type TrainerDecisionConfidence = "close" | "moderate" | "strong";
+export type TrainerCoachingRating = "weak" | "average" | "good" | "strong";
+export type TrainerMetricTone = "good" | "warning" | "neutral";
+
+export type TrainerCoachingFactor = {
+  label: string;
+  rating: TrainerCoachingRating;
+  explanation: string;
+};
+
+export type TrainerSummaryMetric = {
+  label: string;
+  value: string;
+  detail?: string;
+  tone?: TrainerMetricTone;
+};
+
+export type TrainerTechnicalRow = {
+  label: string;
+  value: string;
+};
+
 export type TrainerExplanation = {
   verdict: TrainerAnswer;
   headline: string;
@@ -16,6 +38,14 @@ export type TrainerExplanation = {
   severeFailureProbability: number;
   keepAdvantage?: number;
   scoringVersion?: string;
+  decisionConfidence?: TrainerDecisionConfidence;
+  decisionMarginLabel?: string;
+  summaryMetrics?: TrainerSummaryMetric[];
+  coachingFactors?: TrainerCoachingFactor[];
+  whyThisWorks?: string[];
+  whatCouldGoWrong?: string[];
+  bestDraws?: string[];
+  technicalRows?: TrainerTechnicalRow[];
 };
 
 export type PublicTrainerHand = {
@@ -132,46 +162,265 @@ export function trainerAnswerFromAnalysis(analysis: AnalyzerResult): TrainerAnsw
   return "keep";
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function formatRatioPercent(value: number, digits = 0) {
+  return `${(value * 100).toFixed(digits)}%`;
+}
+
+function formatSignedRatioPercent(value: number, digits = 1) {
+  const percent = value * 100;
+  return `${percent >= 0 ? "+" : ""}${percent.toFixed(digits)}%`;
+}
+
+function ordinal(value: number) {
+  const rounded = Math.round(value);
+  const tens = rounded % 100;
+  if (tens >= 11 && tens <= 13) return `${rounded}th`;
+  switch (rounded % 10) {
+    case 1:
+      return `${rounded}st`;
+    case 2:
+      return `${rounded}nd`;
+    case 3:
+      return `${rounded}rd`;
+    default:
+      return `${rounded}th`;
+  }
+}
+
+function percentileLabel(percentile: number) {
+  const normalized = percentile > 1 ? percentile : percentile * 100;
+  return `${ordinal(clamp(normalized, 0, 100))} percentile`;
+}
+
+function decisionMargin(analysis: AnalyzerResult, answer: TrainerAnswer) {
+  const advantage = analysis.keepAdvantage;
+  if (!isFiniteNumber(advantage)) {
+    return {
+      confidence: "close" as TrainerDecisionConfidence,
+      label: "Decision edge unavailable",
+      sentence: `${answer === "keep" ? "Keep" : "Mulligan"} is the model verdict, but the edge was not available.`
+    };
+  }
+
+  const abs = Math.abs(advantage);
+  const modelAnswer: TrainerAnswer = advantage < 0 ? "mulligan" : "keep";
+  const confidence: TrainerDecisionConfidence = abs < 0.03 ? "close" : abs <= 0.08 ? "moderate" : "strong";
+  if (abs < 0.03) {
+    return {
+      confidence,
+      label: "Too close to call",
+      sentence: `${modelAnswer === "keep" ? "Keep" : "Mulligan"} by a close margin.`
+    };
+  }
+
+  return {
+    confidence,
+    label: `${modelAnswer === "keep" ? "Keep" : "Mulligan"} edge: ${formatSignedRatioPercent(modelAnswer === "keep" ? abs : -abs)}`,
+    sentence: `${modelAnswer === "keep" ? "Keep" : "Mulligan"} by a ${confidence} margin.`
+  };
+}
+
+function normalizeFactorLabel(label: string) {
+  const text = label.toLowerCase();
+  if (/develop|early/.test(text)) return "Early development";
+  if (/color/.test(text)) return "Color access";
+  if (/mana use|util/.test(text)) return "Mana efficiency";
+  if (/cast/.test(text)) return "Castability";
+  if (/curve/.test(text)) return "Mana curve";
+  if (/interact|removal|answer/.test(text)) return "Early interaction";
+  if (/land/.test(text)) return "Land count";
+  if (/synerg|role|selection/.test(text)) return "Synergy";
+  return label.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function ratingFromFactor(value: number): TrainerCoachingRating {
+  if (value >= 0.75) return "strong";
+  if (value >= 0.35) return "good";
+  if (value >= -0.1) return "average";
+  return "weak";
+}
+
+function factorExplanation(label: string, rating: TrainerCoachingRating, analysis: AnalyzerResult) {
+  switch (label) {
+    case "Early development":
+      return rating === "weak"
+        ? "The hand may spend early turns catching up instead of advancing."
+        : "The hand can start developing before the game gets too far ahead.";
+    case "Color access":
+      return rating === "weak"
+        ? "The mana does not reliably cover the hand's early color requirements."
+        : "The available sources line up with the hand's important early colors.";
+    case "Mana efficiency":
+      return rating === "weak"
+        ? "Several simulated lines leave mana unused or strand spells at the same point on the curve."
+        : "The hand has a plausible way to turn early mana into useful game actions.";
+    case "Castability":
+      return rating === "weak"
+        ? "Important spells are not consistently castable on time."
+        : "The important early spells are likely to be castable on schedule.";
+    case "Mana curve":
+      return rating === "weak"
+        ? "The hand's costs do not line up into a clean early sequence."
+        : "The costs line up into a reasonable early sequence.";
+    case "Early interaction":
+      return rating === "weak"
+        ? "The hand may not interact quickly if the opponent starts fast."
+        : "The hand has access to early interaction or flexible plays.";
+    case "Land count":
+      return rating === "weak"
+        ? `${analysis.landsInHand} land(s) is a pressure point for this deck's curve.`
+        : `${analysis.landsInHand} land(s) is within a workable range for this opener.`;
+    case "Synergy":
+      return rating === "weak"
+        ? "The cards are not strongly supporting one plan yet."
+        : "The cards point toward a coherent early plan.";
+    default:
+      return rating === "weak"
+        ? "This factor is a pressure point in the simulated lines."
+        : "This factor helped the simulated lines.";
+  }
+}
+
+function coachingFactorsFromAnalysis(analysis: AnalyzerResult): TrainerCoachingFactor[] {
+  const seen = new Set<string>();
+  return analysis.scoreFactors
+    .map((factor) => {
+      const label = normalizeFactorLabel(factor.label);
+      const rating = ratingFromFactor(factor.value);
+      return { label, rating, explanation: factorExplanation(label, rating, analysis), value: factor.value };
+    })
+    .filter((factor) => {
+      if (seen.has(factor.label)) return false;
+      seen.add(factor.label);
+      return true;
+    })
+    .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+    .slice(0, 5)
+    .map(({ label, rating, explanation }) => ({ label, rating, explanation }));
+}
+
+function dedupeList(items: string[]) {
+  const seen = new Set<string>();
+  return items
+    .map((item) => item.trim())
+    .filter((item) => {
+      const key = item.toLowerCase();
+      if (!item || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function whyThisWorks(analysis: AnalyzerResult, factors: TrainerCoachingFactor[]) {
+  const positive = factors.filter((factor) => factor.rating === "strong" || factor.rating === "good");
+  const bullets = positive.slice(0, 3).map((factor) => factor.explanation);
+  if (bullets.length) return dedupeList(bullets).slice(0, 3);
+  return [
+    `The hand starts with ${analysis.landsInHand} land(s) and ${analysis.effectiveLandsInHand} effective source(s).`,
+    "The model found enough functionality for this to remain in the keep range."
+  ];
+}
+
+function risksFromAnalysis(analysis: AnalyzerResult) {
+  const risks = dedupeList(analysis.watchouts).slice(0, 3);
+  if (risks.length) return risks;
+  if (analysis.severeFailureProbability >= 0.25) {
+    return ["A meaningful share of simulated lines still fail to develop cleanly by the early turns."];
+  }
+  return ["No single failure mode dominates, but the hand can still improve with flexible interaction or cleaner mana."];
+}
+
+function bestDrawsFromAnalysis(analysis: AnalyzerResult, risks: string[]) {
+  const sourceText = `${risks.join(" ")} ${analysis.watchouts.join(" ")}`.toLowerCase();
+  const draws: string[] = [];
+  if (/third land|land drop|land count|one-land|1 land|flood|screw|mana/.test(sourceText)) draws.push("Any untapped land");
+  if (/color|source|red|blue|black|white|green/.test(sourceText)) draws.push("A source of the missing color");
+  if (/interact|removal|answer|fast/.test(sourceText)) draws.push("One- or two-mana interaction");
+  if (/threat|pressure|clock/.test(sourceText)) draws.push("A cheap threat");
+  if (/selection|draw|cantrip|look/.test(sourceText)) draws.push("Card selection");
+  if (/ramp|payoff|top end|expensive/.test(sourceText)) draws.push("A payoff for the hand's setup");
+  const unique = dedupeList(draws).slice(0, 3);
+  return unique.length ? unique : ["This hand is already functional. Flexible interaction is the most useful addition."];
+}
+
+function technicalRowsFromAnalysis(analysis: AnalyzerResult) {
+  const rows: TrainerTechnicalRow[] = [
+    { label: "Scoring version", value: analysis.scoringVersion },
+    { label: "Opening Hand Score", value: `${analysis.handTextureScore}/100` },
+    { label: "Deck-relative percentile", value: percentileLabel(analysis.deckRelativePercentile) },
+    { label: "Severe failure probability", value: formatRatioPercent(analysis.severeFailureProbability) }
+  ];
+  if (isFiniteNumber(analysis.keepAdvantage)) {
+    rows.push({ label: "Raw keep advantage", value: `${analysis.keepAdvantage.toFixed(4)} (${formatSignedRatioPercent(analysis.keepAdvantage)})` });
+  }
+  if (analysis.mulligan) {
+    rows.push({
+      label: analysis.mulligan.comparison === "free-seven" ? "Free-seven model average" : "London six model average",
+      value: analysis.mulligan.average.toFixed(1)
+    });
+  }
+  if (analysis.scoreFactors.length) {
+    rows.push({
+      label: "Raw score factors",
+      value: analysis.scoreFactors
+        .slice(0, 8)
+        .map((factor) => `${factor.label}: ${factor.value.toFixed(2)}`)
+        .join("; ")
+    });
+  }
+  return rows.filter((row) => row.value !== "" && row.value !== "NaN");
+}
+
 export function trainerExplanationFromAnalysis(
   analysis: AnalyzerResult,
   answer: TrainerAnswer
 ): TrainerExplanation {
-  const factors = analysis.scoreFactors
-    .slice(0, 3)
-    .map((factor) => `${factor.label}: ${factor.value > 0 ? "+" : ""}${factor.value}`)
-    .filter(Boolean);
-  const risk =
-    analysis.watchouts.find((note) => /land|color|cast|mulligan|failure|flood/i.test(note)) ??
-    "The main risk is whether the hand converts its early mana into useful action.";
+  const margin = decisionMargin(analysis, answer);
+  const coachingFactors = coachingFactorsFromAnalysis(analysis);
+  const risks = risksFromAnalysis(analysis);
+  const works = whyThisWorks(analysis, coachingFactors);
+  const bestDraws = bestDrawsFromAnalysis(analysis, risks);
+  const risk = risks[0] ?? "No single failure mode dominates this hand.";
+  const summaryMetrics: TrainerSummaryMetric[] = [
+    { label: "Decision edge", value: margin.label, detail: margin.sentence, tone: margin.confidence === "close" ? "neutral" : answer === "keep" ? "good" : "warning" },
+    { label: "Deck percentile", value: percentileLabel(analysis.deckRelativePercentile), detail: "Compared with random openers from this deck.", tone: "neutral" },
+    { label: "Failure risk", value: formatRatioPercent(analysis.severeFailureProbability), detail: "Severe stumble rate in simulated lines.", tone: analysis.severeFailureProbability >= 0.25 ? "warning" : "good" },
+    { label: "Mana", value: `${analysis.landsInHand} lands / ${analysis.effectiveLandsInHand} sources`, detail: "Opening mana available to the hand.", tone: analysis.effectiveLandsInHand >= 2 ? "good" : "warning" }
+  ];
 
   return {
     verdict: answer,
-    headline:
-      answer === "keep"
-        ? "Keep. This hand grades above the mulligan baseline for this deck."
-        : "Mulligan. The replacement-hand baseline is stronger than keeping this seven.",
+    headline: margin.sentence,
     lesson:
       answer === "keep"
-        ? "A keepable hand turns its lands, colors, and early cards into a real sequence."
-        : "A hand can contain useful cards and still be a mulligan when mana, timing, or risk profile breaks down.",
-    keyFactors: factors.length
-      ? factors
-      : [`${analysis.landsInHand} land(s), ${analysis.effectiveLandsInHand} effective source(s), score ${analysis.handTextureScore}/100.`],
-    supportingPoints: [
-      `Opening Hand Score: ${analysis.handTextureScore}/100.`,
-      `Severe failure risk: ${Math.round(analysis.severeFailureProbability * 100)}%.`,
-      analysis.mulligan
-        ? `Mulligan baseline: ${analysis.mulligan.average.toFixed(1)}.`
-        : "Mulligan baseline was not available for this hand."
-    ],
-    watchFor: analysis.watchouts.slice(0, 3),
+        ? "The model prefers keeping because the hand's mana, timing, and risk profile are better than the replacement baseline."
+        : "The model prefers a mulligan because a fresh hand is expected to produce a better risk-adjusted start.",
+    keyFactors: coachingFactors.map((factor) => `${factor.label}: ${factor.rating}`),
+    supportingPoints: works,
+    watchFor: risks,
     risk,
     score: analysis.handTextureScore,
     recommendation: analysis.recommendation,
     percentile: analysis.deckRelativePercentile,
     severeFailureProbability: analysis.severeFailureProbability,
     keepAdvantage: analysis.keepAdvantage,
-    scoringVersion: analysis.scoringVersion
+    scoringVersion: analysis.scoringVersion,
+    decisionConfidence: margin.confidence,
+    decisionMarginLabel: margin.label,
+    summaryMetrics,
+    coachingFactors,
+    whyThisWorks: works,
+    whatCouldGoWrong: risks,
+    bestDraws,
+    technicalRows: technicalRowsFromAnalysis(analysis)
   };
 }
 

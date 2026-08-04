@@ -6,9 +6,11 @@ import {
   isTrainerAnswer,
   publicTrainerHand,
   trainerAttemptFromRow,
+  trainerExplanationFromAnalysis,
   trainerRatingDeltaFromAnalysis,
   type TrainerAttempt
 } from "../src/lib/keepTrainer";
+import type { AnalyzerResult } from "../src/lib/analyzer";
 import { cardPresentationsFromLookups } from "../src/lib/serverCardPresentation";
 import type { CardLookup } from "../src/lib/analyzer";
 import { readFileSync } from "node:fs";
@@ -54,6 +56,40 @@ assert.equal(trainerRatingDeltaFromAnalysis({ keepAdvantage: 0.001 }, false), -3
 assert.equal(trainerRatingDeltaFromAnalysis({ keepAdvantage: -0.001 }, true), 6, "close trainer decisions only gain a small rating amount");
 assert.equal(trainerRatingDeltaFromAnalysis({ keepAdvantage: 0.12 }, false), -14, "clear trainer misses lose the full rating amount");
 assert.equal(trainerRatingDeltaFromAnalysis({ keepAdvantage: -0.12 }, true), 16, "clear trainer hits gain the full rating amount");
+
+const coachingExplanation = trainerExplanationFromAnalysis(
+  {
+    landsInHand: 2,
+    effectiveLandsInHand: 2,
+    handTextureScore: 62,
+    recommendation: "Keep",
+    deckRelativePercentile: 0.62,
+    severeFailureProbability: 0.18,
+    keepAdvantage: 0.046,
+    scoringVersion: "deck-relative-v1",
+    scoreFactors: [
+      { label: "development", value: 0.7666, tone: "good" },
+      { label: "color access", value: 1, tone: "good" },
+      { label: "mana use", value: 0, tone: "neutral" }
+    ],
+    watchouts: ["The hand can stumble if it misses the third land drop."]
+  } as AnalyzerResult,
+  "keep"
+);
+assert.equal(coachingExplanation.decisionMarginLabel, "Keep edge: +4.6%", "trainer reveal formats keep edge as a percentage");
+assert.equal(coachingExplanation.decisionConfidence, "moderate", "trainer reveal classifies decision confidence from keep advantage");
+assert.equal(coachingExplanation.summaryMetrics?.some((metric) => metric.label === "Deck percentile"), true, "trainer reveal includes deck-relative percentile");
+assert.equal(coachingExplanation.coachingFactors?.[0].label, "Color access", "trainer reveal maps raw factor keys to coaching labels");
+assert.equal(
+  JSON.stringify(coachingExplanation).includes("development: +0.7666"),
+  false,
+  "trainer reveal does not expose raw score-factor arithmetic in player-facing copy"
+);
+assert.equal(
+  coachingExplanation.technicalRows?.some((row) => row.label === "Scoring version" && row.value === "deck-relative-v1"),
+  true,
+  "trainer reveal keeps scoring version in collapsed technical details"
+);
 
 const rowAttempt = trainerAttemptFromRow({
   selected_answer: "mulligan",
@@ -139,7 +175,8 @@ const answerRouteSource = readFileSync(
 assert.equal(answerRouteSource.includes("keepTrainerScoringSettings"), false, "trainer answers do not use reduced scoring settings");
 assert.equal(answerRouteSource.includes("fallbackTrainerAnswer"), false, "trainer answers do not use heuristic fallback scoring");
 assert.equal(answerRouteSource.includes("preparedAnalysisFromRow"), true, "trainer answers reuse prepared full-model analysis");
-assert.equal(answerRouteSource.includes("prepareTrainerAnalysis"), true, "trainer answers retain a full-model fallback");
+assert.equal(answerRouteSource.includes("prepareTrainerAnalysis"), false, "trainer answers do not run full-model scoring synchronously");
+assert.equal(answerRouteSource.includes("TRAINER_ANALYSIS_PENDING"), true, "trainer answers return a pending response while scoring finishes");
 
 const prepareRouteSource = readFileSync(
   join(process.cwd(), "src/app/api/trainer/hands/[handId]/prepare/route.ts"),
@@ -153,6 +190,7 @@ const trainerComponentSource = readFileSync(
   "utf8"
 );
 assert.equal(trainerComponentSource.includes("/prepare`"), true, "dealt trainer hands start background preparation");
-assert.equal(trainerComponentSource.includes("preparationPromiseRef.current"), true, "answer submission waits only for unfinished preparation");
+assert.equal(trainerComponentSource.includes("await preparationPromiseRef.current"), false, "answer submission does not wait for unfinished preparation");
+assert.equal(trainerComponentSource.includes("Retry reveal now"), true, "trainer can retry reveal after a pending answer");
 
 console.log("keepTrainer tests passed");

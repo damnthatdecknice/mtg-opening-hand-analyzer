@@ -269,6 +269,171 @@
   padding: 1rem;
 }
 
+.trainer-verdict-line {
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 900;
+  margin: 0.35rem 0;
+}
+
+.trainer-lesson-line {
+  color: var(--muted);
+  margin: 0 0 0.9rem;
+}
+
+.trainer-summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.trainer-summary-metric {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--data-card) 88%, transparent);
+  clip-path: var(--clip-sm);
+  min-width: 0;
+  padding: 0.75rem;
+}
+
+.trainer-summary-metric span,
+.trainer-coaching-factor span,
+.trainer-technical-details dt {
+  color: var(--amber);
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.trainer-summary-metric strong {
+  color: var(--text);
+  display: block;
+  font-size: 1.25rem;
+  line-height: 1.1;
+  margin-top: 0.25rem;
+  overflow-wrap: anywhere;
+}
+
+.trainer-summary-metric small {
+  color: var(--muted);
+  display: block;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  margin-top: 0.35rem;
+}
+
+.trainer-summary-metric.tone-good {
+  border-color: color-mix(in srgb, var(--good) 48%, var(--border));
+}
+
+.trainer-summary-metric.tone-warning {
+  border-color: color-mix(in srgb, var(--bad) 52%, var(--border));
+}
+
+.trainer-coaching-factors {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin: 0 0 1rem;
+}
+
+.trainer-coaching-factor {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  clip-path: var(--clip-sm);
+  min-width: 0;
+  padding: 0.72rem;
+}
+
+.trainer-coaching-factor strong {
+  color: var(--text);
+  display: inline-block;
+  margin-top: 0.25rem;
+  text-transform: capitalize;
+}
+
+.trainer-coaching-factor p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  margin: 0.35rem 0 0;
+}
+
+.trainer-coaching-factor.rating-strong,
+.trainer-coaching-factor.rating-good {
+  border-color: color-mix(in srgb, var(--good) 42%, var(--border));
+}
+
+.trainer-coaching-factor.rating-weak {
+  border-color: color-mix(in srgb, var(--bad) 50%, var(--border));
+}
+
+.trainer-best-draws {
+  border: 1px solid var(--amber-border);
+  background: color-mix(in srgb, var(--amber-soft) 40%, transparent);
+  clip-path: var(--clip-sm);
+  margin-top: 1rem;
+  padding: 0.85rem;
+}
+
+.trainer-best-draws h4 {
+  margin: 0 0 0.65rem;
+}
+
+.trainer-best-draws div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.trainer-best-draws span {
+  border: 1px solid var(--amber-border);
+  background: color-mix(in srgb, var(--data-card) 76%, transparent);
+  clip-path: var(--clip-sm);
+  color: var(--text);
+  font-weight: 850;
+  padding: 0.4rem 0.6rem;
+}
+
+.trainer-technical-details {
+  border-top: 1px solid var(--border);
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+}
+
+.trainer-technical-details summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.trainer-technical-details dl {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.85rem 0 0;
+}
+
+.trainer-technical-details div {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--data-card) 70%, transparent);
+  clip-path: var(--clip-sm);
+  padding: 0.55rem 0.65rem;
+}
+
+.trainer-technical-details dd {
+  color: var(--muted);
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.trainer-next-action {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
 .trainer-image-warning,
 .trainer-retry-row {
   border: 1px solid var(--amber-border);
@@ -423,6 +588,11 @@
   .puzzle-explanation-grid {
     grid-template-columns: 1fr;
   }
+
+  .trainer-summary-metrics,
+  .trainer-coaching-factors {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 560px) {
@@ -451,6 +621,19 @@
 
   .trainer-start-shell h1 {
     font-size: clamp(2.2rem, 14vw, 3.3rem);
+  }
+
+  .trainer-summary-metrics,
+  .trainer-coaching-factors {
+    grid-template-columns: 1fr;
+  }
+
+  .trainer-next-action {
+    justify-content: stretch;
+  }
+
+  .trainer-next-action .primary-button {
+    width: 100%;
   }
 }
 

@@ -13,11 +13,7 @@ import {
   createServerAnonSupabaseClient,
   isServerAnonSupabaseConfigured
 } from "@/lib/serverSupabase";
-import {
-  prepareTrainerAnalysis,
-  uniqueTrainerCardNames,
-  type PreparedTrainerAnalysis
-} from "@/lib/serverTrainerAnalysis";
+import { type PreparedTrainerAnalysis } from "@/lib/serverTrainerAnalysis";
 
 export const runtime = "nodejs";
 
@@ -94,27 +90,17 @@ async function loadAttempts(serviceClient: NonNullable<ReturnType<typeof createS
   return ((data ?? []) as TrainerAttemptRow[]).map(trainerAttemptFromRow);
 }
 
-function handArray(hand: TrainerHandRow["hand"]) {
-  return Array.isArray(hand) ? hand : JSON.parse(hand);
-}
-
-function incompleteCardDataResponse(
-  handRow: TrainerHandRow,
-  selectedAnswer: TrainerAnswer,
-  unresolvedCards: string[]
-) {
+function pendingAnalysisResponse(handRow: TrainerHandRow, selectedAnswer: TrainerAnswer) {
   return NextResponse.json(
     {
       error: {
-        code: "CARD_DATA_INCOMPLETE",
-        message: "Opening Edge could not reach the card database. Your hand and answer were preserved.",
-        retryable: true,
-        unresolvedCards: uniqueTrainerCardNames(unresolvedCards).slice(0, 5),
-        unresolvedCount: uniqueTrainerCardNames(unresolvedCards).length
+        code: "TRAINER_ANALYSIS_PENDING",
+        message: "Your answer is locked in. Opening Edge is finishing the score.",
+        retryable: true
       },
       currentHand: publicTrainerHand(handRow, selectedAnswer)
     },
-    { status: 503 }
+    { status: 202 }
   );
 }
 
@@ -165,7 +151,6 @@ export async function POST(request: NextRequest, context: { params: { handId: st
   }
 
   const handRow = handData as TrainerHandRow;
-  const hand = handArray(handRow.hand);
 
   const { data: existingAttempt, error: existingAttemptError } = await serviceClient
     .from("magic_trainer_attempts")
@@ -200,16 +185,7 @@ export async function POST(request: NextRequest, context: { params: { handId: st
 
   let prepared = preparedAnalysisFromRow(handRow);
   if (!prepared) {
-    const result = await prepareTrainerAnalysis({
-      decklistSnapshot: handRow.decklist_snapshot,
-      format: handRow.format,
-      hand,
-      playDraw: handRow.play_draw
-    });
-    if (!result.ok) {
-      return incompleteCardDataResponse(handRow, body.answer, result.unresolvedCards);
-    }
-    prepared = result;
+    return pendingAnalysisResponse(handRow, body.answer);
   }
 
   const { analysis, correctAnswer, explanation } = prepared;

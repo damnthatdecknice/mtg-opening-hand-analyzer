@@ -96,6 +96,7 @@ export function KeepTrainer() {
   const requestIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const preparationAbortRef = useRef<AbortController | null>(null);
+  const presentationAbortRef = useRef<AbortController | null>(null);
   const preparationHandIdRef = useRef("");
   const preparationPromiseRef = useRef<Promise<boolean> | null>(null);
 
@@ -192,6 +193,37 @@ export function KeepTrainer() {
     setPreparationStatus("idle");
   }, []);
 
+  const cancelPresentation = useCallback(() => {
+    presentationAbortRef.current?.abort();
+    presentationAbortRef.current = null;
+  }, []);
+
+  const hydratePresentation = useCallback(async (handId: string) => {
+    presentationAbortRef.current?.abort();
+    const controller = new AbortController();
+    presentationAbortRef.current = controller;
+
+    try {
+      const response = await authorizedFetch(
+        `/api/trainer/hands/${encodeURIComponent(handId)}/presentation`,
+        { signal: controller.signal }
+      );
+      if (!response.ok) {
+        return;
+      }
+      const data = (await response.json()) as { currentHand?: PublicTrainerHand };
+      if (data.currentHand && presentationAbortRef.current === controller) {
+        setCurrentHand((previous) => mergeTrainerHand(previous, data.currentHand!));
+      }
+    } catch {
+      // Card names remain visible if image enrichment is unavailable.
+    } finally {
+      if (presentationAbortRef.current === controller) {
+        presentationAbortRef.current = null;
+      }
+    }
+  }, [authorizedFetch]);
+
   const prepareHand = useCallback((handId: string) => {
     preparationAbortRef.current?.abort();
     const controller = new AbortController();
@@ -244,6 +276,7 @@ export function KeepTrainer() {
       setStats(payload.stats ?? emptyStats);
       setCurrentHand(null);
       cancelPreparation();
+      cancelPresentation();
     } catch (error) {
       if (controller.signal.aborted) {
         return;
@@ -255,7 +288,7 @@ export function KeepTrainer() {
         setIsLoading(false);
       }
     }
-  }, [authorizedFetch, cancelPreparation, nextRequest]);
+  }, [authorizedFetch, cancelPreparation, cancelPresentation, nextRequest]);
 
   const dealHand = useCallback(async (deckId = selectedDeckId) => {
     if (!deckId) {
@@ -264,6 +297,7 @@ export function KeepTrainer() {
     }
     const { controller, requestId } = nextRequest();
     cancelPreparation();
+    cancelPresentation();
     setIsDealing(true);
     setMessage("");
     setCurrentHand(null);
@@ -290,6 +324,7 @@ export function KeepTrainer() {
       setPendingAnswer(null);
       setBrokenImageIndexes(new Set());
       if (dealtHand) {
+        void hydratePresentation(dealtHand.id);
         void prepareHand(dealtHand.id);
       }
     } catch (error) {
@@ -302,21 +337,15 @@ export function KeepTrainer() {
         setIsDealing(false);
       }
     }
-  }, [authorizedFetch, cancelPreparation, nextRequest, prepareHand, selectedDeckId, stats]);
+  }, [authorizedFetch, cancelPreparation, cancelPresentation, hydratePresentation, nextRequest, prepareHand, selectedDeckId, stats]);
 
-  async function submitAnswer(answer: TrainerAnswer) {
+  const submitAnswer = useCallback(async (answer: TrainerAnswer) => {
     if (!currentHand) {
       return;
     }
     setIsSubmitting(true);
     setMessage("");
     try {
-      if (
-        preparationHandIdRef.current === currentHand.id &&
-        preparationPromiseRef.current
-      ) {
-        await preparationPromiseRef.current;
-      }
       const response = await authorizedFetch(`/api/trainer/hands/${encodeURIComponent(currentHand.id)}/answer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -328,15 +357,18 @@ export function KeepTrainer() {
         stats?: TrainerStats;
         error?: string | TrainerApiError;
       };
-      if (!response.ok && response.status !== 409) {
-        if (typeof data.error === "object" && data.error?.retryable) {
-          setPendingAnswer(answer);
-          if (data.currentHand) {
-            setCurrentHand((previous) => mergeTrainerHand(previous, data.currentHand!));
-          }
-          setMessage(apiErrorMessage(data.error));
-          return;
+      if (
+        (response.status === 202 || (typeof data.error === "object" && data.error?.retryable)) &&
+        !data.reveal
+      ) {
+        setPendingAnswer(answer);
+        if (data.currentHand) {
+          setCurrentHand((previous) => mergeTrainerHand(previous, data.currentHand!));
         }
+        setMessage(apiErrorMessage(data.error) || "Your answer is locked in. Opening Edge is finishing the score.");
+        return;
+      }
+      if (!response.ok && response.status !== 409) {
         throw new Error(apiErrorMessage(data.error) || "Could not score this trainer hand.");
       }
       if (data.currentHand) {
@@ -362,7 +394,19 @@ export function KeepTrainer() {
     } finally {
       setIsSubmitting(false);
     }
-  }
+  }, [authorizedFetch, currentHand]);
+
+  useEffect(() => {
+    if (!currentHand || currentHand.reveal || !pendingAnswer || preparationStatus !== "ready" || isSubmitting) {
+      return;
+    }
+
+    const retryTimer = window.setTimeout(() => {
+      void submitAnswer(pendingAnswer);
+    }, 150);
+
+    return () => window.clearTimeout(retryTimer);
+  }, [currentHand, isSubmitting, pendingAnswer, preparationStatus, submitAnswer]);
 
   useEffect(() => {
     void loadTrainer();
@@ -376,6 +420,7 @@ export function KeepTrainer() {
     return () => {
       abortRef.current?.abort();
       preparationAbortRef.current?.abort();
+      presentationAbortRef.current?.abort();
       data?.subscription.unsubscribe();
     };
   }, [loadTrainer]);
@@ -456,6 +501,7 @@ export function KeepTrainer() {
             disabled={isDealing || isSubmitting}
             onChange={(event) => {
               cancelPreparation();
+              cancelPresentation();
               setSelectedDeckId(event.target.value);
               setCurrentHand(null);
               setMessage("");
@@ -535,7 +581,7 @@ export function KeepTrainer() {
             <div className="puzzle-answer-row">
               <button
                 className="primary-button"
-                disabled={isSubmitting || Boolean(reveal)}
+                disabled={isSubmitting || Boolean(reveal) || Boolean(pendingAnswer)}
                 onClick={() => void submitAnswer("keep")}
                 type="button"
               >
@@ -543,7 +589,7 @@ export function KeepTrainer() {
               </button>
               <button
                 className="secondary-button"
-                disabled={isSubmitting || Boolean(reveal)}
+                disabled={isSubmitting || Boolean(reveal) || Boolean(pendingAnswer)}
                 onClick={() => void submitAnswer("mulligan")}
                 type="button"
               >
@@ -552,14 +598,14 @@ export function KeepTrainer() {
             </div>
             {pendingAnswer && !reveal ? (
               <div className="trainer-retry-row">
-                <p>Full analysis did not finish, but this hand is preserved.</p>
+                <p>Your {answerLabel(pendingAnswer).toLowerCase()} is in. The reveal will appear automatically when scoring finishes.</p>
                 <button
                   className="secondary-button"
                   disabled={isSubmitting}
                   onClick={() => void submitAnswer(pendingAnswer)}
                   type="button"
                 >
-                  Retry full analysis
+                  Retry reveal now
                 </button>
               </div>
             ) : null}
@@ -567,44 +613,104 @@ export function KeepTrainer() {
             {reveal ? (
               <div className={`puzzle-reveal ${reveal.correct ? "is-correct" : "is-wrong"}`}>
                 <div className="model-badge-row">
-                  <span className="tag tag-good">Full Opening Edge model</span>
-                  {reveal.explanation.scoringVersion ? <span className="tag">Model {reveal.explanation.scoringVersion}</span> : null}
+                  <span className="tag tag-good">Analyzed with the Full Opening Edge Model</span>
                 </div>
-                <p className="eyebrow">{reveal.correct ? "Correct" : "Not quite"}</p>
+                <p className="eyebrow">{reveal.correct ? "Correct" : "Incorrect"}</p>
                 <h3>{answerLabel(reveal.correctAnswer)}</h3>
-                <p>{reveal.explanation.headline}</p>
-                <p>{reveal.explanation.lesson}</p>
-                <div className="puzzle-supporting-points">
-                  {reveal.explanation.supportingPoints.slice(0, 4).map((point) => (
-                    <span key={point}>{point}</span>
-                  ))}
-                </div>
+                <p className="trainer-verdict-line">{reveal.explanation.headline}</p>
+                <p className="trainer-lesson-line">{reveal.explanation.lesson}</p>
+
+                {reveal.explanation.summaryMetrics?.length ? (
+                  <div className="trainer-summary-metrics" aria-label="Trainer result summary">
+                    {reveal.explanation.summaryMetrics.map((metric) => (
+                      <div className={`trainer-summary-metric tone-${metric.tone ?? "neutral"}`} key={`${metric.label}-${metric.value}`}>
+                        <span>{metric.label}</span>
+                        <strong>{metric.value}</strong>
+                        {metric.detail ? <small>{metric.detail}</small> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="puzzle-supporting-points">
+                    {reveal.explanation.supportingPoints.slice(0, 4).map((point) => (
+                      <span key={point}>{point}</span>
+                    ))}
+                  </div>
+                )}
+
+                {reveal.explanation.coachingFactors?.length ? (
+                  <div className="trainer-coaching-factors">
+                    {reveal.explanation.coachingFactors.slice(0, 4).map((factor) => (
+                      <div className={`trainer-coaching-factor rating-${factor.rating}`} key={`${factor.label}-${factor.rating}`}>
+                        <span>{factor.label}</span>
+                        <strong>{factor.rating}</strong>
+                        <p>{factor.explanation}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
                 <div className="puzzle-explanation-grid">
                   <div>
-                    <h4>Why</h4>
+                    <h4>Why this works</h4>
                     <ul>
-                      {reveal.explanation.keyFactors.map((factor) => (
+                      {(reveal.explanation.whyThisWorks?.length ? reveal.explanation.whyThisWorks : reveal.explanation.keyFactors).slice(0, 3).map((factor) => (
                         <li key={factor}>{factor}</li>
                       ))}
                     </ul>
                   </div>
                   <div>
-                    <h4>Watch For</h4>
+                    <h4>What could go wrong</h4>
                     <ul>
-                      {(reveal.explanation.watchFor.length ? reveal.explanation.watchFor : [reveal.explanation.risk]).map((item) => (
+                      {(reveal.explanation.whatCouldGoWrong?.length
+                        ? reveal.explanation.whatCouldGoWrong
+                        : reveal.explanation.watchFor.length
+                          ? reveal.explanation.watchFor
+                          : [reveal.explanation.risk]
+                      ).slice(0, 3).map((item) => (
                         <li key={item}>{item}</li>
                       ))}
                     </ul>
                   </div>
                 </div>
-                <button
-                  className="primary-button"
-                  disabled={isDealing}
-                  onClick={() => void dealHand(selectedDeckId)}
-                  type="button"
-                >
-                  {isDealing ? "Dealing..." : "Next hand"}
-                </button>
+
+                <div className="trainer-best-draws">
+                  <h4>Best draws or improvements</h4>
+                  <div>
+                    {(reveal.explanation.bestDraws?.length ? reveal.explanation.bestDraws : ["Flexible interaction"]).map((draw) => (
+                      <span key={draw}>{draw}</span>
+                    ))}
+                  </div>
+                </div>
+
+                <details className="trainer-technical-details">
+                  <summary>Technical details</summary>
+                  <dl>
+                    {(reveal.explanation.technicalRows?.length
+                      ? reveal.explanation.technicalRows
+                      : reveal.explanation.keyFactors.map((detail) => {
+                          const [label, ...rest] = detail.split(":");
+                          return { label, value: rest.join(":").trim() || detail };
+                        })
+                    ).map((row) => (
+                      <div key={`${row.label}-${row.value}`}>
+                        <dt>{row.label}</dt>
+                        <dd>{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </details>
+
+                <div className="trainer-next-action">
+                  <button
+                    className="primary-button"
+                    disabled={isDealing}
+                    onClick={() => void dealHand(selectedDeckId)}
+                    type="button"
+                  >
+                    {isDealing ? "Dealing..." : "Next hand"}
+                  </button>
+                </div>
               </div>
             ) : null}
           </>

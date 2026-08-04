@@ -13,7 +13,6 @@ import {
   trainerAttemptFromRow,
   type TrainerDeckOption
 } from "@/lib/keepTrainer";
-import { loadTrainerCardPresentation } from "@/lib/serverCardPresentation";
 
 export const runtime = "nodejs";
 
@@ -176,7 +175,6 @@ export async function POST(request: NextRequest) {
   }
 
   const playDraw: PlayDraw = deterministicIndex(`${seed}:play-draw`, 2) === 0 ? "play" : "draw";
-  const presentation = await loadTrainerCardPresentation(hand, deck.parsed_json);
   const { data: inserted, error: insertError } = await serviceClient
     .from("magic_trainer_hands")
     .insert({
@@ -204,7 +202,6 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({
-    currentHand: publicTrainerHand(inserted as Parameters<typeof publicTrainerHand>[0], undefined, presentation),
-    stats: calculateTrainerStats(await loadTrainerAttempts(serviceClient, user.id))
+    currentHand: publicTrainerHand(inserted as Parameters<typeof publicTrainerHand>[0])
   });
 }
