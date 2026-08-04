@@ -366,20 +366,26 @@ export function ManaCurveDashboard() {
             </div>
           </section>
           {analysis.validation.issues.length ? (
-            <section className="panel">
-              <div className="section-heading">
-                <p className="eyebrow">Validation</p>
-                <h2>{analysis.validation.isCompleteEnoughForPosture ? "Deck checks" : "Raw curve only"}</h2>
-              </div>
-              <div className="list-stack">
+            <details className="panel validation-disclosure">
+              <summary className="validation-disclosure-summary">
+                <span className="eyebrow">Validation</span>
+                <strong>{analysis.validation.isCompleteEnoughForPosture ? "Deck checks" : "Raw curve only"}</strong>
+                <span className="validation-disclosure-count">
+                  {analysis.validation.issues.length} {analysis.validation.issues.length === 1 ? "notice" : "notices"}
+                </span>
+              </summary>
+              <div className="list-stack validation-disclosure-content">
                 {analysis.validation.issues.slice(0, 5).map((issue) => (
                   <div className={`empty-state observation-card ${issue.severity === "error" ? "bad" : "neutral"}`} key={`${issue.code}-${issue.cardName ?? issue.title}`}>
                     <strong>{issue.title}</strong>
                     <span>{issue.detail}</span>
                   </div>
                 ))}
+                {analysis.validation.issues.length > 5 ? (
+                  <span className="validation-disclosure-more">Showing the first 5 notices.</span>
+                ) : null}
               </div>
-            </section>
+            </details>
           ) : null}
 
           <section className="mana-curve-grid">

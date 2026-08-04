@@ -428,6 +428,63 @@
   overflow-wrap: anywhere;
 }
 
+.validation-disclosure {
+  padding: 0;
+}
+
+.validation-disclosure-summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 0.8rem;
+  list-style: none;
+  min-height: 4.2rem;
+  padding: 1rem 1.2rem;
+}
+
+.validation-disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+
+.validation-disclosure-summary::before {
+  color: var(--accent);
+  content: "+";
+  flex: 0 0 auto;
+  font-size: 1.25rem;
+  font-weight: 900;
+  line-height: 1;
+  width: 1rem;
+}
+
+.validation-disclosure[open] .validation-disclosure-summary::before {
+  content: "-";
+}
+
+.validation-disclosure-summary .eyebrow {
+  margin: 0;
+}
+
+.validation-disclosure-summary strong {
+  color: var(--text);
+}
+
+.validation-disclosure-count {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-left: auto;
+}
+
+.validation-disclosure-content {
+  border-top: 1px solid var(--border);
+  padding: 0 1.2rem 1.2rem;
+}
+
+.validation-disclosure-more {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .trainer-next-action {
   display: flex;
   justify-content: flex-end;

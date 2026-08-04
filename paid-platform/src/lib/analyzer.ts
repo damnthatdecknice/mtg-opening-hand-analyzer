@@ -217,7 +217,22 @@ type ScryfallCard = {
 };
 
 function normalizeName(name: string) {
-  return name.trim().toLowerCase();
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\s*\/\/\s*/g, " // ")
+    .replace(/\s+/g, " ");
+}
+
+function combinedFaceNames(name: string) {
+  return name
+    .split(/\s*\/\/\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function isCombinedFaceName(name: string) {
+  return combinedFaceNames(name).length >= 2;
 }
 
 function countsFromCards(cards: ParsedDeckCard[], includeSideboard = false) {
@@ -770,6 +785,56 @@ async function fetchSingleCard(name: string, signal?: AbortSignal, budget?: Card
   return { card: (await response.json()) as ScryfallCard, failure: "", status: response.status };
 }
 
+async function fetchCombinedFaceCard(name: string, signal?: AbortSignal, budget?: CardDataRequestBudget) {
+  const exact = await fetchSingleCard(name, signal, budget);
+  if (exact.card) {
+    return exact;
+  }
+
+  // Collection and exact-name lookups occasionally reject a valid split, Room,
+  // or other combined-face name. A name search is a safer fallback than
+  // treating the two visible faces as independent cards: it returns the
+  // physical Scryfall object and preserves its layout, faces, and images.
+  if (exact.status !== 404) {
+    return exact;
+  }
+
+  const faces = combinedFaceNames(name);
+  const query = `name:"${faces[0]}"`;
+  let response: Response | null = null;
+  try {
+    response = await fetchWithRetries(
+      `/cards/search?unique=cards&order=name&q=${encodeURIComponent(query)}`,
+      { signal },
+      { attempts: 1, budget, signal }
+    );
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
+    return exact;
+  }
+
+  if (!response?.ok) {
+    return exact;
+  }
+
+  const payload = (await response.json()) as { data?: ScryfallCard[] };
+  const normalizedRequested = normalizeName(name);
+  const normalizedFaces = new Set(faces.map(normalizeName));
+  const card = (payload.data ?? []).find((candidate) => {
+    if (normalizeName(candidate.name) === normalizedRequested) {
+      return true;
+    }
+    const candidateFaces = new Set((candidate.card_faces ?? []).map((face) => normalizeName(face.name ?? "")));
+    return normalizedFaces.size > 1 && Array.from(normalizedFaces).every((face) => candidateFaces.has(face));
+  });
+
+  return card
+    ? { card, failure: "", status: 200 }
+    : exact;
+}
+
 async function fetchMtgoCard(mtgoId: number, signal?: AbortSignal) {
   const response = await fetchWithRetries(`/cards/mtgo/${mtgoId}`, { signal }, { signal }).catch((error) => {
     if (isAbortError(error)) {
@@ -887,6 +952,7 @@ async function fetchUncachedBaseCardData(
     };
     const resolvedNames = new Set<string>();
     const authoritativeMissingNames = new Set<string>();
+    const combinedFaceMissingNames = new Set<string>();
 
     for (const card of payload.data ?? []) {
       const mapped = mapScryfallCard(card);
@@ -901,10 +967,38 @@ async function fetchUncachedBaseCardData(
       if (missing.name) {
         const missingName = missing.name;
         const requestedName = batch.find((name) => normalizeName(name) === normalizeName(missingName)) ?? missingName;
+        if (isCombinedFaceName(requestedName)) {
+          combinedFaceMissingNames.add(requestedName);
+          continue;
+        }
         authoritativeMissingNames.add(normalizeName(requestedName));
         const failure = `${requestedName}: Card name not found`;
         failures.push(failure);
         cacheLookupFailure(requestedName, failure, 404);
+      }
+    }
+
+    for (const name of Array.from(combinedFaceMissingNames)) {
+      try {
+        const fallback = await fetchCombinedFaceCard(name, options.signal, budget);
+        if (fallback.card) {
+          const mapped = mapScryfallCard(fallback.card);
+          resolvedNames.add(normalizeName(name));
+          addLookupAliases(lookups, mapped, name);
+          cacheLookupSuccess(mapped, [name]);
+        } else {
+          authoritativeMissingNames.add(normalizeName(name));
+          const failure = fallback.failure || `${name}: Card lookup did not return a card`;
+          failures.push(failure);
+          cacheLookupFailure(name, failure, fallback.status);
+        }
+      } catch (error) {
+        if (isAbortError(error)) {
+          throw error;
+        }
+        authoritativeMissingNames.add(normalizeName(name));
+        const failure = error instanceof CardDataOperationError ? error.failure.message : `${name}: Card lookup failed`;
+        failures.push(`${name}: ${failure}`);
       }
     }
 

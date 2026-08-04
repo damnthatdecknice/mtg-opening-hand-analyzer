@@ -99,6 +99,44 @@ async function main() {
   await withMockedFetch(
     async (url) => {
       if (url.includes("/cards/collection")) {
+        return jsonResponse({ data: [], not_found: [{ name: "Roaring Furnace // Steaming Sauna" }] });
+      }
+      if (url.includes("/cards/named")) {
+        return jsonResponse({ object: "error", details: "not found" }, 404);
+      }
+      if (url.includes("/cards/search")) {
+        return jsonResponse({
+          data: [
+            scryfallCard("Roaring Furnace // Steaming Sauna", {
+              layout: "room",
+              mana_cost: "{1}{R} // {4}{U}",
+              cmc: 7,
+              type_line: "Enchantment — Room",
+              card_faces: [
+                { name: "Roaring Furnace", mana_cost: "{1}{R}", cmc: 2, type_line: "Enchantment — Room", oracle_text: "" },
+                { name: "Steaming Sauna", mana_cost: "{4}{U}", cmc: 5, type_line: "Enchantment — Room", oracle_text: "" }
+              ]
+            })
+          ]
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    },
+    async (calls) => {
+      const result = await fetchCardData(["Roaring Furnace // Steaming Sauna"], { retryFailures: true });
+      const lookup = result.lookups.get("roaring furnace // steaming sauna");
+      assert.equal(result.failures.length, 0, "combined-face cards recover after a collection not_found response");
+      assert.equal(lookup?.name, "Roaring Furnace // Steaming Sauna", "the physical combined card remains the canonical lookup");
+      assert.deepEqual(lookup?.faces.map((face) => face.name), ["Roaring Furnace", "Steaming Sauna"], "both face names are preserved");
+      assert.equal(lookup?.manaValue, 2, "the curve uses the cheapest castable face rather than summing both faces");
+      assert.equal(calls.filter((call) => call.url.includes("/cards/named")).length, 1, "combined fallback first retries the exact physical name");
+      assert.equal(calls.filter((call) => call.url.includes("/cards/search")).length, 1, "combined fallback uses a generic name search");
+    }
+  );
+
+  await withMockedFetch(
+    async (url) => {
+      if (url.includes("/cards/collection")) {
         return jsonResponse({ data: [], not_found: [{ name: "Definitely Missing" }] });
       }
       if (url.includes("/cards/named")) {
