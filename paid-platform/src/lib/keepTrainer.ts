@@ -367,7 +367,7 @@ function technicalRowsFromAnalysis(analysis: AnalyzerResult) {
     { label: "Severe failure probability", value: formatRatioPercent(analysis.severeFailureProbability) }
   ];
   if (isFiniteNumber(analysis.keepAdvantage)) {
-    rows.push({ label: "Raw keep advantage", value: `${analysis.keepAdvantage.toFixed(4)} (${formatSignedRatioPercent(analysis.keepAdvantage)})` });
+    rows.push({ label: "Decision keep advantage", value: `${analysis.keepAdvantage.toFixed(4)} (${formatSignedRatioPercent(analysis.keepAdvantage)})` });
   }
   if (analysis.mulligan) {
     rows.push({

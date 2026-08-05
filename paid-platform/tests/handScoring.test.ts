@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   castabilityScoreAdjustment,
+  decisionUtilityAfterFailureRisk,
   manaSufficiencyAdjustment,
   recommendationFromEv,
   solveManaPayment,
@@ -78,6 +79,15 @@ assert.equal(
   recommendationFromEv(72, 0.71, 0.68, 0.18),
   "keep",
   "hands above the simulated mulligan EV can be keep leans"
+);
+assert.equal(
+  recommendationFromEv(51, 0.8, 0.68, 1),
+  "strong_mulligan",
+  "an almost-certain severe failure cannot be kept from a raw positive edge"
+);
+assert.ok(
+  decisionUtilityAfterFailureRisk(0.8, 1) < decisionUtilityAfterFailureRisk(0.8, 0.5),
+  "decision EV discounts severe failure risk progressively"
 );
 
 const oneLandBigMana = manaSufficiencyAdjustment({
@@ -344,6 +354,26 @@ const wrongColor = scoreHandDeckRelative({
   seed: "wrong-color",
   settings: fastSettings
 });
+
+const sixLandFlood = scoreHandDeckRelative({
+  mainCounts: redAggroDeck,
+  handNames: ["Mountain", "Mountain", "Mountain", "Mountain", "Mountain", "Mountain", "Four Drop"],
+  cardData: redAggroCards,
+  playDraw: "play",
+  profileLabel: "Low-curve pressure",
+  seed: "six-land-flood",
+  settings: fastSettings
+});
+
+assert.equal(
+  sixLandFlood.keepRecommendation,
+  "strong_mulligan",
+  "a six-land hand with one expensive spell is a strong mulligan"
+);
+assert.ok(
+  (sixLandFlood.keepAdvantage ?? 0) < 0,
+  "flood risk must make the keep EV worse than the London-six baseline"
+);
 
 assert.ok(correctColor.score > wrongColor.score, "correct-color sources score higher than the same land count in wrong colors");
 assert.ok(wrongColor.utility.catastrophicFailureRate > correctColor.utility.catastrophicFailureRate, "wrong-color hands carry higher fail-state risk");

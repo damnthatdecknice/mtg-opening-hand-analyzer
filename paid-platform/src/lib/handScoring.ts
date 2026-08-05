@@ -154,7 +154,7 @@ export type HandScoringSettings = {
   mulliganHands: number;
 };
 
-export const HAND_SCORING_VERSION = "deck-relative-v1";
+export const HAND_SCORING_VERSION = "deck-relative-v2";
 
 export const HAND_SCORING_CONFIG = {
   scoringVersion: HAND_SCORING_VERSION,
@@ -187,7 +187,11 @@ export const HAND_SCORING_CONFIG = {
   riskAdjustment: {
     mean: 0.7,
     lowerTail: 0.3,
-    lowerTailPercentile: 0.2
+    lowerTailPercentile: 0.2,
+    // Small failure-rate differences should not dominate close decisions, but
+    // excess severe-failure risk must be reflected in keep-vs-mulligan EV.
+    decisionFailureThreshold: 0.35,
+    decisionFailureWeight: 0.6
   }
 } as const;
 
@@ -1110,9 +1114,26 @@ function mulliganExpectedValue(
   return values.reduce((total, value) => total + value, 0) / Math.max(1, values.length);
 }
 
+export function decisionUtilityAfterFailureRisk(riskAdjustedUtility: number, catastrophicRate: number) {
+  const excessFailureRate = Math.max(
+    0,
+    catastrophicRate - HAND_SCORING_CONFIG.riskAdjustment.decisionFailureThreshold
+  );
+  return clamp(
+    riskAdjustedUtility - excessFailureRate * HAND_SCORING_CONFIG.riskAdjustment.decisionFailureWeight,
+    0,
+    1
+  );
+}
+
 export function recommendationFromEv(score: number, keepEv: number, mulliganEv: number | undefined, catastrophicRate: number): KeepRecommendation {
   if (mulliganEv !== undefined) {
+    // A hand with an almost-certain severe failure is not a keep, even when a
+    // raw percentile or unadjusted utility happens to be above the mulligan
+    // sample. This is intentionally stricter than the close-hand thresholds.
+    if (catastrophicRate >= 0.85) return "strong_mulligan";
     const edge = keepEv - mulliganEv;
+    if (catastrophicRate >= 0.7) return edge > -0.08 ? "mulligan" : "strong_mulligan";
     if (edge >= 0.08 && score >= 78 && catastrophicRate < 0.35) return "strong_keep";
     if (edge >= 0.018 && score >= 60 && catastrophicRate < 0.55) return "keep";
     if (edge > -0.018 && score >= 45) return "borderline";
@@ -1160,8 +1181,9 @@ export function scoreHandDeckRelative(input: DeckRelativeScoreInput): DeckRelati
   const percentile = clamp((below + 0.5) / (baseline.length + 1), 0, 1);
   const score = clamp(Math.round(1 + 99 * percentile), 1, 100);
   const mulliganEv = mulliganExpectedValue(deck, input.playDraw, settings, seed, input.profileLabel, input.freeMulligan);
-  const keepAdvantage = observed.riskAdjustedUtility - mulliganEv;
-  const keepRecommendation = recommendationFromEv(score, observed.riskAdjustedUtility, mulliganEv, observed.catastrophicFailureRate);
+  const keepExpectedValue = decisionUtilityAfterFailureRisk(observed.riskAdjustedUtility, observed.catastrophicFailureRate);
+  const keepAdvantage = keepExpectedValue - mulliganEv;
+  const keepRecommendation = recommendationFromEv(score, keepExpectedValue, mulliganEv, observed.catastrophicFailureRate);
   const { hand } = removeHandFromLibrary(deck, input.handNames);
   const line = evaluateDrawLine(hand, [], deck, input.playDraw, settings.analysisHorizon, input.profileLabel);
   const warnings = [
@@ -1188,7 +1210,7 @@ export function scoreHandDeckRelative(input: DeckRelativeScoreInput): DeckRelati
     score,
     percentile,
     keepRecommendation,
-    keepExpectedValue: observed.riskAdjustedUtility,
+    keepExpectedValue,
     mulliganExpectedValue: mulliganEv,
     keepAdvantage,
     confidence: clamp(1 - observed.standardDeviation, 0.25, 0.95),
